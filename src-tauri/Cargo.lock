@@ -4385,6 +4385,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "tauri-plugin-xy-credentials"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "tauri",
+ "tauri-plugin",
+]
+
+[[package]]
 name = "tauri-runtime"
 version = "2.11.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5907,6 +5916,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-dialog",
  "tauri-plugin-shell",
+ "tauri-plugin-xy-credentials",
  "thiserror 2.0.20",
  "tokio",
  "toml_edit 0.25.13+spec-1.1.0",

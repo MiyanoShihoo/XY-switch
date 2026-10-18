@@ -132,3 +132,45 @@ test("desktop-only bundler features are not enabled by the shared or iOS config"
     assert.ok(!(config.build?.features || []).some(feature => ["tauri/tray-icon", "linux-tray"].includes(feature)));
   }
 });
+
+
+test("macOS packages a native app and DMG or an explicit universal binary", () => {
+  const native = planBuild(parseArgs(["macos"]), { ...context, host: "darwin", arch: "arm64" });
+  assert.deepEqual(native.bundles, ["app", "dmg"]);
+  assert.equal(native.arch, "arm64");
+  const plan = planBuild(parseArgs(["macos", "--universal"]), { ...context, host: "darwin", arch: "arm64" });
+  assert.equal(plan.arch, "universal");
+  assert.ok(plan.args.includes("universal-apple-darwin"));
+  assert.ok(plan.bundleDir.endsWith(path.join("universal-apple-darwin", "release", "bundle")));
+  assert.throws(() => parseArgs(["windows", "--universal"]), /macOS/);
+  assert.throws(() => parseArgs(["macos", "--universal", "--universal"]), /once/);
+  assert.throws(() => planBuild(parseArgs(["macos"]), context), /native/);
+  assert.throws(() => planBuild(parseArgs(["macos", "--bundles", "deb"]), { ...context, host: "darwin" }), /bundle/);
+});
+
+test("macOS app freshness uses the generated plist and hashes the actual archive", async t => {
+  const directory = await temporary(t);
+  const plan = planBuild({ platform: "macos", bundles: "app" }, { ...context, projectRoot: directory, host: "darwin" });
+  const app = path.join(plan.bundleDir, "macos", "XY Switch.app");
+  await fs.mkdir(path.join(app, "Contents", "MacOS"), { recursive: true });
+  const plist = path.join(app, "Contents", "Info.plist");
+  await fs.writeFile(plist, "fixture plist");
+  await fs.writeFile(path.join(app, "Contents", "MacOS", "xy-switch"), "fixture binary");
+  await fs.utimes(app, new Date(0), new Date(0));
+  const manifest = await collectBundles(plan, Date.now(), { archiveApp: async (source, destination) => {
+    assert.equal(source, app); await fs.writeFile(destination, "fixture archive");
+  } });
+  assert.equal(manifest.files[0].name, "XY-Switch-1.0.0-macos-x64.app.zip");
+  assert.equal(manifest.files[0].bytes, Buffer.byteLength("fixture archive"));
+  assert.equal(manifest.files[0].sha256, await sha256(path.join(plan.outDir, manifest.files[0].name)));
+  await fs.utimes(plist, new Date(0), new Date(0));
+  await assert.rejects(collectBundles(plan, Date.now()), /freshly built/);
+});
+
+test("Android/macOS configuration preserves platform boundaries", async () => {
+  const android = JSON.parse(await fs.readFile(new URL("../src-tauri/tauri.android.conf.json", import.meta.url), "utf8"));
+  const macos = JSON.parse(await fs.readFile(new URL("../src-tauri/tauri.macos.conf.json", import.meta.url), "utf8"));
+  assert.equal(android.bundle.android.minSdkVersion, 24);
+  assert.ok(!(android.build?.features || []).includes("linux-tray"));
+  assert.equal(macos.bundle.macOS.minimumSystemVersion, "11.0");
+});

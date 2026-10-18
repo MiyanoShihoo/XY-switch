@@ -1,7 +1,8 @@
 use crate::mcp::{McpAppStatus, McpImportResult, McpManager, McpServer};
 use tauri::State;
 
-#[tauri::command]
+#[cfg_attr(target_os = "android", tauri::command(async))]
+#[cfg_attr(not(target_os = "android"), tauri::command)]
 pub fn list_mcp_servers(manager: State<'_, McpManager>) -> Result<Vec<McpServer>, String> {
     manager.list_servers()
 }
@@ -11,7 +12,8 @@ pub fn list_mcp_apps(manager: State<'_, McpManager>) -> Vec<McpAppStatus> {
     if cfg!(mobile) { Vec::new() } else { manager.app_statuses() }
 }
 
-#[tauri::command]
+#[cfg_attr(target_os = "android", tauri::command(async))]
+#[cfg_attr(not(target_os = "android"), tauri::command)]
 pub fn save_mcp_server(
     manager: State<'_, McpManager>,
     server: McpServer,
@@ -19,7 +21,8 @@ pub fn save_mcp_server(
     manager.save_server(server)
 }
 
-#[tauri::command]
+#[cfg_attr(target_os = "android", tauri::command(async))]
+#[cfg_attr(not(target_os = "android"), tauri::command)]
 pub fn delete_mcp_server(manager: State<'_, McpManager>, id: String) -> Result<(), String> {
     manager.delete_server(&id)
 }

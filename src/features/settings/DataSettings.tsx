@@ -41,7 +41,7 @@ function AboutApplication() {
   const version = useQuery({ queryKey: ["app-version"], queryFn: loadAppVersion, retry: false, refetchOnWindowFocus: false });
   return <section className="settings-section"><div className="settings-section__heading"><h2>关于 XY Switch</h2><p>让不同 AI 客户端共用一套清晰、可控的模型连接配置。</p></div><div className="form-stack">
     <div className="inline-actions"><strong>XY Switch</strong><Badge>{version.data ? "v" + version.data : "本地工作台"}</Badge><Badge>MIT</Badge></div>
-    <p>XY Switch 是本地 AI 配置管理与协议路由工具，提供 Windows / Linux 桌面构建和 iOS 移动端构建入口。集中管理供应商、API 端点和模型映射，减少在多个客户端之间反复修改配置的工作。</p>
+    <p>XY Switch 是本地 AI 配置管理与协议路由工具，提供 Windows / macOS / Linux 桌面构建和 Android / iOS 移动端构建入口。集中管理供应商、API 端点和模型映射，减少在多个客户端之间反复修改配置的工作。</p>
     <ul><li>供应商切换与模型探索：统一选择当前上游，按需配置模型、请求头和请求体覆盖。</li><li>协议路由：连接 Responses、Chat Completions 与 Messages，并为已授权接管的客户端同步配置。</li><li>工作资源：管理 MCP 与提示词，按平台授权读取本地 Skills，并浏览会话记录。</li><li>用量审计：查看请求、token、缓存、成本记录与模型字段；支持 Codex 和 DeepSeek Harness 本地用量读取。</li></ul>
     <ProjectRepository />
     {version.error && <InlineError message={"版本读取失败：" + errorText(version.error)} onRetry={() => void version.refetch()} />}

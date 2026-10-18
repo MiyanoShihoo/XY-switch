@@ -19,7 +19,7 @@ export function CredentialsSettings({ desktop, providers: controller }: { deskto
   const current = controller.providers.find(provider => provider.id === controller.currentId);
   return <div className="settings-sections"><section className="settings-section"><div className="settings-section__heading"><h2>凭据状态</h2><p>只查询凭据是否存在，不读取或展示实际密钥。</p></div><div className="form-stack">
     <div className="section-heading"><p>当前配置：<strong>{controller.loading ? "读取中" : controller.error ? "未知" : current?.name ?? "未设置当前供应商"}</strong></p><Button variant="secondary" loading={query.isFetching || controller.loading} disabled={!desktop} onClick={() => { void controller.refresh(); void query.refetch(); }}>刷新状态</Button></div>
-    <p className="notice">供应商密钥使用系统安全存储：Windows Credential Manager、Linux Secret Service 或 Apple Keychain。目标名为 <code>XY Switch/provider/&lt;供应商 ID&gt;</code>。修改或清除密钥请使用供应商编辑器。</p>
+    <p className="notice">供应商密钥使用系统安全存储：Windows Credential Manager、Linux Secret Service、Apple Keychain 或 Android Keystore（AES-GCM 加密记录）。目标名为 <code>XY Switch/provider/&lt;供应商 ID&gt;</code>。修改或清除密钥请使用供应商编辑器。</p>
     {controller.error && <InlineError message={controller.error} onRetry={() => void controller.refresh()} />}
     {(controller.loading || (desktop && query.isPending && !controller.error)) && <LoadingState label="正在查询凭据状态…" />}
     {query.error && <InlineError message={"凭据查询失败：" + errorText(query.error)} onRetry={() => void query.refetch()} />}

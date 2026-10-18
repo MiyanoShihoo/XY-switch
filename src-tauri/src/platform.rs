@@ -15,6 +15,7 @@ pub fn credential_store_name() -> &'static str {
     match std::env::consts::OS {
         "windows" => "Windows Credential Manager",
         "linux" => "Secret Service",
+        "android" => "Android Keystore",
         "macos" | "ios" => "Apple Keychain",
         _ => "Unavailable",
     }
@@ -22,7 +23,7 @@ pub fn credential_store_name() -> &'static str {
 
 pub fn require_desktop(operation: &str) -> Result<(), String> {
     if cfg!(mobile) {
-        Err(format!("{operation}仅适用于桌面端；iOS 不能访问其他应用的 CLI 配置或会话目录"))
+        Err(format!("{operation}仅适用于桌面端；Android / iOS 不能访问其他应用的 CLI 配置或会话目录"))
     } else {
         Ok(())
     }
@@ -51,6 +52,7 @@ mod tests {
     fn credential_backend_matches_the_compilation_target() {
         #[cfg(windows)] assert_eq!(credential_store_name(), "Windows Credential Manager");
         #[cfg(target_os = "linux")] assert_eq!(credential_store_name(), "Secret Service");
+        #[cfg(target_os = "android")] assert_eq!(credential_store_name(), "Android Keystore");
         #[cfg(any(target_os = "ios", target_os = "macos"))] assert_eq!(credential_store_name(), "Apple Keychain");
     }
     #[test]

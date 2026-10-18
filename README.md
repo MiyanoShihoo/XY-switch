@@ -6,7 +6,7 @@
 
 **下载：** [Releases](https://github.com/MiyanoShihoo/XY-switch/releases) · **源码：** [MiyanoShihoo/XY-switch](https://github.com/MiyanoShihoo/XY-switch) · **许可证：** [MIT](LICENSE)
 
-> Windows / Linux 提供桌面安装包构建；iOS 提供移动端适配、模拟器验证与独立签名构建入口。**模拟器归档不是可安装到 iPhone 的 IPA**，真机分发需要 Apple 证书与匹配的描述文件。使用上游模型需要自行配置服务地址与 API Key。浏览器预览不等于原生应用。
+> Windows / Linux / macOS 提供桌面包，Android 提供 APK，iOS 提供模拟器归档与独立签名构建入口。默认 Android 包使用明确标注的开发签名，macOS 使用 ad-hoc 签名，Windows 未配置商业代码签名。**iOS 模拟器归档不是可安装到 iPhone 的 IPA**。使用上游模型需要自行配置服务地址与 API Key；浏览器预览不等于原生应用。
 
 ## 下载与平台差异
 
@@ -16,9 +16,11 @@
 | --- | --- | --- | --- |
 | Windows x64 | NSIS `.exe` / `.msi` | Windows Credential Manager | 支持客户端接管、系统托盘和开机自启 |
 | Linux x64 | `.deb` / `.AppImage` | Secret Service | 需要已解锁的系统密钥库；托盘取决于桌面环境；暂无开机自启配置 |
-| iOS | 模拟器 `.app.zip` / 配置签名后 `.ipa` | Apple Keychain | 不能接管其他 App 的 CLI、扫描其 Skills/会话目录，也不保证代理后台常驻 |
+| macOS 11+ | Universal `.dmg` / `.app.zip`，包含 Apple Silicon 与 Intel | Apple Keychain | 支持桌面配置与托盘；暂无开机自启配置；默认包未公证 |
+| Android 7.0+ / API 24+ | ARM64 + x86_64 通用 `.apk` | Android Keystore + 应用私有加密记录 | 仅操作自身沙盒；不接管其他 App 的 CLI、Skills 或会话；后台代理不保证常驻 |
+| iOS | 模拟器 `.app.zip` / 配置签名后 `.ipa` | Apple Keychain | 与 Android 一样受跨 App 沙盒和后台运行限制；模拟器 ZIP 不能装到 iPhone |
 
-Linux 发布工作流使用 Ubuntu 22.04 构建。AppImage 仍需要兼容的系统库和 Secret Service。iOS 真机签名说明见 [多平台打包](docs/packaging.md)。
+Linux 发布工作流使用 Ubuntu 22.04 构建。AppImage 仍需要兼容的系统库和 Secret Service。Android 开发签名不代表 Google Play 分发；不同 CI 构建可能使用不同证书。macOS ad-hoc 签名不等于 Developer ID 或 Apple 公证，Gatekeeper 可能阻止直接打开。系统最低版本与二进制架构是构建目标，不代表全部设备已经实测。签名、安装和验收范围见 [多平台打包](docs/packaging.md)。
 
 ## 能做什么
 
@@ -35,7 +37,7 @@ Linux 发布工作流使用 Ubuntu 22.04 构建。AppImage 仍需要兼容的系
 
 ## 开始使用
 
-### 1. 启动桌面程序
+### 1. 启动原生程序
 
 使用 Releases 中对应平台的构建，或按下文从源码构建。替换程序前先退出已有 XY Switch 实例；Windows 安装包需要 WebView2 Runtime。
 
@@ -78,7 +80,7 @@ HTTP 错误、缺失状态、解析失败、流式响应不完整或证据截断
 
 ## 数据与凭据
 
-- 供应商密钥使用系统原生凭据存储：Windows Credential Manager、Linux Secret Service、Apple Keychain。密钥库不可用或锁定时返回错误，不回退到明文文件。
+- 供应商密钥使用系统原生凭据存储：Windows Credential Manager、Linux Secret Service、Apple Keychain，以及 Android Keystore 管理的 AES-GCM 密钥。Android 的密文记录保存在禁止备份的应用私有目录；密钥丢失、数据篡改或密钥库不可用时返回错误，不回退到明文或静默重置已有记录。
 - 数据库、用户目录及 Codex 配置目录可在「设置 → 数据」查看，以当前进程实际返回的位置为准。
 - 配置导出用于迁移普通配置，不是完整的凭据备份；MCP 的敏感请求头不会随普通导出保留。迁移后应重新检查凭据。
 - 不要公开 API Key、客户端认证文件、真实请求日志或包含私有提示词的导出文件。仓库忽略规则用于减少误提交，但不能代替提交前检查。
@@ -91,6 +93,8 @@ HTTP 错误、缺失状态、解析失败、流式响应不完整或证据截断
 
 - Windows：Microsoft C++ Build Tools 的「使用 C++ 的桌面开发」、Windows SDK、WebView2 Runtime。
 - Linux：WebKitGTK 4.1、AppIndicator、D-Bus、Secret Service 及编译依赖，安装命令见 [打包指南](docs/packaging.md)。
+- macOS：Xcode Command Line Tools；Universal 打包还需 Apple Silicon 和 Intel 两个 Rust target，脚本按需安装。
+- Android：JDK 21、Android SDK Platform/Build Tools 36、NDK 27.2.12479018；设置 `JAVA_HOME`、`ANDROID_HOME`、`NDK_HOME`。Windows 主机仍需 MSVC 来编译 Rust 构建工具。
 - iOS：macOS + Xcode + CocoaPods；Windows/Linux 可使用仓库的 macOS CI 工作流。
 - Rust stable；Windows 使用 MSVC 工具链。
 - Node.js 22.12 或更新的兼容版本；当前 Vite 7 依赖的引擎范围为 `^20.19.0 || >=22.12.0`。
@@ -138,6 +142,18 @@ Linux / WSL：
 pnpm build:linux --tools-dir "$HOME/AI-tools/xy-switch/bundlers"
 ```
 
+macOS 桌面通用包（在 Mac 上）：
+
+```bash
+pnpm build:macos:universal
+```
+
+Android APK（先配置上述 Android 工具链环境变量）：
+
+```powershell
+pnpm build:android --tools-dir "E:\AI tools\xy-switch\android"
+```
+
 macOS 的 iOS 模拟器：
 
 ```bash
@@ -145,11 +161,11 @@ pnpm build:ios:simulator
 bash scripts/smoke-ios-simulator.sh
 ```
 
-产物按版本和平台写入 `release/<version>/<platform>-<architecture>/`，同时生成 `SHA256SUMS.txt`；iOS 子目录另有 `simulator` / `device` 标记。Windows/Linux 包装脚本会重新构建前端和 Rust，拒绝把旧包改名当作新包。脚本测试命令为 `pnpm test:packaging`。
+产物按版本和平台写入 `release/<version>/<platform>-<architecture>/`，同时生成 `SHA256SUMS.txt`；iOS 子目录另有 `simulator` / `device` 标记。桌面与 Android 包装脚本会构建前端和 Rust，并校验本次打包输入与产物；不能把旧包改名当作新包。脚本测试命令为 `pnpm test:packaging`。
 
 `--tools-dir` 或 `XY_SWITCH_TOOLS_DIR` 控制下载的安装包工具缓存；默认使用被 Git 忽略的 `.build-tools/`。Node、Rust 和系统 SDK 是独立的预先安装依赖，其路径由各自工具链配置决定。当前 Windows 工作环境的新工具统一存放在 `E:\AI tools`。
 
-完整命令、Linux 依赖、缓存规则、iOS 签名参数与常见故障见 [多平台打包指南](docs/packaging.md)。前端资源由 Tauri 嵌入应用；`frontendDist` 使用相对于 Tauri 配置的路径，不直接传入 Windows 盘符绝对路径。
+完整命令、Linux 依赖、Android Keystore 测试、macOS 签名、缓存规则及 iOS 签名参数见 [多平台打包指南](docs/packaging.md)。前端资源由 Tauri 嵌入应用；`frontendDist` 使用相对于 Tauri 配置的路径，不直接传入 Windows 盘符绝对路径。
 
 ## 项目结构
 
@@ -172,7 +188,7 @@ public/              图标及静态资源
 
 ## 文档与参与开发
 
-- [多平台打包与 iOS 签名](docs/packaging.md)
+- [五平台打包、签名与原生验收](docs/packaging.md)
 - [中文使用指南](docs/user-guide-zh.md)
 - [English user guide](docs/user-guide-en.md)
 - [架构说明](docs/architecture.md)

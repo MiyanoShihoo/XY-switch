@@ -48,6 +48,7 @@ fn event_subscription_does_not_grant_emit_or_shell_permissions() {
         "plugin:shell|execute",
         "plugin:shell|spawn",
         "plugin:shell|open",
+        "plugin:xy-credentials|access",
     ] {
         assert!(!allowed(command, "main", Origin::Local));
     }

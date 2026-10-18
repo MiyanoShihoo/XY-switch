@@ -80,3 +80,15 @@ coverage/
 *.p8
 *.ipa
 *.xcarchive/
+
+# Android build outputs and signing keys
+/src-tauri/plugins/*/android/.tauri/
+/src-tauri/plugins/*/android/build/
+.gradle/
+.kotlin/
+*.apk
+*.aab
+*.jks
+*.keystore
+keystore.properties
+local.properties

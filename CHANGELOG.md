@@ -1,5 +1,13 @@
 # 更新日志
 
+## 1.0.0 多平台交付 — 2026-10-18
+
+- 新增 Linux、macOS Universal、Android 与 iOS 模拟器构建/原生验收流程。
+- Android 使用 Keystore 和私有 AES-GCM 记录，覆盖原生存储与最终 release APK 的集成测试；修复 Windows 工具路径大小写和 CRLF 生成工程兼容问题。
+- 新增 macOS App/DMG 完整性、临时 Keychain、真实窗口检查；桌面与移动能力按实际平台区分。
+- 完整文档、签名限制及当次实际验证结果见 `docs/release-notes-1.0.0.md` 和 GitHub Release。
+- 以下 2026-09-10 内容是早期历史快照，其中“尚未交付”的状态不代表当前发布。
+
 ## 1.0.0 - 2026-09-10
 
 ### 新增

@@ -18,7 +18,10 @@
     "build:linux": "node scripts/package-release.mjs linux",
     "build:ios": "bash scripts/package-ios.sh device",
     "build:ios:simulator": "bash scripts/package-ios.sh simulator",
-    "test:packaging": "node --test scripts/package-release.test.mjs scripts/select-ios-simulator.test.mjs scripts/verify-native-screenshot.test.mjs"
+    "test:packaging": "node --test scripts/package-release.test.mjs scripts/package-android.test.mjs scripts/smoke-android-emulator.test.mjs scripts/select-ios-simulator.test.mjs scripts/verify-native-screenshot.test.mjs",
+    "build:macos": "node scripts/package-release.mjs macos",
+    "build:macos:universal": "node scripts/package-release.mjs macos --universal",
+    "build:android": "node scripts/package-android.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

@@ -22,6 +22,8 @@ describe("platform capabilities", () => {
   it.each([
     { os: "windows", mobile: false, systemTray: true, autostart: true, clientTakeover: true, credentialStore: "Windows Credential Manager" },
     { os: "linux", mobile: false, systemTray: false, autostart: false, clientTakeover: true, credentialStore: "Secret Service" },
+    { os: "macos", mobile: false, systemTray: true, autostart: false, clientTakeover: true, credentialStore: "Apple Keychain" },
+    { os: "android", mobile: true, systemTray: false, autostart: false, clientTakeover: false, credentialStore: "Android Keystore" },
     { os: "ios", mobile: true, systemTray: false, autostart: false, clientTakeover: false, credentialStore: "Apple Keychain" },
   ])("uses the native capabilities for $os, not a user-agent guess", async value => {
     vi.stubGlobal("window", { __TAURI_INTERNALS__: {} });

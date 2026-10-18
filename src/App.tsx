@@ -71,13 +71,13 @@ export default function App() {
   };
   const currentName = providers.loading ? "读取中" : providers.error ? "状态未知" : providers.providers.find(provider => provider.id === providers.currentId)?.name;
   return <AppShell activeView={activeView} onNavigate={setActiveView} providerCount={providers.providers.length} currentProviderName={currentName} proxyStatus={proxyStatus} proxyBusy={proxyBusy} onToggleProxy={() => void toggleProxy()} theme={theme} onToggleTheme={() => setThemePreference(nextExplicitTheme(theme))} mainRef={mainRef}>
-    {platform.data?.mobile && <p className="workspace-route-notice">iOS 移动端：凭据保存在 Apple Keychain；不能接管其他应用的 CLI，也不能保证后台持续运行本地代理。</p>}
+    {platform.data?.mobile && <p className="workspace-route-notice">{platform.data.os === "android" ? "Android" : "iOS"} 移动端：凭据保存在 {platform.data.credentialStore}；不能接管其他应用的 CLI，也不能保证后台持续运行本地代理。</p>}
     {runtimeError && <div className="workspace-runtime-error"><InlineError message={runtimeError} onRetry={() => { void refreshRuntime().catch(cause => setRuntimeError(errorText(cause))); }} /></div>}
     {activeView === "providers" && <>{proxyStatus?.settings.showInHome && <div className="workspace-route-notice"><Badge dot tone={proxyStatus.lastError ? "danger" : proxyStatus.running ? "success" : "neutral"}>{proxyStatus.lastError ? "路由异常" : proxyStatus.running ? "本地路由运行中" : "本地路由已停止"}</Badge><code>{proxyStatus.address}</code></div>}<ProvidersPage controller={providers} onRuntimeChanged={refreshRuntime} /></>}
     {activeView === "mcp" && <McpPage />}
     {activeView === "prompts" && <PromptsPage />}
-    {activeView === "skills" && (platform.data?.mobile ? <p className="workspace-route-notice">此版本 iOS 不支持扫描桌面 Skills 目录，请在 Windows 或 Linux 端导入。</p> : <SkillsPage />)}
-    {activeView === "sessions" && (platform.data?.mobile ? <p className="workspace-route-notice">iOS 无法读取其他应用的本机会话目录，请在对应桌面端查看。</p> : <SessionsPage />)}
+    {activeView === "skills" && (platform.data?.mobile ? <p className="workspace-route-notice">移动端不支持扫描桌面 Skills 目录，请在 Windows、macOS 或 Linux 端导入。</p> : <SkillsPage />)}
+    {activeView === "sessions" && (platform.data?.mobile ? <p className="workspace-route-notice">移动端无法读取其他应用的本机会话目录，请在对应桌面端查看。</p> : <SessionsPage />)}
     {activeView === "usage" && <UsagePage providers={providers.providers} />}
     {activeView === "settings" && <SettingsPage themePreference={themePreference} onThemeChange={setThemePreference} providers={providers} proxyStatus={proxyStatus} proxyBusy={proxyBusy} runtimeError={runtimeError} mutateProxy={mutateProxy} onRefreshRuntime={refreshRuntime} onImported={imported} />}
   </AppShell>;

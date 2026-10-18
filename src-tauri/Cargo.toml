@@ -41,6 +41,9 @@ tauri-plugin-dialog = "2.7.3"
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri = { version = "2", features = ["tray-icon"] }
 
+[target.'cfg(target_os = "android")'.dependencies]
+tauri-plugin-xy-credentials = { path = "plugins/tauri-plugin-xy-credentials" }
+
 [target.'cfg(target_os = "linux")'.dependencies]
 keyring = { version = "3.6.3", default-features = false, features = ["sync-secret-service", "crypto-rust"] }
 

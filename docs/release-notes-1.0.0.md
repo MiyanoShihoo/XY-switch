@@ -15,13 +15,15 @@
 
 - Windows：NSIS 当前用户安装器、MSI，保留 Windows Credential Manager。
 - Linux：Debian 包、AppImage，新增 Secret Service 凭据存储；没有托盘时正常退出。
+- macOS：Apple Silicon/Intel Universal App ZIP 与 DMG、Apple Keychain；默认 ad-hoc 签名，未配置公证。
+- Android：API 24+ 的 ARM64/x86_64 APK、Android Keystore 与私有 AES-GCM 记录，独立签名/ELF 对齐检查和真实 release APK instrumentation。
 - iOS：移动界面、Apple Keychain、模拟器构建和独立的签名 IPA 工作流。
 
-Linux/Apple 密钥库失败时不回退到明文。Linux 暂无开机自启配置；iOS 不支持桌面客户端接管或跨 App 读取 Skills/会话目录，也不保证本地代理在后台持续运行。
+各平台密钥库失败时不回退到明文。Linux/macOS 暂无开机自启配置；Android/iOS 不支持桌面客户端接管或跨 App 读取 Skills/会话目录，也不保证本地代理在后台持续运行。Android 凭据同步 IPC 显式移出 UI 线程，私有插件入口拒绝直接 JS 调用。
 
 ## 产物与验证边界
 
-Windows/Linux 构建脚本重新构建前后端，输出 SHA-256 和产物清单，不把历史包重新命名后发布。未配置商业代码签名的 Windows 包为未签名产物。
+桌面/Android 构建脚本构建前后端，输出 SHA-256 和产物清单，检查实际打包输入，不把不匹配的历史包重新命名后发布。未配置商业代码签名的 Windows 包为未签名产物。macOS 默认 ad-hoc 签名只能检查完整性，不代表 Developer ID 或 Gatekeeper 放行。Android 默认使用开发证书，不是 Google Play 正式发行；不同 CI 构建证书可能不同，卸载旧包会清除其凭据与数据。
 
 iOS 模拟器 ZIP 不能安装到 iPhone。真机 IPA 必须提供 Apple 证书、描述文件和 Team ID，并通过独立签名流程；有构建脚本不等于真机包已产出或已在真机验证。
 

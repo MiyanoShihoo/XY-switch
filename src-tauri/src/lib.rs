@@ -55,7 +55,8 @@ pub struct AppPaths {
     pub codex_home: String,
 }
 
-#[tauri::command]
+#[cfg_attr(target_os = "android", tauri::command(async))]
+#[cfg_attr(not(target_os = "android"), tauri::command)]
 fn app_paths(app: tauri::AppHandle) -> Result<AppPaths, String> {
     // 这里刻意重复 setup() 里的目录推导逻辑（含 debug 覆盖），
     // 保证界面显示的路径和实际打开的文件是同一个。
@@ -92,7 +93,8 @@ fn app_paths(app: tauri::AppHandle) -> Result<AppPaths, String> {
     })
 }
 
-#[tauri::command]
+#[cfg_attr(target_os = "android", tauri::command(async))]
+#[cfg_attr(not(target_os = "android"), tauri::command)]
 #[allow(deprecated)]
 fn open_external_url(app: tauri::AppHandle, url: String) -> Result<(), String> {
     use tauri_plugin_shell::ShellExt;
@@ -113,7 +115,10 @@ fn open_external_url(app: tauri::AppHandle, url: String) -> Result<(), String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(target_os = "android")]
+    let builder = builder.plugin(tauri_plugin_xy_credentials::init());
+    builder
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {

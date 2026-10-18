@@ -153,5 +153,5 @@ pub async fn pick_and_import_skill_folder(
     _app: tauri::AppHandle,
     _database: State<'_, Database>,
 ) -> Result<Option<SkillImportResult>, String> {
-    Err("此版本 iOS 不支持扫描桌面 Skills 目录，请在 Windows 或 Linux 端导入".to_string())
+    Err("移动端不支持扫描桌面 Skills 目录，请在 Windows、macOS 或 Linux 端导入".to_string())
 }

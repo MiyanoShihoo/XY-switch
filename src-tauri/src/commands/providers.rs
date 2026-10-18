@@ -253,7 +253,8 @@ pub async fn refresh_codex_provider(
     Ok(())
 }
 
-#[tauri::command]
+#[cfg_attr(target_os = "android", tauri::command(async))]
+#[cfg_attr(not(target_os = "android"), tauri::command)]
 pub fn delete_provider(
     app: tauri::AppHandle,
     database: State<'_, Database>,

@@ -22,7 +22,8 @@ pub fn set_model_verification_settings(
 ) -> Result<VerificationSettings, String> {
     db.verification.set_settings(settings)
 }
-#[tauri::command]
+#[cfg_attr(target_os = "android", tauri::command(async))]
+#[cfg_attr(not(target_os = "android"), tauri::command)]
 pub fn model_verification_status(
     provider_id: String,
     model: Option<String>,
@@ -53,7 +54,8 @@ pub fn model_verification_status(
     status.context_error = context_error;
     Ok(status)
 }
-#[tauri::command]
+#[cfg_attr(target_os = "android", tauri::command(async))]
+#[cfg_attr(not(target_os = "android"), tauri::command)]
 pub fn confirm_model_verification_cost(
     provider_id: String,
     model: String,

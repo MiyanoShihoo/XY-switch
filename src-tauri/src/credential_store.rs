@@ -166,7 +166,11 @@ mod platform {
 #[path = "credential_store/native_keyring.rs"]
 mod platform;
 
-#[cfg(not(any(windows, target_os = "linux", target_os = "macos", target_os = "ios")))]
+#[cfg(target_os = "android")]
+#[path = "credential_store/android_keystore.rs"]
+mod platform;
+
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos", target_os = "ios", target_os = "android")))]
 mod platform {
     pub fn set_api_key(_: &str, _: &str) -> Result<(), String> {
         Err("secure API key storage is unavailable on this platform".to_string())
