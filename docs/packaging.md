@@ -152,3 +152,7 @@ pnpm build:ios
 ### iOS 模拟器界面验收
 
 模拟器检查必须同时确认应用进程存活、界面内容已渲染以及保存实际截图。首次启动 WebKit 不采用固定五秒后直接判成功；脚本最多等待两分钟，并排除状态栏/底部系统区域后检查内容对比度。仅显示系统状态栏的空白截图会使 CI 失败。该检查不替代截图人工复核、完整交互测试或真机验证。
+
+### Linux 托盘动态依赖
+
+Linux 配置通过 Cargo 中命名的 `linux-tray = ["tauri/tray-icon"]` feature 启用托盘打包。不能只把原始依赖 feature `tauri/tray-icon` 写入 `build.features`：当前锁定的 Tauri CLI 会展开 crate feature 名称，直接依赖 feature 虽能被 Cargo 接受，却不会进入打包器的动态库清单。CI 会保存 DEB control 元数据、检查 AppIndicator 依赖和 AppImage 中的实际动态库，并分别隔离启动两种包；失败时也保留产物和诊断，不可仅以编译成功判定可发布。

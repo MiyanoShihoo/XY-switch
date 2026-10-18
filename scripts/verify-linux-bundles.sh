@@ -11,9 +11,13 @@ deb="$output/XY-Switch-$version-linux-$arch.deb"
 appimage="$output/XY-Switch-$version-linux-$arch.AppImage"
 [[ -f "$deb" && -f "$appimage" ]] || { echo 'Build both Linux packages first' >&2; exit 1; }
 (cd "$output" && sha256sum -c SHA256SUMS.txt)
-[[ "$(dpkg-deb --field "$deb" Version)" == "$version" ]] || exit 1
-[[ "$(dpkg-deb --field "$deb" Architecture)" == "$deb_arch" ]] || exit 1
-dpkg-deb --field "$deb" Depends | grep -Eq '(^|, )[[:space:]]*(libayatana-appindicator3-1|libappindicator3-1)([ ,(]|$)'
+dpkg-deb --field "$deb" > "$output/debian-control.txt"
+cat "$output/debian-control.txt"
+[[ "$(dpkg-deb --field "$deb" Version)" == "$version" ]] || { echo 'Debian version mismatch' >&2; exit 1; }
+[[ "$(dpkg-deb --field "$deb" Architecture)" == "$deb_arch" ]] || { echo 'Debian architecture mismatch' >&2; exit 1; }
+dpkg-deb --field "$deb" Depends | grep -Eq '(^|, )[[:space:]]*(libayatana-appindicator3-1|libappindicator3-1)([ ,(]|$)' || {
+  echo 'Debian package omitted its AppIndicator dependency; check the named Linux Cargo feature' >&2; exit 1;
+}
 parent="$(realpath "${TMPDIR:-/tmp}")"
 temporary="$(mktemp -d "$parent/xy-switch-bundles.XXXXXX")"
 [[ "$(realpath "$temporary")" == "$parent"/xy-switch-bundles.* ]] || exit 1
@@ -25,7 +29,7 @@ chmod u+x "$appimage"
 appdir="$temporary/squashfs-root"
 # libappindicator is loaded dynamically, so an ELF dependency scan alone misses it.
 [[ -f "$appdir/usr/lib/libayatana-appindicator3.so.1" || -f "$appdir/usr/lib/libappindicator3.so.1" ]] || {
-  echo 'AppImage omitted the dynamically loaded tray library; check the Linux tauri/tray-icon build feature' >&2; exit 1;
+  echo 'AppImage omitted the dynamically loaded tray library; check the Linux linux-tray Cargo feature' >&2; exit 1;
 }
 for format in deb appimage; do
   isolated="$temporary/$format-home"

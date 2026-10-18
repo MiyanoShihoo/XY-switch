@@ -116,7 +116,12 @@ test("rejects empty and ambiguous installers before writing release output", asy
 
 test("Linux config explicitly exposes the dynamic tray dependency to the bundler", async () => {
   const config = JSON.parse(await fs.readFile(new URL("../src-tauri/tauri.linux.conf.json", import.meta.url), "utf8"));
-  assert.ok(config.build.features.includes("tauri/tray-icon"));
+  assert.deepEqual(config.build.features, ["linux-tray"]);
+  const cargo = await fs.readFile(new URL("../src-tauri/Cargo.toml", import.meta.url), "utf8");
+  // The CLI expands crate feature aliases, but ignores a raw dependency feature
+  // when computing the bundler's library list (even though Cargo accepts it).
+  const features = cargo.split("[features]")[1]?.split(/\n\[/)[0];
+  assert.match(features || "", /^linux-tray\s*=\s*\["tauri\/tray-icon"\]/m);
   assert.ok(config.bundle.linux.deb.recommends.includes("gnome-keyring"));
   assert.ok(config.bundle.linux.deb.recommends.includes("fonts-noto-cjk"));
 });
@@ -124,6 +129,6 @@ test("Linux config explicitly exposes the dynamic tray dependency to the bundler
 test("desktop-only bundler features are not enabled by the shared or iOS config", async () => {
   for (const file of ["tauri.conf.json", "tauri.ios.conf.json"]) {
     const config = JSON.parse(await fs.readFile(new URL("../src-tauri/" + file, import.meta.url), "utf8"));
-    assert.ok(!(config.build?.features || []).includes("tauri/tray-icon"));
+    assert.ok(!(config.build?.features || []).some(feature => ["tauri/tray-icon", "linux-tray"].includes(feature)));
   }
 });
