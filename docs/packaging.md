@@ -71,6 +71,11 @@ cargo test --manifest-path src-tauri/Cargo.toml --locked stores_reads_and_delete
 
 ## Linux
 
+`tauri.linux.conf.json` 显式启用 `tauri/tray-icon`：该依赖在 Cargo 中仅对桌面目标启用，仍需让打包器识别，才能自动写入 Debian 依赖并把 AppIndicator 动态库及其依赖一起打入 AppImage。不能只以 Rust 编译成功或 `ldd` 主程序无缺失作为打包通过的依据。
+
+构建后执行 `bash scripts/verify-linux-bundles.sh`，检查 Debian 元数据、AppImage 的动态托盘库，以及两种包在独立 HOME、D-Bus、Xvfb 环境中的实际启动。CI 自动执行此检查。Linux 中文显示需要系统 CJK 字体，Debian 包推荐 `fonts-noto-cjk`；最小化 WSL 环境若未安装中文字体，会显示方框，这不等于前端资源缺失。
+
+
 Ubuntu / Debian 构建依赖：
 
 ```bash

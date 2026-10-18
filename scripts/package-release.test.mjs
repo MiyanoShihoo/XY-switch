@@ -113,3 +113,17 @@ test("rejects empty and ambiguous installers before writing release output", asy
   await assert.rejects(collectBundles(plan, Date.now()), /found 2/);
   await assert.rejects(fs.access(plan.outDir));
 });
+
+test("Linux config explicitly exposes the dynamic tray dependency to the bundler", async () => {
+  const config = JSON.parse(await fs.readFile(new URL("../src-tauri/tauri.linux.conf.json", import.meta.url), "utf8"));
+  assert.ok(config.build.features.includes("tauri/tray-icon"));
+  assert.ok(config.bundle.linux.deb.recommends.includes("gnome-keyring"));
+  assert.ok(config.bundle.linux.deb.recommends.includes("fonts-noto-cjk"));
+});
+
+test("desktop-only bundler features are not enabled by the shared or iOS config", async () => {
+  for (const file of ["tauri.conf.json", "tauri.ios.conf.json"]) {
+    const config = JSON.parse(await fs.readFile(new URL("../src-tauri/" + file, import.meta.url), "utf8"));
+    assert.ok(!(config.build?.features || []).includes("tauri/tray-icon"));
+  }
+});

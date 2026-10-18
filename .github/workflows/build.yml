@@ -29,7 +29,7 @@ jobs:
       - run: pnpm test:packaging
       - run: pnpm build:renderer
       - name: Validate shell scripts
-        run: bash -n scripts/package-ios.sh scripts/smoke-ios-simulator.sh scripts/test-linux-keyring.sh
+        run: bash -n scripts/package-ios.sh scripts/smoke-ios-simulator.sh scripts/test-linux-keyring.sh scripts/verify-linux-bundles.sh
   desktop:
     needs: frontend
     strategy:
@@ -83,9 +83,9 @@ jobs:
       - run: pnpm build:${{ matrix.platform }}
         env:
           XY_SWITCH_TOOLS_DIR: ${{ runner.temp }}/xy-switch-tools
-      - name: Verify Debian package metadata
+      - name: Verify Linux dependencies and isolated package startup
         if: runner.os == 'Linux'
-        run: dpkg-deb --info release/*/linux-*/*.deb
+        run: bash scripts/verify-linux-bundles.sh
       - uses: actions/upload-artifact@v4
         with:
           name: xy-switch-${{ matrix.platform }}-${{ runner.arch }}
