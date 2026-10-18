@@ -7,7 +7,7 @@ const marker = Buffer.from("__TAURI_BUNDLE_TYPE_VAR_");
 const installedMarkers = { nsis: "NSS", msi: "MSI" };
 const knownTypes = new Set(["UNK", "___", "NSS", "MSI"]);
 function inspect(binary) {
-  if (!Buffer.isBuffer(binary) || binary.length < 256 || binary.toString("ascii", 0, 2) !== "MZ") throw new Error("Expected a PE executable");
+  if (!Buffer.isBuffer(binary) || binary.length < 256 || binary.readUInt16LE(0) !== 0x5a4d) throw new Error("Expected a PE executable");
   const pe = binary.readUInt32LE(0x3c);
   if (pe < 64 || pe + 26 > binary.length || binary.toString("hex", pe, pe + 4) !== "50450000" || binary.readUInt16LE(pe + 4) !== 0x8664 || binary.readUInt16LE(pe + 24) !== 0x20b) throw new Error("Expected a Windows x64 PE32+ executable");
   const candidates = [];

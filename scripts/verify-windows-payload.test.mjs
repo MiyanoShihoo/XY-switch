@@ -60,7 +60,7 @@ test("Windows payload fails closed for ambiguous identical markers", () => {
   assert.throws(() => compareWindowsPayload(built, Buffer.from(built), "nsis"), /exactly one/);
 });
 test("Windows payload does not accept high-bit characters as ASCII marker values", () => {
-  const installed = executable("NSS"); installed[322] |= 0x80;
+  const installed = executable("NSS"); installed[324] |= 0x80;
   assert.throws(() => compareWindowsPayload(executable(), installed, "nsis"), /Unknown/);
 });
 test("Windows verifier invokes the payload checker without escaped control characters", () => {

@@ -184,12 +184,14 @@ jobs:
     needs: frontend
     runs-on: ubuntu-24.04
     timeout-minutes: 150
-    env:
-      XY_SWITCH_TOOLS_DIR: ${{ runner.temp }}/xy-switch-android-tools
-      GRADLE_USER_HOME: ${{ runner.temp }}/xy-switch-android-tools/gradle
-      ANDROID_USER_HOME: ${{ runner.temp }}/xy-switch-android-tools/android-user
     steps:
       - uses: actions/checkout@v4
+      - name: Isolate Android tool state
+        shell: bash
+        run: |
+          tools="$RUNNER_TEMP/xy-switch-android-tools"
+          mkdir -p "$tools/gradle" "$tools/android-user"
+          printf '%s\n' "XY_SWITCH_TOOLS_DIR=$tools" "GRADLE_USER_HOME=$tools/gradle" "ANDROID_USER_HOME=$tools/android-user" >> "$GITHUB_ENV"
       - uses: pnpm/action-setup@v4
         with:
           version: 10
