@@ -65,6 +65,25 @@ export function patchGradle(text, ndkVersion) {
   text = once(text, '    androidTestImplementation("androidx.test.ext:junit:1.1.4")', '    androidTestImplementation("androidx.test:runner:1.6.2")\n    androidTestImplementation("androidx.test:core:1.6.1")\n    androidTestImplementation("androidx.test.ext:junit:1.2.1")');
   return text;
 }
+export function patchProguard(text) {
+  text = text.replace(/\r\n/g, "\n");
+  const start = "# xy-switch-managed-instrumentation-start";
+  const end = "# xy-switch-managed-instrumentation-end";
+  const rules = `${start}
+# AndroidX test code runs in a separate APK and calls these Kotlin runtime methods.
+# Keep their ABI stable: the test APK cannot follow R8 parameter rewriting/removal.
+-keep class kotlin.jvm.internal.Intrinsics {
+    public static <methods>;
+}
+${end}`;
+  if (text.includes(start) || text.includes(end)) {
+    if (text.split(start).length !== 2 || text.split(end).length !== 2 || !text.includes(rules)) {
+      throw new Error("Review the modified managed Android instrumentation keep rules");
+    }
+    return text;
+  }
+  return text + (text.endsWith("\n") || !text ? "" : "\n") + "\n" + rules + "\n";
+}
 export function patchBuildTask(text, node, cli) {
   text = text.replace(/\r\n/g, "\n");
   if ([node, cli].some(value => /[\r\n"]/.test(value))) throw new Error("Unsafe Android runner path");
@@ -208,8 +227,10 @@ async function prepareProject(plan, env) {
   const ndkVersion = path.basename(env.NDK_HOME.replace(/[\\/]+$/, ""));
   const manifest = path.join(plan.androidDir, "app", "src", "main", "AndroidManifest.xml");
   const gradle = path.join(plan.androidDir, "app", "build.gradle.kts");
+  const proguard = path.join(plan.androidDir, "app", "proguard-rules.pro");
   await fs.writeFile(manifest, patchManifest(await fs.readFile(manifest, "utf8")));
   await fs.writeFile(gradle, patchGradle(await fs.readFile(gradle, "utf8"), ndkVersion));
+  await fs.writeFile(proguard, patchProguard(await fs.readFile(proguard, "utf8")));
   const buildTasks = [];
   async function walk(dir) { for (const entry of await fs.readdir(dir, { withFileTypes: true })) { const p = path.join(dir, entry.name); if (entry.isDirectory()) await walk(p); else if (entry.name === "BuildTask.kt") buildTasks.push(p); } }
   await walk(path.join(plan.androidDir, "buildSrc", "src"));

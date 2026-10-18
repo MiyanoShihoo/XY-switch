@@ -23,16 +23,21 @@ export function assertEmulatorIdentity(serial, qemu, avdName) {
   }
 }
 export function parseInstrumentation(text, expected) {
-  const ok = text.match(/\bOK \((\d+) tests?\)/);
-  if (!ok || +ok[1] !== expected || /FAILURES!!!|INSTRUMENTATION_FAILED|INSTRUMENTATION_RESULT: shortMsg|Process crashed/.test(text)) {
+  const summaries = [...text.matchAll(/\bOK \((\d+) tests?\)/g)];
+  const ok = summaries[0];
+  if (summaries.length !== 1 || +ok[1] !== expected || /FAILURES!!!|INSTRUMENTATION_FAILED|INSTRUMENTATION_RESULT: shortMsg|Process crashed/.test(text)) {
     throw new Error(`Android instrumentation did not pass exactly ${expected} tests`);
   }
   return { passed: true, tests: +ok[1] };
 }
-function execute(command, args, { bytes = false, timeout = 240000, allowFailure = false } = {}) {
-  const result = spawnSync(command, args, { cwd: root, shell: false, encoding: bytes ? undefined : "utf8", maxBuffer: 32 * 1024 * 1024, timeout, windowsHide: true });
-  if (result.error) throw result.error;
-  if (!allowFailure && result.status !== 0) throw new Error(`${path.basename(command)} failed (${result.status}): ${String(result.stderr || "").slice(-1200)}`);
+export function execute(command, args, { bytes = false, timeout = 240000, allowFailure = false, spawn = spawnSync } = {}) {
+  const result = spawn(command, args, { cwd: root, shell: false, encoding: bytes ? undefined : "utf8", maxBuffer: 32 * 1024 * 1024, timeout, windowsHide: true });
+  if (result.error || (!allowFailure && result.status !== 0)) {
+    const error = result.error || new Error(`${path.basename(command)} failed (${result.status}): ${String(result.stderr || "").slice(-1200)}`);
+    error.stdout = String(result.stdout || "");
+    error.stderr = String(result.stderr || "");
+    throw error;
+  }
   return bytes ? result.stdout : (result.stdout || "").trim();
 }
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -76,8 +81,16 @@ export async function main(args = process.argv.slice(2)) {
     for (const test of cases) {
       const component = `${test.id}/androidx.test.runner.AndroidJUnitRunner`;
       if (!instrumentations.split(/\r?\n/).some(line => line === `instrumentation:${component} (target=${test.target})`)) throw new Error(`Missing expected ${test.name} instrumentation target`);
-      const result = run(["shell", "am", "instrument", "-w", "-r", "-e", "class", test.className, component], { timeout: 300000 });
-      await fs.writeFile(path.join(verification, test.name + "-instrumentation.txt"), result + "\n");
+      let result;
+      const log = path.join(verification, test.name + "-instrumentation.txt");
+      try {
+        result = run(["shell", "am", "instrument", "-w", "-r", "-e", "class", test.className, component], { timeout: 300000 });
+      } catch (error) {
+        // Keep partial test output even when adb times out; never turn a timeout into a pass.
+        await fs.writeFile(log, [error.stdout, error.stderr, `Runner error: ${error.message}`].filter(Boolean).join("\n") + "\n");
+        throw error;
+      }
+      await fs.writeFile(log, result + "\n");
       tests[test.name] = parseInstrumentation(result, test.count);
     }
     run(["shell", "am", "force-stop", identifier]);

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { createHash } from "node:crypto";
-import { parseArgs, planBuild, patchManifest, patchGradle, patchBuildTask, inspectElf, inspectApkLibraries, parseBadging, verifyManifestPolicies, matchNativeLibraryInput, prependEnvironmentPath, verifyWindowsSymlinkSupport } from "./package-android.mjs";
+import { parseArgs, planBuild, patchManifest, patchGradle, patchProguard, patchBuildTask, inspectElf, inspectApkLibraries, parseBadging, verifyManifestPolicies, matchNativeLibraryInput, prependEnvironmentPath, verifyWindowsSymlinkSupport } from "./package-android.mjs";
 const projectRoot = path.resolve("fixture-project");
 const context = { projectRoot, host: "linux", version: "1.0.0", env: {} };
 test("Android default plan builds ARM64 and x86_64 release APKs with the Cargo lock", () => {
@@ -34,6 +34,27 @@ test("Android Gradle signing uses only environment variables and preserves relea
   assert.match(patched, /System.getenv\("XY_ANDROID_STORE_PASSWORD"\)/); assert.match(patched, /usesCleartextTraffic"\] = "true"/);
   assert.equal(patchGradle(patched, "27.2.12479018"), patched);
   assert.throws(() => patchGradle(template + '\nsigningConfigs {', "27.2.12479018"));
+});
+test("Android release keeps only the cross-APK Intrinsics ABI without disabling R8", () => {
+  const original = "# Existing project rules\n-keep class fixture.NativeBridge { native <methods>; }\n";
+  const patched = patchProguard(original);
+  assert.ok(patched.startsWith(original));
+  assert.match(patched, /-keep class kotlin\.jvm\.internal\.Intrinsics \{\n    public static <methods>;\n\}/);
+  assert.doesNotMatch(patched, /-dont(?:optimize|obfuscate|shrink)|allowoptimization|class kotlin\.\*|class \*\*/);
+  assert.equal(patchProguard(patched), patched);
+  assert.equal(patchProguard(patched.replace(/\n/g, "\r\n")), patched);
+});
+test("Android refuses changed, partial or duplicated managed instrumentation rules", () => {
+  const patched = patchProguard("");
+  for (const broken of [patched.replace("public static <methods>;", ""), patched.replace("# xy-switch-managed-instrumentation-end", ""), patched + patched]) {
+    assert.throws(() => patchProguard(broken), /managed Android instrumentation keep rules/);
+  }
+});
+test("Android project preparation applies the tested release keep rules", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const source = await readFile(new URL("./package-android.mjs", import.meta.url), "utf8");
+  assert.match(source, /const proguard = path\.join\(plan\.androidDir, "app", "proguard-rules\.pro"\)/);
+  assert.match(source, /await fs\.writeFile\(proguard, patchProguard\(await fs\.readFile\(proguard, "utf8"\)\)\)/);
 });
 test("Android Gradle Rust runner invokes the actual Node CLI file, not node tauri", () => {
   const result = patchBuildTask('val executable = "node";\nval args = listOf("tauri", "android", "android-studio-script");', "/tools/node", "/project/node_modules/@tauri-apps/cli/tauri.js");
