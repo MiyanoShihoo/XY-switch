@@ -227,7 +227,7 @@ export function parseBadging(output, { identifier, version }) {
   if (/^application-debuggable$/m.test(output)) throw new Error("Release APK is unexpectedly debuggable");
   return { identifier: packageLine[1], versionCode: +packageLine[2], versionName: packageLine[3], minSdk: +min[1], targetSdk: +target[1], debuggable: false };
 }
-async function verifyApk(apk, plan, env, identifier) {
+export async function verifyApk(apk, plan, env, identifier) {
   const buildTools = path.join(env.ANDROID_HOME, "build-tools", "36.0.0");
   const suffix = process.platform === "win32" ? ".exe" : "";
   const metadata = parseBadging(run(path.join(buildTools, "aapt2" + suffix), ["dump", "badging", apk], env, true), { identifier, version: plan.version });

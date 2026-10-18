@@ -67,10 +67,13 @@ foreach ($format in 'nsis','msi') {
         $installed = $true
         if (-not (Test-Path -LiteralPath $installedExe -PathType Leaf)) { throw 'Installer did not place the expected application in its test directory' }
         $built = Join-Path $root 'src-tauri\target\release\xy-switch.exe'
-        $hash = (Get-FileHash -LiteralPath $installedExe -Algorithm SHA256).Hash
-        if ($hash -ne (Get-FileHash -LiteralPath $built -Algorithm SHA256).Hash) { throw 'Installed application differs from the newly built packaging input' }
+        $payloadJson = & node (Join-Path $root 'scripts/verify-windows-payload.mjs') $built $installedExe $format
+        if ($LASTEXITCODE -ne 0) { throw 'Installed application differs from the newly built packaging input' }
+        $payloadJson | Set-Content -LiteralPath (Join-Path $output "native-$format-payload-check.json") -Encoding utf8
+        $payload = $payloadJson | ConvertFrom-Json
         $result.installation = $true
-        $result.installedBinarySha256 = $hash.ToLowerInvariant()
+        $result.installedBinarySha256 = $payload.installedSha256
+        $result.matchesPackagingInputExceptBundleMarker = $payload.matchesPackagingInputExceptBundleMarker
         $result.authenticode = (Get-AuthenticodeSignature -FilePath $installer).Status.ToString()
         $app = Start-Process -FilePath $installedExe -WorkingDirectory $install -WindowStyle Hidden -PassThru
         $rendered = $false
