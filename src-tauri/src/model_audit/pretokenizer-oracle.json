@@ -1,0 +1,825 @@
+[
+  {
+    "mode": "cl100k",
+    "text": "́A",
+    "pieces": [
+      "́A"
+    ]
+  },
+  {
+    "mode": "cl100k",
+    "text": "́AB",
+    "pieces": [
+      "́AB"
+    ]
+  },
+  {
+    "mode": "cl100k",
+    "text": "́aA",
+    "pieces": [
+      "́aA"
+    ]
+  },
+  {
+    "mode": "cl100k",
+    "text": "́́A",
+    "pieces": [
+      "́́",
+      "A"
+    ]
+  },
+  {
+    "mode": "cl100k",
+    "text": "́A's",
+    "pieces": [
+      "́A",
+      "'s"
+    ]
+  },
+  {
+    "mode": "cl100k",
+    "text": "'ſabc",
+    "pieces": [
+      "'ſ",
+      "abc"
+    ]
+  },
+  {
+    "mode": "cl100k",
+    "text": "a'ſb",
+    "pieces": [
+      "a",
+      "'ſ",
+      "b"
+    ]
+  },
+  {
+    "mode": "cl100k",
+    "text": "I'S I'M I'Re",
+    "pieces": [
+      "I",
+      "'S",
+      " I",
+      "'M",
+      " I",
+      "'Re"
+    ]
+  },
+  {
+    "mode": "cl100k",
+    "text": "ÁBCd",
+    "pieces": [
+      "A",
+      "́BCd"
+    ]
+  },
+  {
+    "mode": "cl100k",
+    "text": "é́A",
+    "pieces": [
+      "é",
+      "́A"
+    ]
+  },
+  {
+    "mode": "cl100k",
+    "text": "汉A",
+    "pieces": [
+      "汉A"
+    ]
+  },
+  {
+    "mode": "cl100k",
+    "text": "汉字A",
+    "pieces": [
+      "汉字A"
+    ]
+  },
+  {
+    "mode": "cl100k",
+    "text": "汉字'sA",
+    "pieces": [
+      "汉字",
+      "'s",
+      "A"
+    ]
+  },
+  {
+    "mode": "cl100k",
+    "text": "ǅAb",
+    "pieces": [
+      "ǅAb"
+    ]
+  },
+  {
+    "mode": "cl100k",
+    "text": "ʰA",
+    "pieces": [
+      "ʰA"
+    ]
+  },
+  {
+    "mode": "cl100k",
+    "text": "ภาษาไทยมีเครื่องหมาย",
+    "pieces": [
+      "ภาษาไทยม",
+      "ีเคร",
+      "ื่",
+      "องหมาย"
+    ]
+  },
+  {
+    "mode": "cl100k",
+    "text": "٠١٢٣٤٥٦Ⅳ²",
+    "pieces": [
+      "٠١٢",
+      "٣٤٥",
+      "٦Ⅳ²"
+    ]
+  },
+  {
+    "mode": "cl100k",
+    "text": "1́2",
+    "pieces": [
+      "1",
+      "́",
+      "2"
+    ]
+  },
+  {
+    "mode": "cl100k",
+    "text": " ́A",
+    "pieces": [
+      " ́",
+      "A"
+    ]
+  },
+  {
+    "mode": "cl100k",
+    "text": " \n\tA",
+    "pieces": [
+      " \n",
+      "\tA"
+    ]
+  },
+  {
+    "mode": "cl100k",
+    "text": "a\r\n \n b",
+    "pieces": [
+      "a",
+      "\r\n \n",
+      " b"
+    ]
+  },
+  {
+    "mode": "cl100k",
+    "text": "  leading trailing  ",
+    "pieces": [
+      " ",
+      " leading",
+      " trailing",
+      "  "
+    ]
+  },
+  {
+    "mode": "cl100k",
+    "text": "ab",
+    "pieces": [
+      "a",
+      "",
+      "b"
+    ]
+  },
+  {
+    "mode": "cl100k",
+    "text": "a﻿b",
+    "pieces": [
+      "a",
+      "﻿b"
+    ]
+  },
+  {
+    "mode": "cl100k",
+    "text": "ABCdef XYZ's X's",
+    "pieces": [
+      "ABCdef",
+      " XYZ",
+      "'s",
+      " X",
+      "'s"
+    ]
+  },
+  {
+    "mode": "cl100k",
+    "text": "--\n/abc",
+    "pieces": [
+      "--\n",
+      "/abc"
+    ]
+  },
+  {
+    "mode": "cl100k",
+    "text": "👨‍👩‍👧‍👦",
+    "pieces": [
+      "👨‍👩‍👧‍👦"
+    ]
+  },
+  {
+    "mode": "cl100k",
+    "text": "AͅB",
+    "pieces": [
+      "A",
+      "ͅB"
+    ]
+  },
+  {
+    "mode": "cl100k",
+    "text": "҈A",
+    "pieces": [
+      "҈A"
+    ]
+  },
+  {
+    "mode": "cl100k",
+    "text": "ःA",
+    "pieces": [
+      "ःA"
+    ]
+  },
+  {
+    "mode": "cl100k",
+    "text": "XMLHttpRequest",
+    "pieces": [
+      "XMLHttpRequest"
+    ]
+  },
+  {
+    "mode": "cl100k",
+    "text": "\t\tA",
+    "pieces": [
+      "\t",
+      "\tA"
+    ]
+  },
+  {
+    "mode": "cl100k",
+    "text": " \n  ",
+    "pieces": [
+      " \n",
+      "  "
+    ]
+  },
+  {
+    "mode": "o200k",
+    "text": "́A",
+    "pieces": [
+      "́",
+      "A"
+    ]
+  },
+  {
+    "mode": "o200k",
+    "text": "́AB",
+    "pieces": [
+      "́",
+      "AB"
+    ]
+  },
+  {
+    "mode": "o200k",
+    "text": "́aA",
+    "pieces": [
+      "́a",
+      "A"
+    ]
+  },
+  {
+    "mode": "o200k",
+    "text": "́́A",
+    "pieces": [
+      "́́",
+      "A"
+    ]
+  },
+  {
+    "mode": "o200k",
+    "text": "́A's",
+    "pieces": [
+      "́",
+      "A's"
+    ]
+  },
+  {
+    "mode": "o200k",
+    "text": "'ſabc",
+    "pieces": [
+      "'ſabc"
+    ]
+  },
+  {
+    "mode": "o200k",
+    "text": "a'ſb",
+    "pieces": [
+      "a'ſ",
+      "b"
+    ]
+  },
+  {
+    "mode": "o200k",
+    "text": "I'S I'M I'Re",
+    "pieces": [
+      "I'S",
+      " I'M",
+      " I'Re"
+    ]
+  },
+  {
+    "mode": "o200k",
+    "text": "ÁBCd",
+    "pieces": [
+      "ÁBCd"
+    ]
+  },
+  {
+    "mode": "o200k",
+    "text": "é́A",
+    "pieces": [
+      "é́",
+      "A"
+    ]
+  },
+  {
+    "mode": "o200k",
+    "text": "汉A",
+    "pieces": [
+      "汉",
+      "A"
+    ]
+  },
+  {
+    "mode": "o200k",
+    "text": "汉字A",
+    "pieces": [
+      "汉字",
+      "A"
+    ]
+  },
+  {
+    "mode": "o200k",
+    "text": "汉字'sA",
+    "pieces": [
+      "汉字's",
+      "A"
+    ]
+  },
+  {
+    "mode": "o200k",
+    "text": "ǅAb",
+    "pieces": [
+      "ǅAb"
+    ]
+  },
+  {
+    "mode": "o200k",
+    "text": "ʰA",
+    "pieces": [
+      "ʰ",
+      "A"
+    ]
+  },
+  {
+    "mode": "o200k",
+    "text": "ภาษาไทยมีเครื่องหมาย",
+    "pieces": [
+      "ภาษาไทยมีเครื่องหมาย"
+    ]
+  },
+  {
+    "mode": "o200k",
+    "text": "٠١٢٣٤٥٦Ⅳ²",
+    "pieces": [
+      "٠١٢",
+      "٣٤٥",
+      "٦Ⅳ²"
+    ]
+  },
+  {
+    "mode": "o200k",
+    "text": "1́2",
+    "pieces": [
+      "1",
+      "́",
+      "2"
+    ]
+  },
+  {
+    "mode": "o200k",
+    "text": " ́A",
+    "pieces": [
+      " ́",
+      "A"
+    ]
+  },
+  {
+    "mode": "o200k",
+    "text": " \n\tA",
+    "pieces": [
+      " \n",
+      "\tA"
+    ]
+  },
+  {
+    "mode": "o200k",
+    "text": "a\r\n \n b",
+    "pieces": [
+      "a",
+      "\r\n \n",
+      " b"
+    ]
+  },
+  {
+    "mode": "o200k",
+    "text": "  leading trailing  ",
+    "pieces": [
+      " ",
+      " leading",
+      " trailing",
+      "  "
+    ]
+  },
+  {
+    "mode": "o200k",
+    "text": "ab",
+    "pieces": [
+      "a",
+      "",
+      "b"
+    ]
+  },
+  {
+    "mode": "o200k",
+    "text": "a﻿b",
+    "pieces": [
+      "a",
+      "﻿b"
+    ]
+  },
+  {
+    "mode": "o200k",
+    "text": "ABCdef XYZ's X's",
+    "pieces": [
+      "ABCdef",
+      " XYZ's",
+      " X's"
+    ]
+  },
+  {
+    "mode": "o200k",
+    "text": "--\n/abc",
+    "pieces": [
+      "--\n/",
+      "abc"
+    ]
+  },
+  {
+    "mode": "o200k",
+    "text": "👨‍👩‍👧‍👦",
+    "pieces": [
+      "👨‍👩‍👧‍👦"
+    ]
+  },
+  {
+    "mode": "o200k",
+    "text": "AͅB",
+    "pieces": [
+      "Aͅ",
+      "B"
+    ]
+  },
+  {
+    "mode": "o200k",
+    "text": "҈A",
+    "pieces": [
+      "҈",
+      "A"
+    ]
+  },
+  {
+    "mode": "o200k",
+    "text": "ःA",
+    "pieces": [
+      "ः",
+      "A"
+    ]
+  },
+  {
+    "mode": "o200k",
+    "text": "XMLHttpRequest",
+    "pieces": [
+      "XMLHttp",
+      "Request"
+    ]
+  },
+  {
+    "mode": "o200k",
+    "text": "\t\tA",
+    "pieces": [
+      "\t",
+      "\tA"
+    ]
+  },
+  {
+    "mode": "o200k",
+    "text": " \n  ",
+    "pieces": [
+      " \n",
+      "  "
+    ]
+  },
+  {
+    "mode": "gpt2",
+    "text": "́A",
+    "pieces": [
+      "́",
+      "A"
+    ]
+  },
+  {
+    "mode": "gpt2",
+    "text": "́AB",
+    "pieces": [
+      "́",
+      "AB"
+    ]
+  },
+  {
+    "mode": "gpt2",
+    "text": "́aA",
+    "pieces": [
+      "́",
+      "aA"
+    ]
+  },
+  {
+    "mode": "gpt2",
+    "text": "́́A",
+    "pieces": [
+      "́́",
+      "A"
+    ]
+  },
+  {
+    "mode": "gpt2",
+    "text": "́A's",
+    "pieces": [
+      "́",
+      "A",
+      "'s"
+    ]
+  },
+  {
+    "mode": "gpt2",
+    "text": "'ſabc",
+    "pieces": [
+      "'",
+      "ſabc"
+    ]
+  },
+  {
+    "mode": "gpt2",
+    "text": "a'ſb",
+    "pieces": [
+      "a",
+      "'",
+      "ſb"
+    ]
+  },
+  {
+    "mode": "gpt2",
+    "text": "I'S I'M I'Re",
+    "pieces": [
+      "I",
+      "'",
+      "S",
+      " I",
+      "'",
+      "M",
+      " I",
+      "'",
+      "Re"
+    ]
+  },
+  {
+    "mode": "gpt2",
+    "text": "ÁBCd",
+    "pieces": [
+      "A",
+      "́",
+      "BCd"
+    ]
+  },
+  {
+    "mode": "gpt2",
+    "text": "é́A",
+    "pieces": [
+      "é",
+      "́",
+      "A"
+    ]
+  },
+  {
+    "mode": "gpt2",
+    "text": "汉A",
+    "pieces": [
+      "汉A"
+    ]
+  },
+  {
+    "mode": "gpt2",
+    "text": "汉字A",
+    "pieces": [
+      "汉字A"
+    ]
+  },
+  {
+    "mode": "gpt2",
+    "text": "汉字'sA",
+    "pieces": [
+      "汉字",
+      "'s",
+      "A"
+    ]
+  },
+  {
+    "mode": "gpt2",
+    "text": "ǅAb",
+    "pieces": [
+      "ǅAb"
+    ]
+  },
+  {
+    "mode": "gpt2",
+    "text": "ʰA",
+    "pieces": [
+      "ʰA"
+    ]
+  },
+  {
+    "mode": "gpt2",
+    "text": "ภาษาไทยมีเครื่องหมาย",
+    "pieces": [
+      "ภาษาไทยม",
+      "ี",
+      "เคร",
+      "ื่",
+      "องหมาย"
+    ]
+  },
+  {
+    "mode": "gpt2",
+    "text": "٠١٢٣٤٥٦Ⅳ²",
+    "pieces": [
+      "٠١٢٣٤٥٦Ⅳ²"
+    ]
+  },
+  {
+    "mode": "gpt2",
+    "text": "1́2",
+    "pieces": [
+      "1",
+      "́",
+      "2"
+    ]
+  },
+  {
+    "mode": "gpt2",
+    "text": " ́A",
+    "pieces": [
+      " ́",
+      "A"
+    ]
+  },
+  {
+    "mode": "gpt2",
+    "text": " \n\tA",
+    "pieces": [
+      " \n",
+      "\t",
+      "A"
+    ]
+  },
+  {
+    "mode": "gpt2",
+    "text": "a\r\n \n b",
+    "pieces": [
+      "a",
+      "\r\n \n",
+      " b"
+    ]
+  },
+  {
+    "mode": "gpt2",
+    "text": "  leading trailing  ",
+    "pieces": [
+      " ",
+      " leading",
+      " trailing",
+      "  "
+    ]
+  },
+  {
+    "mode": "gpt2",
+    "text": "ab",
+    "pieces": [
+      "a",
+      "",
+      "",
+      "b"
+    ]
+  },
+  {
+    "mode": "gpt2",
+    "text": "a﻿b",
+    "pieces": [
+      "a",
+      "﻿",
+      "b"
+    ]
+  },
+  {
+    "mode": "gpt2",
+    "text": "ABCdef XYZ's X's",
+    "pieces": [
+      "ABCdef",
+      " XYZ",
+      "'s",
+      " X",
+      "'s"
+    ]
+  },
+  {
+    "mode": "gpt2",
+    "text": "--\n/abc",
+    "pieces": [
+      "--",
+      "\n",
+      "/",
+      "abc"
+    ]
+  },
+  {
+    "mode": "gpt2",
+    "text": "👨‍👩‍👧‍👦",
+    "pieces": [
+      "👨‍👩‍👧‍👦"
+    ]
+  },
+  {
+    "mode": "gpt2",
+    "text": "AͅB",
+    "pieces": [
+      "A",
+      "ͅ",
+      "B"
+    ]
+  },
+  {
+    "mode": "gpt2",
+    "text": "҈A",
+    "pieces": [
+      "҈",
+      "A"
+    ]
+  },
+  {
+    "mode": "gpt2",
+    "text": "ःA",
+    "pieces": [
+      "ः",
+      "A"
+    ]
+  },
+  {
+    "mode": "gpt2",
+    "text": "XMLHttpRequest",
+    "pieces": [
+      "XMLHttpRequest"
+    ]
+  },
+  {
+    "mode": "gpt2",
+    "text": "\t\tA",
+    "pieces": [
+      "\t",
+      "\t",
+      "A"
+    ]
+  },
+  {
+    "mode": "gpt2",
+    "text": " \n  ",
+    "pieces": [
+      " \n  "
+    ]
+  }
+]

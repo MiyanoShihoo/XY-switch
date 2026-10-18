@@ -1,0 +1,16 @@
+.session-workspace { display: grid; grid-template-columns: 300px minmax(0, 1fr); border: 1px solid var(--xy-ds-border); border-radius: var(--xy-ds-radius-sm); background: var(--xy-ds-surface); min-width: 0; overflow: hidden; }
+.session-index { border-right: 1px solid var(--xy-ds-border); max-height: 640px; overflow-y: auto; }
+.session-index__item { display: grid; gap: var(--xy-ds-space-2); width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--xy-ds-border-subtle); color: var(--xy-ds-text); background: transparent; padding: var(--xy-ds-space-3); }
+.session-index__item[data-selected="true"] { background: var(--xy-ds-accent-soft); box-shadow: inset 2px 0 0 var(--xy-ds-accent); }
+.session-index__item strong, .session-index__item > .record-row__detail { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.session-detail { display: grid; align-content: start; min-width: 0; }
+.session-detail__header { display: grid; gap: var(--xy-ds-space-3); padding: var(--xy-ds-space-4); border-bottom: 1px solid var(--xy-ds-border); }
+.session-detail h2 { overflow-wrap: anywhere; }
+.session-source { font-size: 12px; color: var(--xy-ds-text-muted); overflow-wrap: anywhere; }
+.session-source summary { cursor: pointer; }
+.session-messages { display: grid; gap: var(--xy-ds-space-3); padding: var(--xy-ds-space-4); max-height: 480px; overflow-y: auto; }
+.session-message { border: 1px solid var(--xy-ds-border); border-radius: var(--xy-ds-radius-sm); padding: var(--xy-ds-space-3); min-width: 0; }
+.session-message[data-role="user"] { background: var(--xy-ds-surface-subtle); }
+.session-message__meta { display: flex; justify-content: space-between; gap: var(--xy-ds-space-2); font-size: 11px; margin-bottom: var(--xy-ds-space-2); color: var(--xy-ds-text-muted); }
+.session-message pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; line-height: 1.7; margin: 0; }
+@media (max-width: 1000px) { .session-workspace { grid-template-columns: 1fr; } .session-index { border-right: 0; max-height: none; } .xy-ui-drawer .session-detail__header, .xy-ui-drawer .session-messages { padding: var(--xy-ds-space-3) 0; } }

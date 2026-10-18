@@ -1,0 +1,74 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "XY Switch",
+  "version": "1.0.0",
+  "identifier": "com.xyswitch.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev:renderer",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "npm run build:renderer",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "XY Switch",
+        "width": 1180,
+        "height": 760,
+        "minWidth": 820,
+        "minHeight": 600,
+        "center": true,
+        "label": "main"
+      }
+    ],
+    "security": {
+      "csp": null,
+      "capabilities": [
+        "main-events"
+      ]
+    },
+    "withGlobalTauri": true
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico",
+      "icons/icon.icns"
+    ],
+    "category": "DeveloperTool",
+    "shortDescription": "统一管理 AI 供应商、模型、MCP、提示词与本地代理",
+    "longDescription": "XY Switch 统一管理 AI 供应商、模型、MCP、Skills、提示词、本地协议代理与用量审计。",
+    "publisher": "xy",
+    "copyright": "Copyright (c) 2026 xy",
+    "useLocalToolsDir": true,
+    "windows": {
+      "nsis": {
+        "languages": [
+          "SimpChinese",
+          "English"
+        ],
+        "displayLanguageSelector": true,
+        "installMode": "currentUser"
+      },
+      "wix": {
+        "language": [
+          "en-US"
+        ]
+      }
+    },
+    "linux": {
+      "deb": {
+        "depends": [
+          "libdbus-1-3"
+        ],
+        "recommends": [
+          "gnome-keyring"
+        ]
+      }
+    }
+  }
+}

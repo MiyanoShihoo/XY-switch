@@ -1,0 +1,9 @@
+.prompt-workspace { --xy-inspector-width: 340px; }
+.prompt-record { display: flex; gap: var(--xy-ds-space-3); align-items: center; padding: var(--xy-ds-space-3) var(--xy-ds-space-4); border-bottom: 1px solid var(--xy-ds-border-subtle); }
+.prompt-record:last-child { border-bottom: 0; }
+.prompt-record[data-selected="true"] { background: var(--xy-ds-accent-soft); }
+.record-select { min-width: 0; flex: 1; display: grid; gap: var(--xy-ds-space-1); background: transparent; border: 0; padding: 0; text-align: left; color: var(--xy-ds-text); }
+.record-select > .record-row__detail { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.prompt-preview { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.7; }
+.prompt-editor-content { min-height: 240px; }
+.editor-character-count { margin-right: auto; font-size: 11px; color: var(--xy-ds-text-muted); }

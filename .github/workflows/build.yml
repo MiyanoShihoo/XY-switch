@@ -1,0 +1,134 @@
+name: Build and verify
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  frontend:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm test
+      - run: pnpm test:packaging
+      - run: pnpm build:renderer
+      - name: Validate shell scripts
+        run: bash -n scripts/package-ios.sh scripts/smoke-ios-simulator.sh scripts/test-linux-keyring.sh
+  desktop:
+    needs: frontend
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+          - os: ubuntu-22.04
+            platform: linux
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    env:
+      CARGO_TERM_COLOR: always
+      APPIMAGE_EXTRACT_AND_RUN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - name: Linux system prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev libdbus-1-dev libxdo-dev patchelf gnome-keyring dbus-x11 xvfb
+      - name: Rust toolchain
+        run: |
+          rustup set profile minimal
+          rustup update stable --no-self-update
+          rustup default stable
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target/debug
+            src-tauri/target/release
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+      - run: pnpm install --frozen-lockfile
+      - run: cargo test --manifest-path src-tauri/Cargo.toml --locked
+      - name: Windows Credential Manager round trip
+        if: runner.os == 'Windows'
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked stores_reads_and_deletes_windows_credential -- --ignored --test-threads=1
+      - name: Isolated Linux Secret Service round trip
+        if: runner.os == 'Linux'
+        run: bash scripts/test-linux-keyring.sh
+      - run: pnpm build:${{ matrix.platform }}
+        env:
+          XY_SWITCH_TOOLS_DIR: ${{ runner.temp }}/xy-switch-tools
+      - name: Verify Debian package metadata
+        if: runner.os == 'Linux'
+        run: dpkg-deb --info release/*/linux-*/*.deb
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xy-switch-${{ matrix.platform }}-${{ runner.arch }}
+          path: release/*/${{ matrix.platform }}-*/
+          if-no-files-found: error
+          retention-days: 14
+  ios-simulator:
+    needs: frontend
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - name: Apple toolchain
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphonesimulator --show-sdk-version
+          command -v pod || brew install cocoapods
+          rustup set profile minimal
+          rustup update stable --no-self-update
+          rustup default stable
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target/aarch64-apple-ios-sim
+            src-tauri/target/x86_64-apple-ios
+          key: ios-simulator-${{ runner.arch }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build:ios:simulator
+      - name: Install and launch in an isolated simulator
+        run: bash scripts/smoke-ios-simulator.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: xy-switch-ios-simulator-${{ runner.arch }}
+          path: release/*/ios-*-simulator/
+          if-no-files-found: error
+          retention-days: 14
