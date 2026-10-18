@@ -148,3 +148,7 @@ pnpm build:ios
 5. 检查最终暂存树没有密钥、数据库、日志、个人配置和签名材料。
 
 官方参考：[环境准备](https://v2.tauri.app/start/prerequisites/)、[Windows 安装包](https://v2.tauri.app/distribute/windows-installer/)、[Debian 包](https://v2.tauri.app/distribute/debian/)、[iOS 分发](https://v2.tauri.app/distribute/app-store/)。
+
+### iOS 模拟器界面验收
+
+模拟器检查必须同时确认应用进程存活、界面内容已渲染以及保存实际截图。首次启动 WebKit 不采用固定五秒后直接判成功；脚本最多等待两分钟，并排除状态栏/底部系统区域后检查内容对比度。仅显示系统状态栏的空白截图会使 CI 失败。该检查不替代截图人工复核、完整交互测试或真机验证。

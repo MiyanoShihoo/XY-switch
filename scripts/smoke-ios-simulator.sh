@@ -28,11 +28,23 @@ xcrun simctl boot "$device"
 xcrun simctl bootstatus "$device" -b
 ditto -x -k "$archive" "$temporary"
 xcrun simctl install "$device" "$temporary/$product.app"
-xcrun simctl launch "$device" "$identifier" | tee "$output/simulator-launch.txt"
-sleep 5
-xcrun simctl spawn "$device" launchctl list | awk -v bundle="$identifier" '
-  $1 ~ /^[0-9]+$/ && $1 > 0 && index($3, bundle) { print; found = 1 }
-  END { exit !found }
-' > "$output/simulator-process.txt"
-xcrun simctl io "$device" screenshot "$output/simulator-launch.png"
-echo 'Simulator installation and process-launch smoke passed; this is not physical-device validation.'
+SIMCTL_CHILD_RUST_BACKTRACE=1 xcrun simctl launch --stdout="$output/simulator-stdout.log" --stderr="$output/simulator-stderr.log" "$device" "$identifier" | tee "$output/simulator-launch.txt"
+rendered=false
+# The first WebKit launch on a freshly booted runner can exceed a fixed five seconds.
+# Do not confuse a live process (or the OS status bar) with a rendered application.
+for attempt in {1..24}; do
+  sleep 5
+  xcrun simctl spawn "$device" launchctl list | awk -v bundle="$identifier" '
+    $1 ~ /^[0-9]+$/ && $1 > 0 && index($3, bundle) { print; found = 1 }
+    END { exit !found }
+  ' > "$output/simulator-process.txt"
+  xcrun simctl io "$device" screenshot "$output/simulator-launch.png"
+  if node scripts/verify-native-screenshot.mjs "$output/simulator-launch.png" > "$output/simulator-content-verification.json"; then
+    rendered=true
+    break
+  fi
+  echo "Waiting for application content ($attempt/24)"
+done
+cat "$output/simulator-content-verification.json"
+[[ "$rendered" == true ]] || { echo 'Simulator process is alive but application content did not render' >&2; exit 1; }
+echo 'Simulator installation, live process and nonblank application content passed; this is not physical-device or full interaction validation.'
