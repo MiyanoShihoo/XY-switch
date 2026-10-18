@@ -57,10 +57,13 @@ foreach ($format in 'nsis','msi') {
     $package = @($manifest.files | Where-Object format -eq $format)
     if ($package.Count -ne 1) { throw "Expected one $format package" }
     $installer = Join-Path $output $package[0].name
-    $install = Join-Path $temporary $format
+    # Both formats remember the product's last installation directory. Reuse one task-owned
+    # directory only after the previous uninstaller removed the executable.
+    $install = Join-Path $temporary 'application'
     $installedExe = Join-Path $install 'xy-switch.exe'
+    if (Test-Path -LiteralPath $installedExe) { throw 'Previous installer left an executable in the isolated test directory' }
     $app = $null; $installed = $false
-    $result = [ordered]@{format=$format;passed=$false;installation=$false;uninstallation=$false;scope='Final installer installation, native window, isolated CI data and uninstall; not all Windows versions'}
+    $result = [ordered]@{format=$format;installDirectory=$install;passed=$false;installation=$false;uninstallation=$false;scope='Final installer installation, native window, isolated CI data and uninstall; not all Windows versions'}
     try {
         if ($format -eq 'nsis') { $null = Invoke-Installer $installer @('/S',"/D=$install") }
         else { $null = Invoke-Installer 'msiexec.exe' @('/i',"`"$installer`"",'/qn','/norestart',"INSTALLDIR=`"$install`"",'/l*v',"`"$(Join-Path $output 'msi-install.log')`"") }

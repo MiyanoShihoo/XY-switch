@@ -32,6 +32,12 @@ mod xai_responses;
 
 use tauri::Manager;
 
+// Generate the context once: on macOS this macro defines the embedded Info.plist symbol.
+// ACL regression tests use this same factory without starting the application.
+fn application_context() -> tauri::Context<tauri::Wry> {
+    tauri::generate_context!()
+}
+
 #[cfg(debug_assertions)]
 fn debug_path_override(name: &str) -> Option<std::path::PathBuf> {
     std::env::var_os(name)
@@ -295,7 +301,7 @@ pub fn run() {
             commands::prompts::set_prompt_enabled,
             open_external_url
         ])
-        .build(tauri::generate_context!())
+        .build(application_context())
         .expect("failed to build XY Switch")
         .run(|app, event| {
             if matches!(event, tauri::RunEvent::ExitRequested { .. }) {

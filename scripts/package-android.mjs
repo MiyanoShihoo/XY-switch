@@ -222,17 +222,52 @@ async function prepareProject(plan, env) {
 
 export function parseBadging(output, { identifier, version }) {
   const packageLine = output.match(/^package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'/m);
-  const min = output.match(/^sdkVersion:'(\d+)'/m), target = output.match(/^targetSdkVersion:'(\d+)'/m);
-  if (!packageLine || packageLine[1] !== identifier || packageLine[3] !== version || !min || +min[1] !== 24 || !target || +target[1] !== 36) throw new Error("APK package/version/SDK metadata does not match the build configuration");
+  // Build Tools 36 uses minSdkVersion; older aapt2 versions printed sdkVersion.
+  const minima = [...output.matchAll(/^(?:minSdkVersion|sdkVersion):'(\d+)'\s*$/gm)];
+  const targets = [...output.matchAll(/^targetSdkVersion:'(\d+)'\s*$/gm)];
+  const min = minima.length === 1 ? minima[0] : null, target = targets.length === 1 ? targets[0] : null;
+  if (!packageLine || packageLine[1] !== identifier || packageLine[3] !== version || !min || +min[1] !== 24 || !target || +target[1] !== 36) {
+    throw new Error(`APK package/version/SDK metadata does not match the build configuration: ${JSON.stringify({ identifier: packageLine?.[1], version: packageLine?.[3], minSdk: min?.[1], targetSdk: target?.[1] })}`);
+  }
   if (/^application-debuggable$/m.test(output)) throw new Error("Release APK is unexpectedly debuggable");
   return { identifier: packageLine[1], versionCode: +packageLine[2], versionName: packageLine[3], minSdk: +min[1], targetSdk: +target[1], debuggable: false };
+}
+export function verifyManifestPolicies(xml) {
+  const lines = xml.replace(/\r\n/g, "\n").split("\n");
+  const applications = lines.flatMap((line, index) => /^\s*E: application(?:\s|$)/.test(line) ? [index] : []);
+  if (applications.length !== 1) throw new Error("Expected one APK application element");
+  const attributes = [];
+  for (const line of lines.slice(applications[0] + 1)) {
+    if (/^\s*E: /.test(line)) break;
+    attributes.push(line);
+  }
+  function boolean(name) {
+    const pattern = new RegExp(`^\\s*A: (?:android:|http://schemas\\.android\\.com/apk/res/android:)${name}(?:\\(0x[0-9a-f]+\\))?\\s*=\\s*(.+?)\\s*$`, "i");
+    const matches = attributes.map(line => line.match(pattern)).filter(Boolean);
+    if (matches.length !== 1) throw new Error(`Missing or ambiguous APK application attribute: ${name}`);
+    const value = matches[0][1].toLowerCase();
+    if (value === "true" || value === "(type 0x12)0xffffffff") return true;
+    if (value === "false" || value === "(type 0x12)0x0") return false;
+    throw new Error(`Unexpected APK boolean representation: ${name}`);
+  }
+  const allowBackup = boolean("allowBackup"), usesCleartextTraffic = boolean("usesCleartextTraffic");
+  if (allowBackup || !usesCleartextTraffic) throw new Error("APK backup/HTTP endpoint policies were not applied");
+  return { allowBackup, usesCleartextTraffic };
+}
+export function matchNativeLibraryInput(packagedSha256, inputBytes, strippedBytes) {
+  const packagingInputSha256 = createHash("sha256").update(inputBytes).digest("hex");
+  if (packagedSha256 === packagingInputSha256) return { packagingInputSha256, packagingTransform: "none" };
+  if (strippedBytes && packagedSha256 === createHash("sha256").update(strippedBytes).digest("hex")) {
+    return { packagingInputSha256, packagingTransform: "ndk-strip-unneeded" };
+  }
+  throw new Error("APK native library differs from both the Gradle input and independently stripped input");
 }
 export async function verifyApk(apk, plan, env, identifier) {
   const buildTools = path.join(env.ANDROID_HOME, "build-tools", "36.0.0");
   const suffix = process.platform === "win32" ? ".exe" : "";
   const metadata = parseBadging(run(path.join(buildTools, "aapt2" + suffix), ["dump", "badging", apk], env, true), { identifier, version: plan.version });
   const xml = run(path.join(buildTools, "aapt2" + suffix), ["dump", "xmltree", "--file", "AndroidManifest.xml", apk], env, true);
-  if (!/android:allowBackup[^\n]*=\(type 0x12\)0x0(?:\s|$)/m.test(xml) || !/android:usesCleartextTraffic[^\n]*=\(type 0x12\)0xffffffff/m.test(xml)) throw new Error("APK backup/HTTP endpoint policies were not applied");
+  verifyManifestPolicies(xml);
   run(path.join(buildTools, "zipalign" + suffix), ["-c", "-P", "16", "4", apk], env, true);
   const signer = javaTool(env, ["-jar", path.join(buildTools, "lib", "apksigner.jar"), "verify", "--verbose", "--print-certs", apk]);
   const fingerprints = [...signer.matchAll(/Signer #\d+ certificate SHA-256 digest: ([0-9a-f]{64})/gi)].map(match => match[1].toLowerCase());
@@ -241,8 +276,26 @@ export async function verifyApk(apk, plan, env, identifier) {
   // The APK must contain these just-built libraries, not a stale cached ABI.
   for (const target of plan.targets) {
     const lib = libraries.find(lib => lib.name === `lib/${targets[target].abi}/libxy_switch_lib.so`);
-    const expected = await fs.readFile(path.join(plan.androidDir, "app", "src", "main", "jniLibs", targets[target].abi, "libxy_switch_lib.so"));
-    if (createHash("sha256").update(expected).digest("hex") !== lib.sha256) throw new Error("APK native library differs from the Gradle packaging input");
+    const source = path.join(plan.androidDir, "app", "src", "main", "jniLibs", targets[target].abi, "libxy_switch_lib.so");
+    const expected = await fs.readFile(source);
+    let stripped;
+    if (createHash("sha256").update(expected).digest("hex") !== lib.sha256) {
+      // AGP strips native libraries. Reproduce only that exact transformation with the pinned NDK;
+      // accepting a different binary or comparing just its architecture would mask stale payloads.
+      const host = { win32: "windows-x86_64", linux: "linux-x86_64", darwin: "darwin-x86_64" }[process.platform];
+      if (!host || !env.NDK_HOME) throw new Error("An NDK host strip tool is required for native payload verification");
+      const temporary = await fs.mkdtemp(path.join(plan.toolsDir, ".xy-native-payload-"));
+      const output = path.join(temporary, "stripped.so");
+      try {
+        run(path.join(env.NDK_HOME, "toolchains", "llvm", "prebuilt", host, "bin", "llvm-strip" + suffix), ["--strip-unneeded", "-o", output, source], env, true);
+        stripped = await fs.readFile(output);
+        if (!expected.equals(await fs.readFile(source))) throw new Error("Native packaging input changed during verification");
+      } finally {
+        try { await fs.unlink(output); } catch (error) { if (error.code !== "ENOENT") throw error; }
+        await fs.rmdir(temporary);
+      }
+    }
+    Object.assign(lib, matchNativeLibraryInput(lib.sha256, expected, stripped));
   }
   return { ...metadata, allowBackup: false, cleartextEndpoints: "explicitly supported for user-selected local/LAN HTTP endpoints", signature: { verified: true, scheme: "v2-or-later", certificateSha256: fingerprints[0] }, zipAlignment: "16 KB", libraries, bytes: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex") };
 }

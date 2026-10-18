@@ -174,3 +174,12 @@ test("Android/macOS configuration preserves platform boundaries", async () => {
   assert.ok(!(android.build?.features || []).includes("linux-tray"));
   assert.equal(macos.bundle.macOS.minimumSystemVersion, "11.0");
 });
+
+test("application and ACL tests share the single embedded Tauri context", async () => {
+  const lib = await fs.readFile(new URL("../src-tauri/src/lib.rs", import.meta.url), "utf8");
+  const acl = await fs.readFile(new URL("../src-tauri/src/acl_regression_tests.rs", import.meta.url), "utf8");
+  assert.equal((lib.match(/tauri::generate_context!/g) || []).length, 1);
+  assert.match(lib, /\.build\(application_context\(\)\)/);
+  assert.match(acl, /super::application_context\(\)/);
+  assert.doesNotMatch(acl, /tauri::generate_context!/);
+});

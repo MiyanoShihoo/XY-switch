@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { parseArgs, planBuild, patchManifest, patchGradle, patchBuildTask, inspectElf, inspectApkLibraries, parseBadging, prependEnvironmentPath, verifyWindowsSymlinkSupport } from "./package-android.mjs";
+import { createHash } from "node:crypto";
+import { parseArgs, planBuild, patchManifest, patchGradle, patchBuildTask, inspectElf, inspectApkLibraries, parseBadging, verifyManifestPolicies, matchNativeLibraryInput, prependEnvironmentPath, verifyWindowsSymlinkSupport } from "./package-android.mjs";
 const projectRoot = path.resolve("fixture-project");
 const context = { projectRoot, host: "linux", version: "1.0.0", env: {} };
 test("Android default plan builds ARM64 and x86_64 release APKs with the Cargo lock", () => {
@@ -110,4 +111,38 @@ test("Android Windows preflight reports missing permission without changing syst
     return true;
   });
   assert.equal(cleaned, true);
+});
+
+test("Build Tools 36 minSdkVersion spelling is accepted without accepting ambiguous metadata", () => {
+  const expected = { identifier: "com.xyswitch.desktop", version: "1.0.0" };
+  const actual = "package: name='com.xyswitch.desktop' versionCode='1000000' versionName='1.0.0' platformBuildVersionName='16' platformBuildVersionCode='36' compileSdkVersion='36' compileSdkVersionCodename='16'\nminSdkVersion:'24'\ntargetSdkVersion:'36'\n";
+  assert.deepEqual(parseBadging(actual, expected), { identifier: expected.identifier, versionCode: 1000000, versionName: expected.version, minSdk: 24, targetSdk: 36, debuggable: false });
+  for (const bad of [actual + "sdkVersion:'24'\n", actual + "minSdkVersion:'21'\n", actual + "targetSdkVersion:'35'\n", actual.replace("minSdkVersion:'24'", "minSdkVersion:'23'")]) {
+    assert.throws(() => parseBadging(bad, expected), /metadata/);
+  }
+});
+
+test("Android APK payload must exactly match the input or its independently reproduced strip output", () => {
+  const raw = Buffer.from("fixture native input"), stripped = Buffer.from("fixture stripped output");
+  const hash = value => createHash("sha256").update(value).digest("hex");
+  assert.deepEqual(matchNativeLibraryInput(hash(raw), raw), { packagingInputSha256: hash(raw), packagingTransform: "none" });
+  assert.deepEqual(matchNativeLibraryInput(hash(stripped), raw, stripped), { packagingInputSha256: hash(raw), packagingTransform: "ndk-strip-unneeded" });
+  assert.throws(() => matchNativeLibraryInput(hash(stripped), raw), /differs/);
+  assert.throws(() => matchNativeLibraryInput(hash(Buffer.from("stale native library")), raw, stripped), /differs/);
+});
+
+test("APK application policies accept actual Build Tools 36 XML output and older typed booleans", () => {
+  const xml = `N: android=http://schemas.android.com/apk/res/android (line=1)
+  E: manifest (line=1)
+      E: application (line=1)
+        A: http://schemas.android.com/apk/res/android:allowBackup(0x01010280)=false
+        A: http://schemas.android.com/apk/res/android:usesCleartextTraffic(0x010104ec)=true
+        E: activity (line=1)
+          A: android:name=".MainActivity"
+`;
+  assert.deepEqual(verifyManifestPolicies(xml), { allowBackup: false, usesCleartextTraffic: true });
+  assert.deepEqual(verifyManifestPolicies(xml.replaceAll("http://schemas.android.com/apk/res/android:", "android:").replace("=false", "=(type 0x12)0x0").replace("=true", "=(type 0x12)0xffffffff")), { allowBackup: false, usesCleartextTraffic: true });
+  for (const bad of [xml.replace("=false", "=true"), xml.replace("=true", "=false"), xml.replace("=false", '="false"'), xml.replace("E: application", "E: activity"), xml.replace("        E: activity", "        A: android:allowBackup(0x01010280)=false\n        E: activity"), xml.replace("        A: http://schemas.android.com/apk/res/android:allowBackup", "        E: activity\n          A: http://schemas.android.com/apk/res/android:allowBackup")]) {
+    assert.throws(() => verifyManifestPolicies(bad));
+  }
 });

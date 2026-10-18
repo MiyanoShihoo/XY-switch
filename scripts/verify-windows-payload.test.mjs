@@ -63,6 +63,13 @@ test("Windows payload does not accept high-bit characters as ASCII marker values
   const installed = executable("NSS"); installed[324] |= 0x80;
   assert.throws(() => compareWindowsPayload(executable(), installed, "nsis"), /Unknown/);
 });
+test("Windows installer verification reuses only the proven uninstalled task directory", () => {
+  const script = readFileSync(new URL("./verify-windows-bundles.ps1", import.meta.url), "utf8");
+  assert.match(script, /\$install = Join-Path \$temporary 'application'/);
+  assert.doesNotMatch(script, /\$install = Join-Path \$temporary \$format/);
+  assert.match(script, /if \(Test-Path -LiteralPath \$installedExe\) \{ throw 'Previous installer left an executable/);
+  assert.match(script, /\$result\.uninstallation = -not \(Test-Path -LiteralPath \$installedExe\)/);
+});
 test("Windows verifier invokes the payload checker without escaped control characters", () => {
   const script = readFileSync(new URL("./verify-windows-bundles.ps1", import.meta.url), "utf8");
   assert.doesNotMatch(script, /[\x00-\x08\x0b\x0c\x0e-\x1f]/);

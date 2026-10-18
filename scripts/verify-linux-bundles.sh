@@ -68,6 +68,13 @@ try:
                 break
         if not rendered:
             raise RuntimeError("No nonblank Linux application window appeared within 90 seconds")
+        # A rendered first frame is not sufficient: retain a minimum crash-observation window.
+        while time.monotonic() - started < 12:
+            if process.poll() is not None:
+                raise RuntimeError(f"Application exited after rendering with status {process.returncode}")
+            time.sleep(0.25)
+        if process.poll() is not None:
+            raise RuntimeError(f"Application exited after rendering with status {process.returncode}")
         database = Path(os.environ["XDG_DATA_HOME"]) / "com.xyswitch.desktop/xy-switch.db"
         if not database.is_file():
             raise RuntimeError("No database was created in the isolated data directory")

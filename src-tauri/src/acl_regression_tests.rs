@@ -3,7 +3,7 @@
 use tauri::ipc::Origin;
 
 fn allowed(command: &str, window: &str, origin: Origin) -> bool {
-    let mut context: tauri::Context<tauri::Wry> = tauri::generate_context!();
+    let mut context = super::application_context();
     context
         .runtime_authority_mut()
         .resolve_access(command, window, window, &origin)
