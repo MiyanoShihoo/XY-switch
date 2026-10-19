@@ -56,31 +56,72 @@ export function patchManifest(text) {
 }
 export function patchGradle(text, ndkVersion) {
   text = text.replace(/\r\n/g, "\n");
-  if (text.includes("// xy-switch-managed-android")) return text;
+  if (text.includes("// xy-switch-managed-android")) return patchTestRuntimeDependency(text);
   if (!/^\d+\.\d+\.\d+$/.test(ndkVersion)) throw new Error("Invalid NDK version");
   if (/signingConfigs\s*\{|testBuildType\s*=/.test(text)) throw new Error("Refusing to replace custom Android signing or test configuration");
   text = once(text, "android {\n", `// xy-switch-managed-android\nandroid {\n    ndkVersion = "${ndkVersion}"\n    testBuildType = "release"\n    signingConfigs {\n        create("xyRelease") {\n            storeFile = file(System.getenv("XY_ANDROID_KEYSTORE_PATH") ?: error("Missing XY_ANDROID_KEYSTORE_PATH"))\n            storePassword = System.getenv("XY_ANDROID_STORE_PASSWORD") ?: error("Missing XY_ANDROID_STORE_PASSWORD")\n            keyAlias = System.getenv("XY_ANDROID_KEY_ALIAS") ?: error("Missing XY_ANDROID_KEY_ALIAS")\n            keyPassword = System.getenv("XY_ANDROID_KEY_PASSWORD") ?: error("Missing XY_ANDROID_KEY_PASSWORD")\n        }\n    }\n`);
   text = once(text, '        manifestPlaceholders["usesCleartextTraffic"] = "false"', '        // User-selected local/LAN HTTP endpoints must remain usable; no endpoint is contacted on startup.\n        manifestPlaceholders["usesCleartextTraffic"] = "true"\n        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"');
   text = once(text, '        getByName("release") {\n', '        getByName("release") {\n            signingConfig = signingConfigs.getByName("xyRelease")\n');
   text = once(text, '    androidTestImplementation("androidx.test.ext:junit:1.1.4")', '    androidTestImplementation("androidx.test:runner:1.6.2")\n    androidTestImplementation("androidx.test:core:1.6.1")\n    androidTestImplementation("androidx.test.ext:junit:1.2.1")');
-  return text;
+  return patchTestRuntimeDependency(text);
+}
+function patchTestRuntimeDependency(text) {
+  const marker = "// xy-switch-managed-test-runtime";
+  const runtime = `    ${marker}
+    // AndroidJUnitRunner 1.6.2 calls forceEnableAppTracing, added in tracing 1.1.0.
+    // AGP excludes shared app dependencies from the test APK; align the app version too.
+    implementation("androidx.tracing:tracing:1.1.0")
+`;
+  if (text.includes(marker) || /implementation\("androidx\.tracing:tracing:/.test(text)) {
+    if (text.split(marker).length !== 2 || !text.includes(runtime) || text.split('implementation("androidx.tracing:tracing:').length !== 2) {
+      throw new Error("Review the modified managed Android test runtime dependency");
+    }
+    return text;
+  }
+  return once(text, '    androidTestImplementation("androidx.test:runner:1.6.2")', runtime + '    androidTestImplementation("androidx.test:runner:1.6.2")');
 }
 export function patchProguard(text) {
   text = text.replace(/\r\n/g, "\n");
   const start = "# xy-switch-managed-instrumentation-start";
   const end = "# xy-switch-managed-instrumentation-end";
-  const rules = `${start}
+  const legacyRules = `${start}
 # AndroidX test code runs in a separate APK and calls these Kotlin runtime methods.
 # Keep their ABI stable: the test APK cannot follow R8 parameter rewriting/removal.
 -keep class kotlin.jvm.internal.Intrinsics {
     public static <methods>;
 }
 ${end}`;
+  const rules = `${start}
+# Instrumentation is a separate APK. AGP deduplicates these shared libraries, but
+# app R8 cannot see their test-only callers. Keep the shared public/protected ABI,
+# including Kotlin multifile facades; keepnames alone still removes methods.
+# App/Tauri code and unrelated dependencies remain R8-optimized.
+-keep class kotlin.** {
+    public *;
+    protected *;
+}
+-keep class kotlinx.coroutines.** {
+    public *;
+    protected *;
+}
+-keep class androidx.tracing.Trace {
+    public static <methods>;
+}
+# concurrent-futures-ktx also calls package-private future glue.
+-keep class androidx.concurrent.futures.** { *; }
+-keep interface com.google.common.util.concurrent.ListenableFuture {
+    public *;
+}
+-keep class androidx.lifecycle.Lifecycle$State { *; }
+${end}`;
   if (text.includes(start) || text.includes(end)) {
-    if (text.split(start).length !== 2 || text.split(end).length !== 2 || !text.includes(rules)) {
+    if (text.split(start).length !== 2 || text.split(end).length !== 2) {
       throw new Error("Review the modified managed Android instrumentation keep rules");
     }
-    return text;
+    const block = text.slice(text.indexOf(start), text.indexOf(end) + end.length);
+    if (block === rules) return text;
+    if (block === legacyRules) return text.replace(legacyRules, rules);
+    throw new Error("Review the modified managed Android instrumentation keep rules");
   }
   return text + (text.endsWith("\n") || !text ? "" : "\n") + "\n" + rules + "\n";
 }

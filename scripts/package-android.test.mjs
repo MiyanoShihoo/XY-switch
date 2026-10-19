@@ -31,18 +31,51 @@ test("Android Gradle signing uses only environment variables and preserves relea
   const template = 'android {\n    defaultConfig {\n        manifestPlaceholders["usesCleartextTraffic"] = "false"\n    }\n    buildTypes {\n        getByName("release") {\n            isMinifyEnabled = true\n        }\n    }\n}\ndependencies {\n    androidTestImplementation("androidx.test.ext:junit:1.1.4")\n}';
   const patched = patchGradle(template, "27.2.12479018");
   assert.match(patched, /testBuildType = "release"/); assert.match(patched, /isMinifyEnabled = true/);
+  assert.match(patched, /    implementation\("androidx\.tracing:tracing:1\.1\.0"\)/);
   assert.match(patched, /System.getenv\("XY_ANDROID_STORE_PASSWORD"\)/); assert.match(patched, /usesCleartextTraffic"\] = "true"/);
   assert.equal(patchGradle(patched, "27.2.12479018"), patched);
   assert.throws(() => patchGradle(template + '\nsigningConfigs {', "27.2.12479018"));
 });
-test("Android release keeps only the cross-APK Intrinsics ABI without disabling R8", () => {
+test("Android release preserves the shared instrumentation runtime ABI without disabling R8", () => {
   const original = "# Existing project rules\n-keep class fixture.NativeBridge { native <methods>; }\n";
   const patched = patchProguard(original);
   assert.ok(patched.startsWith(original));
-  assert.match(patched, /-keep class kotlin\.jvm\.internal\.Intrinsics \{\n    public static <methods>;\n\}/);
-  assert.doesNotMatch(patched, /-dont(?:optimize|obfuscate|shrink)|allowoptimization|class kotlin\.\*|class \*\*/);
+  for (const name of ["kotlin.**", "kotlinx.coroutines.**"]) {
+    assert.ok(patched.includes(`-keep class ${name} {\n    public *;\n    protected *;\n}`));
+  }
+  assert.match(patched, /-keep class androidx\.tracing\.Trace \{\n    public static <methods>;\n\}/);
+  assert.ok(patched.includes("-keep class androidx.concurrent.futures.** { *; }"));
+  assert.match(patched, /-keep interface com\.google\.common\.util\.concurrent\.ListenableFuture/);
+  assert.match(patched, /-keep class androidx\.lifecycle\.Lifecycle\$State/);
+  assert.doesNotMatch(patched, /-dont(?:optimize|obfuscate|shrink)|allowoptimization|class \*\*|class androidx\.\*\*|class com\.xyswitch\.\*\*/);
   assert.equal(patchProguard(patched), patched);
   assert.equal(patchProguard(patched.replace(/\n/g, "\r\n")), patched);
+});
+test("Android upgrades the exact legacy instrumentation rules without changing surrounding rules", () => {
+  const legacy = `# before
+# xy-switch-managed-instrumentation-start
+# AndroidX test code runs in a separate APK and calls these Kotlin runtime methods.
+# Keep their ABI stable: the test APK cannot follow R8 parameter rewriting/removal.
+-keep class kotlin.jvm.internal.Intrinsics {
+    public static <methods>;
+}
+# xy-switch-managed-instrumentation-end
+# after
+`;
+  const patched = patchProguard(legacy);
+  assert.ok(patched.startsWith("# before\n")); assert.ok(patched.endsWith("\n# after\n"));
+  assert.match(patched, /-keep class androidx\.tracing\.Trace/);
+  assert.equal(patchProguard(patched), patched);
+  assert.throws(() => patchProguard(legacy.replace("public static", "public")), /managed Android instrumentation keep rules/);
+});
+test("Android aligns tracing in new and previously managed app projects", () => {
+  const legacy = '// xy-switch-managed-android\nandroid { testBuildType = "release" }\ndependencies {\n    androidTestImplementation("androidx.test:runner:1.6.2")\n}';
+  const patched = patchGradle(legacy, "27.2.12479018");
+  assert.match(patched, /    implementation\("androidx\.tracing:tracing:1\.1\.0"\)/);
+  assert.equal(patchGradle(patched, "27.2.12479018"), patched);
+  for (const broken of [patched.replace("tracing:1.1.0", "tracing:1.0.0"), patched + '\nimplementation("androidx.tracing:tracing:1.1.0")', patched + "\n// xy-switch-managed-test-runtime"]) {
+    assert.throws(() => patchGradle(broken, "27.2.12479018"), /managed Android test runtime dependency/);
+  }
 });
 test("Android refuses changed, partial or duplicated managed instrumentation rules", () => {
   const patched = patchProguard("");
