@@ -23,9 +23,10 @@ export function assertEmulatorIdentity(serial, qemu, avdName) {
   }
 }
 export function parseInstrumentation(text, expected) {
-  const summaries = [...text.matchAll(/\bOK \((\d+) tests?\)/g)];
+  const summaries = [...text.matchAll(/^OK \((\d+) tests?\)\r?$/gm)];
+  const codes = [...text.matchAll(/^INSTRUMENTATION_CODE: (-?\d+)\r?$/gm)];
   const ok = summaries[0];
-  if (summaries.length !== 1 || +ok[1] !== expected || /FAILURES!!!|INSTRUMENTATION_FAILED|INSTRUMENTATION_RESULT: shortMsg|Process crashed/.test(text)) {
+  if (!Number.isSafeInteger(expected) || expected < 1 || summaries.length !== 1 || +ok[1] !== expected || codes.length !== 1 || +codes[0][1] !== -1 || /FAILURES!!!|INSTRUMENTATION_FAILED|INSTRUMENTATION_RESULT: shortMsg|Process crashed|^Runner error:/m.test(text)) {
     throw new Error(`Android instrumentation did not pass exactly ${expected} tests`);
   }
   return { passed: true, tests: +ok[1] };
@@ -41,6 +42,53 @@ export function execute(command, args, { bytes = false, timeout = 240000, allowF
   return bytes ? result.stdout : (result.stdout || "").trim();
 }
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+export function parseEmulatorSnapshot(cpu, memory) {
+  const line = cpu.split(/\r?\n/).find(value => /^cpu\s/.test(value));
+  const fields = line?.trim().split(/\s+/).slice(1, 9) || [];
+  const available = /^MemAvailable:\s+(\d+)\s+kB\s*$/m.exec(memory);
+  if (fields.length !== 8 || fields.some(value => !/^\d+$/.test(value) || !Number.isSafeInteger(+value)) || !available || !Number.isSafeInteger(+available[1])) {
+    throw new Error("Unrecognized disposable emulator CPU/memory counters");
+  }
+  return { ticks: fields.map(Number), availableKiB: +available[1] };
+}
+export function emulatorHealth(previous, current) {
+  const delta = current.ticks.map((value, index) => value - previous.ticks[index]);
+  const total = delta.reduce((sum, value) => sum + value, 0);
+  if (delta.some(value => value < 0) || !Number.isSafeInteger(total) || total <= 0) throw new Error("Disposable emulator CPU counters reset or stopped");
+  // Linux counts guest time in user/nice already. Only the first eight fields are summed.
+  return { busyFraction: (total - delta[3] - delta[4]) / total, availableMemoryMiB: current.availableKiB / 1024 };
+}
+export async function waitForEmulatorReady(run, { sleep = delay, now = Date.now, timeout = 180000, interval = 5000, stableSamples = 3 } = {}) {
+  const read = () => parseEmulatorSnapshot(run(["shell", "cat", "/proc/stat"]), run(["shell", "cat", "/proc/meminfo"]));
+  const started = now(), samples = [];
+  let previous = read(), stable = 0;
+  while (now() - started < timeout) {
+    await sleep(Math.min(interval, timeout - (now() - started)));
+    const current = read(), health = emulatorHealth(previous, current);
+    previous = current;
+    samples.push({ elapsedMs: now() - started, ...health });
+    stable = health.busyFraction <= 0.8 && health.availableMemoryMiB >= 512 ? stable + 1 : 0;
+    if (stable >= stableSamples) return { passed: true, maxBusyFraction: 0.8, minAvailableMemoryMiB: 512, stableSamples, samples };
+  }
+  const error = new Error("Disposable emulator did not settle after boot; refusing to run app tests under sustained CPU/memory pressure");
+  error.report = { passed: false, maxBusyFraction: 0.8, minAvailableMemoryMiB: 512, stableSamples, samples };
+  throw error;
+}
+export async function captureEmulatorDiagnostics(run, directory, write = fs.writeFile) {
+  const commands = [
+    ["emulator-logcat.txt", ["logcat", "-d", "-b", "all", "-t", "20000"]],
+    ["emulator-last-anr.txt", ["shell", "dumpsys", "activity", "lastanr"]],
+    ["emulator-anr-traces.txt", ["shell", "dumpsys", "dropbox", "--print", "data_app_anr"]],
+    ["emulator-crashes.txt", ["shell", "dumpsys", "dropbox", "--print", "data_app_crash"]],
+  ];
+  for (const [name, args] of commands) {
+    let output;
+    try { output = run(args, { allowFailure: true, timeout: 60000 }); }
+    catch (error) { output = [error.stdout, error.stderr, `Diagnostic error: ${error.message}`].filter(Boolean).join("\n"); }
+    await write(path.join(directory, name), output + "\n");
+  }
+}
 export async function main(args = process.argv.slice(2)) {
   const options = parseArgs(args);
   const pkg = JSON.parse(await fs.readFile(path.join(root, "package.json"), "utf8"));
@@ -77,6 +125,15 @@ export async function main(args = process.argv.slice(2)) {
       { id: libraryTest, target: libraryTest, className: "com.xyswitch.credentials.AndroidCredentialStoreTest", name: "keystore", count: 4 },
       { id: appTest, target: identifier, className: "com.xyswitch.desktop.NativeAppTest", name: "release-app", count: 1 },
     ];
+    // A boot-completed property alone is not readiness: fresh Google API images still
+    // initialize services and dex files, which can starve the app's startup process.
+    try {
+      const readiness = await waitForEmulatorReady(run);
+      await fs.writeFile(path.join(verification, "emulator-readiness.json"), JSON.stringify(readiness, null, 2) + "\n");
+    } catch (error) {
+      if (error.report) await fs.writeFile(path.join(verification, "emulator-readiness.json"), JSON.stringify(error.report, null, 2) + "\n");
+      throw error;
+    }
     const tests = {};
     for (const test of cases) {
       const component = `${test.id}/androidx.test.runner.AndroidJUnitRunner`;
@@ -117,8 +174,7 @@ export async function main(args = process.argv.slice(2)) {
     await fs.writeFile(path.join(verification, "native-verification.json"), JSON.stringify(report, null, 2) + "\n");
     console.log(JSON.stringify(report, null, 2));
   } finally {
-    const logs = run(["logcat", "-d", "-t", "1500"], { allowFailure: true });
-    await fs.writeFile(path.join(verification, "emulator-logcat.txt"), logs + "\n");
+    await captureEmulatorDiagnostics(run, verification);
     for (const id of installed.reverse()) run(["uninstall", id], { allowFailure: true });
   }
 }
