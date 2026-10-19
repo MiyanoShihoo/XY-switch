@@ -75,12 +75,38 @@ export async function waitForEmulatorReady(run, { sleep = delay, now = Date.now,
   error.report = { passed: false, maxBusyFraction: 0.8, minAvailableMemoryMiB: 512, stableSamples, samples };
   throw error;
 }
+export function isAppWindowFocused(dump, identifier) {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+$/.test(identifier)) throw new Error("Invalid Android application identifier");
+  return dump.split(/\r?\n/).some(line => {
+    const component = /^\s*mCurrentFocus=Window\{[0-9a-f]+ u\d+ ([^\s{}]+)\}\s*$/.exec(line)?.[1];
+    return component?.startsWith(identifier + "/") === true;
+  });
+}
+export async function waitForRenderedApp(run, identifier, directory, { sleep = delay, write = fs.writeFile, inspect = inspectNativeScreenshot, attempts = 30, interval = 2000 } = {}) {
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    await sleep(interval);
+    const pid = run(["shell", "pidof", identifier], { allowFailure: true });
+    if (!/^\d+$/.test(pid)) throw new Error("Android app exited before rendering");
+    // On modern Android mCurrentFocus belongs to the display dump, not the
+    // `windows` subsection. The full dump includes both across supported APIs.
+    const windows = run(["shell", "dumpsys", "window"]);
+    await write(path.join(directory, "window-state.txt"), windows + "\n");
+    if (!isAppWindowFocused(windows, identifier)) continue;
+    const image = run(["exec-out", "screencap", "-p"], { bytes: true });
+    await write(path.join(directory, "native-launch.png"), image);
+    const screenshot = inspect(image);
+    if (screenshot.passed) return { pid: +pid, screenshot };
+  }
+  throw new Error("No nonblank focused Android application window was verified");
+}
 export async function captureEmulatorDiagnostics(run, directory, write = fs.writeFile) {
   const commands = [
     ["emulator-logcat.txt", ["logcat", "-d", "-b", "all", "-t", "20000"]],
     ["emulator-last-anr.txt", ["shell", "dumpsys", "activity", "lastanr"]],
     ["emulator-anr-traces.txt", ["shell", "dumpsys", "dropbox", "--print", "data_app_anr"]],
     ["emulator-crashes.txt", ["shell", "dumpsys", "dropbox", "--print", "data_app_crash"]],
+    ["emulator-window-state.txt", ["shell", "dumpsys", "window"]],
+    ["emulator-activities.txt", ["shell", "dumpsys", "activity", "activities"]],
   ];
   for (const [name, args] of commands) {
     let output;
@@ -154,19 +180,7 @@ export async function main(args = process.argv.slice(2)) {
     const launch = run(["shell", "am", "start", "-W", "-n", `${identifier}/.MainActivity`]);
     await fs.writeFile(path.join(verification, "launch.txt"), launch + "\n");
     if (!/Status: ok/.test(launch)) throw new Error("Final Android APK did not launch");
-    let screenshot, pid, rendered = false;
-    for (let attempt = 0; attempt < 30; attempt++) {
-      await delay(2000);
-      pid = run(["shell", "pidof", identifier], { allowFailure: true });
-      if (!/^\d+$/.test(pid)) throw new Error("Android app exited before rendering");
-      const windows = run(["shell", "dumpsys", "window", "windows"]);
-      if (!windows.split(/\r?\n/).some(line => /mCurrentFocus/.test(line) && line.includes(`${identifier}/`))) continue;
-      const image = run(["exec-out", "screencap", "-p"], { bytes: true });
-      await fs.writeFile(path.join(verification, "native-launch.png"), image);
-      screenshot = inspectNativeScreenshot(image);
-      if (screenshot.passed) { rendered = true; break; }
-    }
-    if (!rendered) throw new Error("No nonblank focused Android application window was verified");
+    const { screenshot, pid } = await waitForRenderedApp(run, identifier, verification);
     const report = { passed: true, serial: options.serial, disposableAvd: avd, apkSha256: entry.sha256,
       sdk: +run(["shell", "getprop", "ro.build.version.sdk"]), abi: run(["shell", "getprop", "ro.product.cpu.abi"]),
       pageSize: +run(["shell", "getconf", "PAGE_SIZE"]), pid: +pid, tests, screenshot,

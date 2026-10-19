@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseArgs, assertEmulatorIdentity, parseInstrumentation, execute, parseEmulatorSnapshot, emulatorHealth, waitForEmulatorReady, captureEmulatorDiagnostics } from "./smoke-android-emulator.mjs";
+import { parseArgs, assertEmulatorIdentity, parseInstrumentation, execute, parseEmulatorSnapshot, emulatorHealth, waitForEmulatorReady, captureEmulatorDiagnostics, isAppWindowFocused, waitForRenderedApp } from "./smoke-android-emulator.mjs";
 test("Android smoke test always requires an explicit emulator serial", () => {
   assert.deepEqual(parseArgs(["--serial", "emulator-5558"]), { serial: "emulator-5558" });
   for (const args of [[], ["--serial", "real-phone"], ["--serial", "emulator-5558", "--serial", "emulator-5556"], ["--unknown", "value"]]) assert.throws(() => parseArgs(args));
@@ -70,8 +70,73 @@ test("Android diagnostics retain partial errors and collect ANR traces after a f
     if (args[0] === "logcat") throw Object.assign(new Error("fixture timeout"), { stdout: "partial log", stderr: "fixture stderr" });
     return "fixture diagnostic";
   }, "fixture", async (name, content) => { files.set(name.replaceAll("\\", "/"), content); });
-  assert.equal(files.size, 4);
+  assert.equal(files.size, 6);
   assert.match(files.get("fixture/emulator-logcat.txt"), /partial log[\s\S]*fixture timeout/);
   assert.equal(files.get("fixture/emulator-anr-traces.txt"), "fixture diagnostic\n");
   assert.deepEqual(calls[0], ["logcat", "-d", "-b", "all", "-t", "20000"]);
+});
+
+const appId = "com.xyswitch.desktop";
+const appFocus = "  mCurrentFocus=Window{a15bc u0 com.xyswitch.desktop/com.xyswitch.desktop.MainActivity}";
+test("Android focus requires the exact currently focused application package", () => {
+  assert.equal(isAppWindowFocused("WINDOW MANAGER DISPLAY CONTENTS\n" + appFocus, appId), true);
+  assert.equal(isAppWindowFocused("  mCurrentFocus=Window{abc u10 com.xyswitch.desktop/.MainActivity}\r\n", appId), true);
+  for (const dump of [
+    "", "  mCurrentFocus=null", appFocus.replace("mCurrentFocus", "mLastFocus"),
+    appFocus.replace("mCurrentFocus", "mFocusedApp"), "note: " + appFocus,
+    appFocus.replace("com.xyswitch.desktop/", "com.xyswitch.desktop.test/"),
+    appFocus.replace("com.xyswitch.desktop/", "other.com.xyswitch.desktop/"),
+    "  mCurrentFocus=Window{abc u0 com.android.launcher/.Launcher}\nWindow{def u0 com.xyswitch.desktop/.MainActivity}",
+  ]) assert.equal(isAppWindowFocused(dump, appId), false, dump);
+  assert.throws(() => isAppWindowFocused(appFocus, ""));
+});
+function renderingFixture({ focus = [appFocus], inspections = [true], pids = ["4080"] } = {}) {
+  const files = new Map(), calls = [];
+  let dumpCount = 0, screenshotCount = 0, pidCount = 0;
+  const result = (items, index) => items[Math.min(index, items.length - 1)];
+  return {
+    files, calls,
+    run(args, options) {
+      calls.push(args);
+      if (args[1] === "pidof") return result(pids, pidCount++);
+      if (args[1] === "dumpsys") {
+        assert.deepEqual(args, ["shell", "dumpsys", "window"]);
+        return result(focus, dumpCount++);
+      }
+      assert.deepEqual(args, ["exec-out", "screencap", "-p"]);
+      assert.equal(options.bytes, true);
+      return Buffer.from("screenshot-fixture");
+    },
+    options: {
+      sleep: async () => {}, attempts: 3,
+      write: async (name, content) => { files.set(name.replaceAll("\\", "/"), content); },
+      inspect: image => { assert.equal(image.toString(), "screenshot-fixture"); return { passed: result(inspections, screenshotCount++), width: 1080, height: 2400 }; },
+    },
+  };
+}
+test("Android rendering reads the full window dump and waits for real app focus", async () => {
+  const fixture = renderingFixture({ focus: ["  mCurrentFocus=null", appFocus] });
+  const result = await waitForRenderedApp(fixture.run, appId, "fixture", fixture.options);
+  assert.equal(result.pid, 4080);
+  assert.equal(result.screenshot.passed, true);
+  assert.equal(fixture.calls.filter(args => args[1] === "dumpsys").length, 2);
+  assert.equal(fixture.calls.filter(args => args[0] === "exec-out").length, 1);
+  assert.equal(fixture.files.get("fixture/window-state.txt"), appFocus + "\n");
+  assert.equal(fixture.files.get("fixture/native-launch.png").toString(), "screenshot-fixture");
+});
+test("Android rendering still requires nonblank content after focus", async () => {
+  const fixture = renderingFixture({ inspections: [false, true] });
+  const result = await waitForRenderedApp(fixture.run, appId, "fixture", fixture.options);
+  assert.equal(result.screenshot.passed, true);
+  assert.equal(fixture.calls.filter(args => args[0] === "exec-out").length, 2);
+});
+test("Android rendering fails closed on an unfocused, blank or terminated app", async () => {
+  for (const options of [{ focus: ["  mCurrentFocus=null"] }, { inspections: [false] }]) {
+    const fixture = renderingFixture(options);
+    await assert.rejects(waitForRenderedApp(fixture.run, appId, "fixture", fixture.options), /No nonblank focused/);
+    assert.equal(fixture.calls.filter(args => args[1] === "dumpsys").length, 3);
+  }
+  const fixture = renderingFixture({ pids: [""] });
+  await assert.rejects(waitForRenderedApp(fixture.run, appId, "fixture", fixture.options), /app exited/);
+  assert.equal(fixture.calls.length, 1);
 });
