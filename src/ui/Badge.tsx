@@ -1,3 +1,4 @@
+import { useLanguage } from "../i18n/language";
 import type { ReactNode } from "react";
 import { cx } from "./utils";
 
@@ -11,6 +12,7 @@ interface BadgeProps {
 }
 
 export function Badge({ children, tone = "neutral", dot = false, className }: BadgeProps) {
+  useLanguage();
   return (
     <span className={cx("xy-ui-badge", className)} data-tone={tone}>
       {dot && <span className="xy-ui-status-dot" aria-hidden="true" />}

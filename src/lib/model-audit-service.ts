@@ -1,3 +1,4 @@
+import { t } from "../i18n/language";
 import { invoke } from "@tauri-apps/api/core";
 import type { UsageFilter } from "../types/usage";
 import type { ModelFingerprint, PassiveAuditReport, Pretokenizer, ReferenceAnalysisRequest, ReferenceReport, ShadowAuditReport, ShadowAuditSetting, ShadowAuditStatus } from "../types/model-audit";
@@ -5,7 +6,7 @@ import { normalizeReferenceReport } from "./model-audit";
 
 function requireDesktop(): void {
   if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) {
-    throw new Error("请在 XY Switch 桌面应用中分析本地审计记录。网页预览没有本地数据。");
+    throw new Error(t("请在 XY Switch 桌面应用中分析本地审计记录。网页预览没有本地数据。"));
   }
 }
 

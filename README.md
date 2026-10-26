@@ -1,201 +1,98 @@
 # XY Switch
 
-本地 AI 配置管理与协议路由工作台。集中管理供应商、模型、MCP、提示词和 Skills，减少在不同 AI 客户端之间反复修改配置的工作。
+English | [简体中文](README.zh-CN.md)
 
-**技术栈：** Tauri 2 · Rust · React 19 · TypeScript · SQLite
+A local AI configuration and protocol-routing workbench built with Tauri 2, Rust, React, and TypeScript. Manage providers, model mappings, MCP servers, prompts, and local Skills; inspect proxy usage and model-response evidence without repeatedly editing client configuration.
 
-**下载：** [Releases](https://github.com/MiyanoShihoo/XY-switch/releases) · **源码：** [MiyanoShihoo/XY-switch](https://github.com/MiyanoShihoo/XY-switch) · **许可证：** [MIT](LICENSE)
+**Version 1.1.0 adds English and Simplified Chinese interfaces.** Choose **System / 简体中文 / English** in **Settings → General**. Native preferences are persisted locally and update the desktop tray; browser previews use local storage. User names, prompts, Skills, conversation content, model IDs, and raw diagnostics are not translated.
 
-> Windows / Linux / macOS 提供桌面包，Android 提供 APK，iOS 提供模拟器归档与独立签名构建入口。默认 Android 包使用明确标注的开发签名，macOS 使用 ad-hoc 签名，Windows 未配置商业代码签名。**iOS 模拟器归档不是可安装到 iPhone 的 IPA**。使用上游模型需要自行配置服务地址与 API Key；浏览器预览不等于原生应用。
+## Download and platform scope
 
-## 下载与平台差异
+Get packages, checksums, native screenshots, and the verification report from [GitHub Releases](https://github.com/MiyanoShihoo/XY-switch/releases). Source archives alone are not installers.
 
-从 [Releases](https://github.com/MiyanoShihoo/XY-switch/releases) 下载对应系统的附件，并核对同页 SHA-256。具体版本的已验证范围以发布说明和 [Actions](https://github.com/MiyanoShihoo/XY-switch/actions) 实际结果为准，不把构建入口等同于构建通过。
-
-| 平台 | 包格式 | 凭据存储 | 平台边界 |
+| Platform | Distribution | Credential storage | Important scope |
 | --- | --- | --- | --- |
-| Windows x64 | NSIS `.exe` / `.msi` | Windows Credential Manager | 支持客户端接管、系统托盘和开机自启 |
-| Linux x64 | `.deb` / `.AppImage` | Secret Service | 需要已解锁的系统密钥库；托盘取决于桌面环境；暂无开机自启配置 |
-| macOS 11+ | Universal `.dmg` / `.app.zip`，包含 Apple Silicon 与 Intel | Apple Keychain | 支持桌面配置与托盘；暂无开机自启配置；默认包未公证 |
-| Android 7.0+ / API 24+ | ARM64 + x86_64 通用 `.apk` | Android Keystore + 应用私有加密记录 | 仅操作自身沙盒；不接管其他 App 的 CLI、Skills 或会话；后台代理不保证常驻 |
-| iOS | 模拟器 `.app.zip` / 配置签名后 `.ipa` | Apple Keychain | 与 Android 一样受跨 App 沙盒和后台运行限制；模拟器 ZIP 不能装到 iPhone |
+| Windows x64 | NSIS `.exe` / `.msi` | Windows Credential Manager | Unsigned installers; WebView2 required; no portable ZIP in this release |
+| Linux x64 | `.deb` / `.AppImage` | Secret Service | Built on Ubuntu 22.04; needs compatible libraries and an unlocked keyring; tray availability depends on the desktop |
+| macOS Intel + Apple Silicon | Universal `.app.zip` / `.dmg` | Apple Keychain | Ad-hoc signed, not Developer ID signed or notarized |
+| Android 7.0+ / API 24+ | ARM64 + x86_64 universal `.apk` | Android Keystore + private AES-GCM records | Development-signed distribution; manages only its own sandbox; background proxy lifetime is not guaranteed |
+| iOS | ARM64 simulator `.zip`; separate signed-device build entry | Apple Keychain | **The simulator ZIP is not an iPhone IPA.** Device distribution requires Apple signing and a matching provisioning profile |
 
-Linux 发布工作流使用 Ubuntu 22.04 构建。AppImage 仍需要兼容的系统库和 Secret Service。Android 开发签名不代表 Google Play 分发；不同 CI 构建可能使用不同证书。macOS ad-hoc 签名不等于 Developer ID 或 Apple 公证，Gatekeeper 可能阻止直接打开。系统最低版本与二进制架构是构建目标，不代表全部设备已经实测。签名、安装和验收范围见 [多平台打包](docs/packaging.md)。
+The Android CI runs an isolated x86_64 emulator; static ARM64 package checks do not establish real-device testing. Minimum build targets are not a claim that every OS/device combination has been tested. Development certificates can differ between Android builds, so in-place upgrades are not guaranteed. See [packaging and native verification](docs/packaging-en.md) for exact commands and signing limits.
 
-## 能做什么
+## What is implemented
 
-| 功能 | 用途 | 说明 |
+| Area | Delivered behavior | Boundary |
 | --- | --- | --- |
-| 供应商与模型 | 管理端点、凭据、模型映射、请求头与请求体覆盖 | 保存配置、设为当前、连接检测分别执行 |
-| 本地协议路由 | 连接 Responses、Chat Completions、Anthropic Messages 等接口 | 按客户端与上游实际能力选择协议，不保证任意服务商完全兼容 |
-| 客户端接管 | 为 Codex、Claude Code、Gemini CLI 等客户端写入路由配置 | 需要用户明确启用；部分客户端需重启后读取新配置 |
-| MCP 与提示词 | 统一管理服务器配置和可复用提示词 | 本机凭据与普通配置分开管理 |
-| 本地 Skills | 读取已授权的技能目录，导入单个技能或包含多个技能的文件夹 | 以 `SKILL.md` 为识别入口，支持扫描子目录并展示导入结果 |
-| 会话与用量 | 浏览会话，按请求、模型、供应商查看 Token、缓存与成本记录 | 缺失的上游用量保持未知，不按零消耗处理 |
-| 模型响应核验 | 检查型号声明、协议形态、工具调用及计量异常 | 接口能力与底层模型身份分别判断 |
-| 数据与界面 | 导入/导出配置、查看数据路径、切换主题与工作台布局 | 桌面数据保存在本机；导入配置会修改当前数据 |
+| Providers and models | Endpoint/credential management, active-provider selection, discovery, mapping, header/body overrides | Saving, activating, connection testing, and successful upstream requests are different states |
+| Protocol routing | Local proxy adapters for OpenAI Chat Completions, Responses, Anthropic Messages, and Gemini | Protocol/tool compatibility and declared model names are not proof of model-weight identity |
+| Desktop client takeover | Explicit configuration takeover and restoration for **Claude Code, Codex, and Gemini CLI** | Other displayed client groups do not imply takeover support; mobile cannot edit other apps’ CLI configuration |
+| MCP | Server management and supported client import/synchronization workflows | Platform permissions and client support still apply |
+| Prompts | Local create/edit/delete and enable/disable operations | Does **not** write prompts into `CLAUDE.md`, `AGENTS.md`, or `GEMINI.md` |
+| Skills | Opt-in desktop source scanning and manual references | Sources start disabled; removing a manual reference does not delete its source files; plugin caches are excluded |
+| Usage and evidence | Proxy request/token/cache/cost records, response/model evidence, Codex and DeepSeek Harness local-usage reading | Missing price/usage stays unknown; imported session usage cannot provide real HTTP latency or billing evidence |
+| Language and settings | English/Simplified Chinese, system-language mode, themes, configuration import/export, actual data paths | Ordinary exports are not full credential backups |
 
-## 开始使用
+**Full native conversation management is not delivered:** session-list and message-query commands currently return empty lists, and deletion returns an explicit not-implemented error. Synthetic UI fixtures are used for renderer testing, not evidence of native session support.
 
-### 1. 启动原生程序
+## Get started
 
-使用 Releases 中对应平台的构建，或按下文从源码构建。替换程序前先退出已有 XY Switch 实例；Windows 安装包需要 WebView2 Runtime。
+1. Install the package for your platform and open the native app. Browser preview is not a replacement for native credential, filesystem, or proxy operations. The proxy starts disabled.
+2. In **Settings → General**, choose your language. System mode uses the first preferred system/browser language: Chinese if it starts with `zh`, English otherwise. A failed native preference write keeps the previous language and offers retry.
+3. Add a provider, enter its endpoint and credential, save, then run the connection/model checks you need. Clicking an enabled non-current provider card inspects **and activates** it; the details icon only inspects. Use the active-state indicator rather than assuming a click is read-only.
+4. Enable the local proxy and desktop client takeover only when needed. Check the selected upstream, running proxy, client configuration, and actual request result separately. Some clients must restart before loading changed configuration.
+5. For desktop Skills, explicitly enable the desired source in settings, preview the scan, then confirm import. Recursive scanning includes `.system`; it excludes plugin cache directories.
 
-首次使用可先在「设置」中查看数据位置、凭据状态和本地路由设置。不要把浏览器预览当作已连接本机后端的桌面程序。
+See the [English user guide](docs/user-guide-en.md) / [中文使用指南](docs/user-guide-zh.md) for resource management, model verification, backups, and troubleshooting.
 
-### 2. 添加并检查供应商
+## Data, credentials, and model verification
 
-1. 打开供应商页面，填写名称、API 地址、API Key 和模型。
-2. 根据服务商文档选择上游协议。支持 Chat 的服务不应仅因模型名称相似就改走 Responses。
-3. 保存后执行连接或模型探测，检查 HTTP 状态、返回型号、用量及错误信息。探测可能产生上游费用。
-4. 确认配置后点击「设为当前」。点击列表项只查看详情，不会自动切换供应商。
+Configuration is local. Provider API keys use native credential storage, not the ordinary configuration JSON. Android stores encrypted records in `noBackupFilesDir`; damaged records, missing keys, and unavailable keyrings fail rather than silently falling back to plaintext. Hardware-backed storage is not guaranteed on every device.
 
-如果填写的是完整请求 URL，使用界面中的对应选项，避免重复追加路径。遇到 401/403 时检查凭据与权限；遇到 404 时优先检查端点和协议。
+Inspect actual paths in **Settings → Data**. Exported configuration excludes provider keys and sensitive MCP headers; re-enter credentials after migration. Takeover restoration affects the configuration managed by that operation, not all application data.
 
-### 3. 按需启用客户端接管（桌面端）
+Model-response evidence describes observable fields and protocol behavior, not cryptographic verification of a model’s weights. Unknown cost is not zero. The active-verification token budget is a **soft budget**, default 100 and range 0–10,000; it applies to that mechanism, not a global hard billing limit.
 
-在「设置 → 本地路由」中检查监听状态，再为需要接管的客户端启用配置写入。修改后按客户端要求重新启动或重新载入配置。
+## Run from source
 
-保存成功、设为当前、代理运行、上游请求成功是不同状态；不能仅凭其中一项判断整条调用链已正常工作。
+Use an existing compatible Node.js installation (22.12+ recommended), pnpm 10, Rust, and your platform’s SDK prerequisites. CI pins Rust **1.98.1** and Node **24**; use the lockfiles. Windows needs MSVC/Windows SDK/WebView2, Linux needs WebKitGTK 4.1/AppIndicator/D-Bus/Secret Service, and Apple/mobile builds need their corresponding SDKs.
 
-### 4. 导入 Skills（桌面端）
-
-在 Skills 页面授权所需平台目录，然后读取目录或选择本地文件夹导入。可以选择技能自身目录，也可以选择包含多个技能的父目录。
-
-找不到技能时，先确认文件名为 `SKILL.md`、文件可读且格式有效，再查看扫描结果中的错误或跳过原因。仅创建一个同名文件夹不等于已经安装了技能。
-
-## 模型核验与 Token 预算
-
-XY Switch 将三类结论分开呈现：
-
-- **接口与工具能力：** 请求是否完整成功，工具参数、调用 ID 和回执是否形成有效闭环。
-- **型号声明：** 请求型号与返回字段是否一致，是否存在声明冲突或路由变化。
-- **身份认证：** 是否存在能通过独立上游渠道核对的来源证据。
-
-HTTP 错误、缺失状态、解析失败、流式响应不完整或证据截断，不会被认定为有效型号匹配。计量异常会单独提示，不直接推导为模型冒充。不同供应商、配置上下文和型号的历史观察不会混为同一基线。
-
-**返回的 `model` 字段、模型自称或工具调用成功，都不能单独证明底层权重身份；缺少独立身份凭据也不等于假模型。** 少量成功请求不等于已经验证长期稳定性或相同输入的确定性。
-
-低 Token 模型验证的软预算支持 **0–10000 Token**，默认 **100**；设为 **0** 时不允许该功能执行收费复核。此预算只约束对应的主动复核机制，不是普通业务调用、其他手动探测或服务商账单的全局硬上限。未知用量不计为零；已包含在输出用量中的推理 Token 不重复相加。
-
-## 数据与凭据
-
-- 供应商密钥使用系统原生凭据存储：Windows Credential Manager、Linux Secret Service、Apple Keychain，以及 Android Keystore 管理的 AES-GCM 密钥。Android 的密文记录保存在禁止备份的应用私有目录；密钥丢失、数据篡改或密钥库不可用时返回错误，不回退到明文或静默重置已有记录。
-- 数据库、用户目录及 Codex 配置目录可在「设置 → 数据」查看，以当前进程实际返回的位置为准。
-- 配置导出用于迁移普通配置，不是完整的凭据备份；MCP 的敏感请求头不会随普通导出保留。迁移后应重新检查凭据。
-- 不要公开 API Key、客户端认证文件、真实请求日志或包含私有提示词的导出文件。仓库忽略规则用于减少误提交，但不能代替提交前检查。
-
-安全相关说明见 [SECURITY.md](SECURITY.md)。
-
-## 从源码运行
-
-### 环境要求
-
-- Windows：Microsoft C++ Build Tools 的「使用 C++ 的桌面开发」、Windows SDK、WebView2 Runtime。
-- Linux：WebKitGTK 4.1、AppIndicator、D-Bus、Secret Service 及编译依赖，安装命令见 [打包指南](docs/packaging.md)。
-- macOS：Xcode Command Line Tools；Universal 打包还需 Apple Silicon 和 Intel 两个 Rust target，脚本按需安装。
-- Android：JDK 21、Android SDK Platform/Build Tools 36、NDK 27.2.12479018；设置 `JAVA_HOME`、`ANDROID_HOME`、`NDK_HOME`。Windows 主机仍需 MSVC 来编译 Rust 构建工具。
-- iOS：macOS + Xcode + CocoaPods；Windows/Linux 可使用仓库的 macOS CI 工作流。
-- Rust stable；Windows 使用 MSVC 工具链。
-- Node.js 22.12 或更新的兼容版本；当前 Vite 7 依赖的引擎范围为 `^20.19.0 || >=22.12.0`。
-- pnpm 10，以及 Git。
-
-以 [Tauri 环境准备文档](https://v2.tauri.app/start/prerequisites/) 和仓库内的依赖锁文件为准。不要在构建脚本中写入某台机器专用的 SDK 或用户目录。
-
-### 安装、开发与检查
-
-在仓库根目录执行：
-
-```powershell
+```bash
 pnpm install --frozen-lockfile
-pnpm dev
-```
-
-常用检查命令：
-
-```powershell
-# TypeScript 类型检查
+pnpm dev:renderer           # browser renderer preview only
+pnpm dev                    # native Tauri development
 pnpm lint
-
-# 前端单元与组件回归
 pnpm test
-
-# Rust 回归
+pnpm test:packaging
+pnpm build:renderer
 cargo test --manifest-path src-tauri/Cargo.toml --locked
 ```
 
-只开发界面时运行 `pnpm dev:renderer`。浏览器端只提供预览，不会替代桌面 IPC；需要验证凭据、客户端接管或系统路径时使用桌面构建。
-
-部分 Rust 测试依赖交互式凭据存储或单独安装的 Codex CLI，默认标记为忽略。Linux 原生密钥库可用 `bash scripts/test-linux-keyring.sh` 在隔离环境中单独回归。未运行这些测试时，不应把它们算作通过。界面自动化的环境要求见 [工作台验收说明](docs/workbench-ui-acceptance-20261017.md)。
-
-### 构建安装包
-
-Windows PowerShell：
-
-```powershell
-pnpm build:windows --tools-dir "E:\AI tools\xy-switch\windows\bundlers"
-```
-
-Linux / WSL：
+Interactive credential-store and external Codex CLI tests can be ignored by default. Run the relevant isolated credential test separately; skipped tests are not passed tests. The [packaging guide](docs/packaging-en.md) documents these gates.
 
 ```bash
-pnpm build:linux --tools-dir "$HOME/AI-tools/xy-switch/bundlers"
-```
-
-macOS 桌面通用包（在 Mac 上）：
-
-```bash
+pnpm build:windows
+pnpm build:linux
 pnpm build:macos:universal
+pnpm build:android
+pnpm build:ios:simulator    # macOS with Xcode and Simulator runtime
 ```
 
-Android APK（先配置上述 Android 工具链环境变量）：
+Outputs go to `release/<version>/<platform>-<architecture>/`. `--tools-dir` or `XY_SWITCH_TOOLS_DIR` selects the packaging-tools cache, not the Node/Rust/system SDK installation. Signed iOS device builds use a separate workflow and are not substitutes for simulator archives.
 
-```powershell
-pnpm build:android --tools-dir "E:\AI tools\xy-switch\android"
-```
+## Repository map and documentation
 
-macOS 的 iOS 模拟器：
+- `src/`: React workbench, shared UI, feature modules, and `i18n/`.
+- `src-tauri/`: Rust commands, adapters, proxy, storage, native plugins, and regression tests.
+- `scripts/`: packaging, isolated native checks, and synthetic renderer automation.
+- `tests/`: additional frontend/catalog regression coverage.
+- `website/`: self-contained bilingual static project page; no external CDN runtime.
+- `.github/workflows/`: multi-platform verification and signed-device build entry.
 
-```bash
-pnpm build:ios:simulator
-bash scripts/smoke-ios-simulator.sh
-```
+[User guide](docs/user-guide-en.md) · [Packaging](docs/packaging-en.md) · [1.1.0 release notes](docs/release-notes-1.1.0.md) · [Security](SECURITY.md) · [Changelog](CHANGELOG.md) · [Repository metadata](docs/github-description.md)
 
-产物按版本和平台写入 `release/<version>/<platform>-<architecture>/`，同时生成 `SHA256SUMS.txt`；iOS 子目录另有 `simulator` / `device` 标记。桌面与 Android 包装脚本会构建前端和 Rust，并校验本次打包输入与产物；不能把旧包改名当作新包。脚本测试命令为 `pnpm test:packaging`。
+Dated acceptance reports describe their own historical snapshots, not the verification state of every later version. Source belongs in Git; installers and verification evidence belong in Releases. Do not publish local credentials, databases, personal configuration, signing material, logs, or build caches.
 
-`--tools-dir` 或 `XY_SWITCH_TOOLS_DIR` 控制下载的安装包工具缓存；默认使用被 Git 忽略的 `.build-tools/`。Node、Rust 和系统 SDK 是独立的预先安装依赖，其路径由各自工具链配置决定。当前 Windows 工作环境的新工具统一存放在 `E:\AI tools`。
+## License and provenance
 
-完整命令、Linux 依赖、Android Keystore 测试、macOS 签名、缓存规则及 iOS 签名参数见 [多平台打包指南](docs/packaging.md)。前端资源由 Tauri 嵌入应用；`frontendDist` 使用相对于 Tauri 配置的路径，不直接传入 Windows 盘符绝对路径。
-
-## 项目结构
-
-```text
-src/
-  features/          业务页面与功能组件
-  lib/               前端服务、验证与判定逻辑
-  types/             IPC 和业务数据类型
-  ui/                通用界面组件
-src-tauri/
-  src/               原生命令、代理、凭据、Skills 与模型核验
-  migrations/        SQLite 数据结构
-  capabilities/      Tauri 权限配置
-scripts/             构建与回归辅助脚本
-docs/                使用、架构与历史验证文档
-public/              图标及静态资源
-```
-
-应用「关于」页从 `package.json` 的 `repository` 字段读取仓库地址，避免在界面代码和文档中维护多个互相矛盾的地址。未配置有效地址时不会展示未经确认的仓库链接。
-
-## 文档与参与开发
-
-- [五平台打包、签名与原生验收](docs/packaging.md)
-- [中文使用指南](docs/user-guide-zh.md)
-- [English user guide](docs/user-guide-en.md)
-- [架构说明](docs/architecture.md)
-- [模型审计实现说明](docs/model-audit-implementation.md)
-- [工作台界面验收说明](docs/workbench-ui-acceptance-20261017.md)
-- [变更记录](CHANGELOG.md)
-
-历史验收文档记录的是对应日期的快照，不代表当前每项功能都已完成相同范围的验证。提交改动时请附上复现步骤与实际运行的测试结果；涉及真实 API 的日志需先脱敏。
-
-项目采用 [MIT License](LICENSE)。第三方供应商图标的来源与说明见 [public/providers/NOTICE.md](public/providers/NOTICE.md)。
+[MIT](LICENSE). XY Switch is an independent project, not an official OpenAI, Anthropic, Google, or upstream-model client. Provider icons retain their respective owners’ rights; see [asset notice](public/providers/NOTICE.md).

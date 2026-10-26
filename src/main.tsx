@@ -5,6 +5,8 @@ import App from "./App";
 import { FrontendErrorBoundary } from "./components/FrontendErrorBoundary";
 import { ProviderModelQaHost } from "./components/ProviderModelQaHost";
 import "./design/index.css";
+import { initializeLanguage } from "./i18n/language";
+void initializeLanguage();
 
 const client = new QueryClient();
 const qaProviderModels = import.meta.env.DEV && new URLSearchParams(window.location.search).get("qa") === "provider-models";

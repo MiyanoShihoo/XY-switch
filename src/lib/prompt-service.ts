@@ -1,3 +1,4 @@
+import { t } from "../i18n/language";
 import { invoke } from "@tauri-apps/api/core";
 import type { Prompt } from "../types/prompt";
 
@@ -21,16 +22,16 @@ export async function loadPrompts(): Promise<Prompt[]> {
 }
 
 export async function savePrompt(prompt: Prompt): Promise<void> {
-  if (!isDesktopRuntime()) throw new Error("浏览器预览模式不能修改提示词");
+  if (!isDesktopRuntime()) throw new Error(t("浏览器预览模式不能修改提示词"));
   await invoke("save_prompt", { prompt });
 }
 
 export async function deletePrompt(id: string): Promise<void> {
-  if (!isDesktopRuntime()) throw new Error("浏览器预览模式不能删除提示词");
+  if (!isDesktopRuntime()) throw new Error(t("浏览器预览模式不能删除提示词"));
   await invoke("delete_prompt", { id });
 }
 
 export async function setPromptEnabled(id: string, enabled: boolean): Promise<void> {
-  if (!isDesktopRuntime()) throw new Error("浏览器预览模式不能切换提示词");
+  if (!isDesktopRuntime()) throw new Error(t("浏览器预览模式不能切换提示词"));
   await invoke("set_prompt_enabled", { id, enabled });
 }

@@ -1,10 +1,11 @@
+import { t } from "../i18n/language";
 import type { SkillImportResult } from "../types/skill";
 import { errorText } from "./error";
 
 export function skillImportMessage(results: SkillImportResult[]): string {
   const added = results.reduce((sum, result) => sum + result.added, 0);
   const repeated = results.reduce((sum, result) => sum + result.alreadyImported, 0);
-  return "新增 " + added + " 个技能引用" + (repeated ? "，" + repeated + " 个已导入项已跳过" : "") + "；源文件未修改";
+  return t("已新增 {added} 个技能引用；已跳过 {repeated} 个已导入项；源文件未修改", { added, repeated });
 }
 
 /** Process every dropped folder; one invalid folder must not discard the rest. */
@@ -20,6 +21,6 @@ export async function importSkillFolders(paths: string[], importFolder: (path: s
       warnings.push(path + "：" + errorText(error));
     }
   }
-  if (!results.length) throw new Error(warnings.join("；") || "没有可导入的文件夹");
+  if (!results.length) throw new Error(warnings.join("；") || t("没有可导入的文件夹"));
   return { results, warnings };
 }

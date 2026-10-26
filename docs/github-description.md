@@ -1,23 +1,23 @@
-# GitHub 仓库信息
+# GitHub repository metadata
 
-| 字段 | 内容 |
-| --- | --- |
-| 所有者 | `MiyanoShihoo` |
-| 仓库名称 | `XY-switch` |
-| 应用名称 | XY Switch |
-| 仓库 | https://github.com/MiyanoShihoo/XY-switch |
-| 许可证 | MIT |
+[English README](../README.md) · [中文说明](../README.zh-CN.md)
 
-## 简介（适用于 GitHub About）
+- Repository: `MiyanoShihoo/XY-switch`
+- Product: **XY Switch**
+- License: **MIT**
 
-基于 Tauri 2、Rust 和 React 的 AI 配置管理工具，统一管理供应商、模型、MCP、Skills、提示词与本地协议代理，支持用量审计和模型响应核验。
+## About description
 
-## 主题
+Local AI configuration and protocol-routing workbench with English/Chinese UI: providers, model mappings, MCP, prompts, opt-in Skills, usage and model-response evidence. Built with Tauri, Rust and React.
 
-`tauri` `rust` `react` `typescript` `ai-tools` `mcp` `openai-compatible` `windows` `linux` `ios`
+中文简介：本地 AI 配置与协议路由工作台，支持中英文界面，管理供应商、模型映射、MCP、本地提示词及按需启用的 Skills，并查看用量与模型响应证据。
 
-## 发布约定
+## Topics
 
-源码保存在 Git 仓库；经过验证的安装包和校验和放在 Releases。iOS 模拟器归档必须标注 Simulator，不得作为真机 IPA 发布。真机包通过独立的签名工作流构建。
+`tauri` `rust` `react` `typescript` `ai-tools` `mcp` `openai-compatible` `i18n` `windows` `linux` `macos` `android` `ios`
 
-仓库中的日期性验证记录是历史快照；请以对应版本的发布说明和 Actions 结果确认实际验证范围。不要上传数据库、API Key、个人配置、签名证书、运行日志或本机测试产物。
+## Publication contract
+
+Publish reviewed source to the repository and verified packages/checksums to Releases. Bind the packages, native screenshots and verification report to one commit and one successful six-job Actions run. A simulator archive must be labeled **iOS Simulator**, never offered as an iPhone IPA.
+
+Do not publish credentials, databases, personal client configuration, signing keys/certificates, local diagnostics or browser profiles. Dated validation documents describe their own snapshot. See each release's report for actual tests and signing limits.

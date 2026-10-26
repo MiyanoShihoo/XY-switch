@@ -1,3 +1,4 @@
+import { t } from "../i18n/language";
 import { DEFAULT_PROVIDER_ICON } from "./providers";
 import type { Provider, ProviderAdvancedConfig } from "../types/provider";
 
@@ -16,7 +17,7 @@ export function duplicateProvider(source: Provider, providers: Provider[]): Prov
   const ids = new Set(providers.map((provider) => provider.id.toLowerCase()));
   const names = new Set(providers.map((provider) => provider.name.toLowerCase()));
   const baseId = `${source.id}-copy`;
-  const baseName = `${source.name} 副本`;
+  const baseName = t("{value0} 副本", { value0: source.name });
   let id = baseId;
   let name = baseName;
   let suffix = 2;

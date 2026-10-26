@@ -1,3 +1,4 @@
+import { t } from "../i18n/language";
 import { invoke } from "@tauri-apps/api/core";
 
 /**
@@ -35,12 +36,12 @@ function isDesktopRuntime(): boolean {
 /** 保存前先在前端拦一遍，错误提示比后端的更贴近控件。 */
 export function validatePreferences(preferences: AppPreferences): string {
   const timeout = preferences.requestTimeoutSecs;
-  if (!Number.isInteger(timeout)) return "请求超时必须是整数秒";
+  if (!Number.isInteger(timeout)) return t("请求超时必须是整数秒");
   if (timeout < minRequestTimeoutSecs || timeout > maxRequestTimeoutSecs) {
-    return `请求超时必须在 ${minRequestTimeoutSecs} 到 ${maxRequestTimeoutSecs} 秒之间`;
+    return t("请求超时必须在 {value0} 到 {value1} 秒之间", { value0: minRequestTimeoutSecs, value1: maxRequestTimeoutSecs });
   }
   if (!logLevels.includes(preferences.logLevel)) {
-    return `未知的日志等级：${preferences.logLevel}`;
+    return t("未知的日志等级：{value0}", { value0: preferences.logLevel });
   }
   return "";
 }
@@ -53,7 +54,7 @@ export async function loadPreferences(): Promise<AppPreferences> {
 export async function savePreferences(
   preferences: AppPreferences,
 ): Promise<AppPreferences> {
-  if (!isDesktopRuntime()) throw new Error("浏览器预览模式不能修改应用偏好");
+  if (!isDesktopRuntime()) throw new Error(t("浏览器预览模式不能修改应用偏好"));
   return invoke<AppPreferences>("save_app_preferences", { preferences });
 }
 
@@ -68,6 +69,6 @@ export async function loadAutostart(): Promise<boolean> {
 
 /** 返回写入后回读的真实状态，被安全软件拦掉时会是 false。 */
 export async function saveAutostart(enabled: boolean): Promise<boolean> {
-  if (!isDesktopRuntime()) throw new Error("浏览器预览模式不能修改开机自启");
+  if (!isDesktopRuntime()) throw new Error(t("浏览器预览模式不能修改开机自启"));
   return invoke<boolean>("set_autostart_enabled", { enabled });
 }

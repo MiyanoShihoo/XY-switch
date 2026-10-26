@@ -1,3 +1,4 @@
+import { t } from "../i18n/language";
 import { invoke } from "@tauri-apps/api/core";
 import type { InstalledSkill, DiscoverableSkill, SkillUpdateInfo, SkillImportSettings, SkillCatalog, SkillImportResult } from "../types/skill";
 
@@ -6,7 +7,7 @@ import type { InstalledSkill, DiscoverableSkill, SkillUpdateInfo, SkillImportSet
 const IS_PREVIEW = typeof window === "undefined" || !("__TAURI_INTERNALS__" in window);
 
 function previewUnavailable(): never {
-  throw new Error("当前为浏览器预览模式，技能操作需要在桌面端运行");
+  throw new Error(t("当前为浏览器预览模式，技能操作需要在桌面端运行"));
 }
 
 export async function listInstalledSkills(): Promise<InstalledSkill[]> {

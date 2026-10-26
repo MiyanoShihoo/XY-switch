@@ -1,4 +1,13 @@
-# 更新日志
+# Changelog / 更新日志
+
+## 1.1.0 — 2026-10-20
+
+- Add English/Simplified Chinese interfaces, system-language preference, native persistence and localized desktop tray.
+- Preserve unsaved page state during language changes; keep user content and raw diagnostics unchanged; retain the old language if persistence fails.
+- Add English/Chinese repository documentation and a self-contained bilingual website; correct overstated prompt, session, tray and client-takeover claims.
+- Add localization catalog/runtime tests and bilingual UI regression coverage; align package/native versions.
+- 新增中英文界面、系统语言偏好、原生持久化与托盘翻译；完善双语仓库文档和项目页，明确实际能力与签名边界。
+- Release evidence and distribution limits: [1.1.0 notes](docs/release-notes-1.1.0.md). Historical entries below describe their own snapshots.
 
 ## 1.0.0 多平台交付 — 2026-10-18
 

@@ -1,8 +1,10 @@
+import { useLanguage, t } from "../i18n/language";
 import { useId, useRef } from "react";
 import { cx } from "./utils";
 export interface TabItem { value: string; label: string; count?: number; disabled?: boolean; }
 interface TabsProps { items: TabItem[]; value: string; onChange: (value: string) => void; className?: string; label?: string; id?: string; }
-export function Tabs({ items, value, onChange, className, label = "页面选项", id }: TabsProps) {
+export function Tabs({ items, value, onChange, className, label = t("页面选项"), id }: TabsProps) {
+  useLanguage();
   const generated = useId(), listRef = useRef<HTMLDivElement>(null), prefix = id ?? generated;
   const choose = (item: TabItem) => { onChange(item.value); listRef.current?.querySelector<HTMLButtonElement>('[data-value="' + item.value + '"]')?.focus(); };
   return <div ref={listRef} className={cx("xy-ui-tabs", className)} role="tablist" aria-label={label}>

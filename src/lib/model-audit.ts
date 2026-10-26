@@ -1,24 +1,25 @@
+import { t, localeTag, localizedLabels } from "../i18n/language";
 import type { AuditRecord, ModelAuditStatus, ReferenceCandidate, ReferenceReport } from "../types/model-audit";
 import { isCompleteVerificationResponse } from "./model-verification";
 
-export const MODEL_STATUS_LABELS: Record<ModelAuditStatus, string> = {
+export const MODEL_STATUS_LABELS: Record<ModelAuditStatus, string> = localizedLabels({
   matched: "自报一致",
   mismatched: "自报不一致",
   conflicting: "单次响应声明冲突",
   unknown: "无法判断",
-};
+});
 
-export const AUDIT_FLAG_LABELS: Record<string, string> = {
+export const AUDIT_FLAG_LABELS: Record<string, string> = localizedLabels({
   "inv.byte_bound": "输出 token 超出字节上界",
   "inv.usage_selfcontradictory": "用量总数不自洽",
   "inv.model_mismatch": "上游自报模型不一致",
   "inv.model_changed": "同一响应出现不同模型声明",
   "inv.max_tokens_violated": "输出超出请求 token 上限",
-};
+});
 
 export const HARD_AUDIT_FLAGS = new Set(["inv.byte_bound", "inv.usage_selfcontradictory", "inv.max_tokens_violated"]);
 
-const GAP_LABELS: Record<string, string> = {
+const GAP_LABELS: Record<string, string> = localizedLabels({
   "byte_bound.reasoning_unknown": "未上报推理 token，无法排除隐藏推理",
   "byte_bound.output_missing": "缺少输出 token 数",
   "byte_bound.payload_unmeasured": "工具调用载荷未完整测量",
@@ -43,7 +44,7 @@ const GAP_LABELS: Record<string, string> = {
   "scv.tools_present_or_unknown": "存在工具载荷或载荷未知，无法只按文本帧比较",
   "scv.no_text": "没有可见文本，无法计算整段比率",
   "scv.bytes_missing": "缺少可见文本 UTF-8 字节数，无法计算整段比率",
-};
+});
 
 /** Compare only evidence belonging to this response, including legacy records. */
 export function reportedResponseModels(audit?: AuditRecord | null): string[] {
@@ -72,7 +73,7 @@ export function modelAuditStatus(audit?: AuditRecord | null): ModelAuditStatus {
 }
 
 export function auditGapLabel(id: string): string {
-  return GAP_LABELS[id] ?? `未完成检查：${id}`;
+  return GAP_LABELS[id] ?? t("未完成检查：{value0}", { value0: id });
 }
 
 export function auditEvidenceState(audit?: AuditRecord | null): "evidence" | "untested" | "clear" {
@@ -83,37 +84,37 @@ export function auditEvidenceState(audit?: AuditRecord | null): "evidence" | "un
 
 export function byteBoundExplanation(audit: AuditRecord): string {
   const o = audit.observation;
-  const value = (n: number | null | undefined) => n == null ? "未测量" : n.toLocaleString();
-  return `输出 ${value(o.outputTokens)} token − 推理 ${value(o.reasoningTokens)} token；可见文本 ${value(o.visibleOutputBytes)} UTF-8 字节 + 工具载荷 ${value(o.toolPayloadBytes)} 字节 + 特殊 token 余量 4。`;
+  const value = (n: number | null | undefined) => n == null ? t("未测量") : n.toLocaleString(localeTag());
+  return t("输出 {value0} token − 推理 {value1} token；可见文本 {value2} UTF-8 字节 + 工具载荷 {value3} 字节 + 特殊 token 余量 4。", { value0: value(o.outputTokens), value1: value(o.reasoningTokens), value2: value(o.visibleOutputBytes), value3: value(o.toolPayloadBytes) });
 }
 
 /** Validate the entire distribution. Never renormalize away the outside class. */
 export function normalizeReferenceReport(raw: unknown): ReferenceReport {
-  if (!raw || typeof raw !== "object") throw new Error("参照分析返回格式无效");
+  if (!raw || typeof raw !== "object") throw new Error(t("参照分析返回格式无效"));
   const report = raw as Partial<ReferenceReport>;
-  if (report.status !== "ranked" && report.status !== "untested") throw new Error("参照分析缺少有效状态");
+  if (report.status !== "ranked" && report.status !== "untested") throw new Error(t("参照分析缺少有效状态"));
   if (!Array.isArray(report.candidates) || !Array.isArray(report.comparedGroups) || !Array.isArray(report.limitations)) {
-    throw new Error("参照分析缺少候选、比较组或限制说明");
+    throw new Error(t("参照分析缺少候选、比较组或限制说明"));
   }
   if (!report.comparedGroups.every((v) => typeof v === "string") || !report.limitations.every((v) => typeof v === "string")) {
-    throw new Error("参照分析说明格式无效");
+    throw new Error(t("参照分析说明格式无效"));
   }
   const candidates = report.candidates.map((candidate): ReferenceCandidate => {
     if (!candidate || typeof candidate.model !== "string" || typeof candidate.outside !== "boolean"
       || !Number.isFinite(candidate.probability) || candidate.probability < 0 || candidate.probability > 1
       || !Number.isInteger(candidate.comparable) || candidate.comparable < 0
       || !Number.isInteger(candidate.matched) || candidate.matched < 0 || candidate.matched > candidate.comparable) {
-      throw new Error("参照分析候选或概率无效");
+      throw new Error(t("参照分析候选或概率无效"));
     }
     return { ...candidate };
   });
   if (report.status === "ranked") {
     const total = candidates.reduce((sum, candidate) => sum + candidate.probability, 0);
     if (candidates.filter((candidate) => candidate.outside).length !== 1 || Math.abs(total - 1) > 0.00001) {
-      throw new Error("参照分析概率分布不完整，必须保留唯一库外候选且概率总和为 1");
+      throw new Error(t("参照分析概率分布不完整，必须保留唯一库外候选且概率总和为 1"));
     }
   } else if (candidates.length > 0) {
-    throw new Error("未测到时不能显示候选概率");
+    throw new Error(t("未测到时不能显示候选概率"));
   }
   return { status: report.status, candidates: candidates.sort((a, b) => b.probability - a.probability), comparedGroups: report.comparedGroups, limitations: report.limitations };
 }

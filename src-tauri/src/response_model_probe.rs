@@ -84,7 +84,7 @@ async fn guarded_probe(db:&Database,provider:&Provider,key:&str,model:&str,anoma
         let current=db.get_provider(&provider.id)?.ok_or("provider_missing")?;
         let current_capture=db.verification.capture(&current,key,proxy::response_model_protocol(&current)?,model).ok_or("route_changed")?;
         if current_capture.context_key!=reservation.capture.context_key {return Err("route_changed".into());}
-        let client=reqwest::Client::builder().connect_timeout(Duration::from_secs(reservation.settings.timeout_seconds.min(10)))
+        let client=crate::network::client_builder().connect_timeout(Duration::from_secs(reservation.settings.timeout_seconds.min(10)))
             .timeout(Duration::from_secs(reservation.settings.timeout_seconds)).redirect(reqwest::redirect::Policy::none())
             .retry(reqwest::retry::never())
             .build().map_err(|_|"probe_client_unavailable")?;
@@ -308,7 +308,7 @@ mod tests {
         db
     }
     fn client() -> reqwest::Client {
-        reqwest::Client::builder()
+        crate::network::client_builder()
             .no_proxy()
             .timeout(Duration::from_secs(2))
             .redirect(reqwest::redirect::Policy::none())

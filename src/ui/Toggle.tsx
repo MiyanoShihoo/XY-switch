@@ -1,3 +1,4 @@
+import { useLanguage } from "../i18n/language";
 import type { ButtonHTMLAttributes } from "react";
 import { cx } from "./utils";
 
@@ -8,6 +9,7 @@ interface ToggleProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "onC
 }
 
 export function Toggle({ checked, onCheckedChange, className, type = "button", onClick, ...props }: ToggleProps) {
+  useLanguage();
   return (
     <button
       {...props}

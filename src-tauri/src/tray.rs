@@ -57,6 +57,7 @@ fn build_provider_submenu<M: Manager<tauri::Wry>>(
     manager: &M,
     providers: &[Provider],
     current_id: Option<&str>,
+    language: &str,
 ) -> tauri::Result<Option<Submenu<tauri::Wry>>> {
     if providers.is_empty() {
         return Ok(None);
@@ -84,7 +85,7 @@ fn build_provider_submenu<M: Manager<tauri::Wry>>(
         .collect();
     Ok(Some(Submenu::with_items(
         manager,
-        "供应商",
+        crate::interface_language::label(language, "供应商", "Providers"),
         true,
         &item_refs,
     )?))
@@ -98,16 +99,17 @@ fn build_menu<M: Manager<tauri::Wry>>(
     manager: &M,
     database: &Database,
 ) -> Result<Menu<tauri::Wry>, String> {
+    let language = crate::interface_language::resolved(database);
     let providers = enabled_providers(database.list_providers()?);
     let current = database.current_provider()?;
     let current_id = current.as_ref().map(|provider| provider.id.as_str());
 
-    let show = MenuItem::with_id(manager, SHOW_WINDOW_ID, "显示主窗口", true, None::<&str>)
+    let show = MenuItem::with_id(manager, SHOW_WINDOW_ID, crate::interface_language::label(&language, "显示主窗口", "Show main window"), true, None::<&str>)
         .map_err(|error| error.to_string())?;
-    let quit = MenuItem::with_id(manager, QUIT_ID, "退出 XY Switch", true, None::<&str>)
+    let quit = MenuItem::with_id(manager, QUIT_ID, crate::interface_language::label(&language, "退出 XY Switch", "Quit XY Switch"), true, None::<&str>)
         .map_err(|error| error.to_string())?;
 
-    let submenus = build_provider_submenu(manager, &providers, current_id)
+    let submenus = build_provider_submenu(manager, &providers, current_id, &language)
         .map_err(|error| error.to_string())?;
 
     let mut menu_items: Vec<&dyn IsMenuItem<tauri::Wry>> = Vec::new();

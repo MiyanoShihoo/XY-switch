@@ -120,7 +120,7 @@ impl ProxyState {
         // 客户端在这里等的是上游出第一个 token 到最后一个 token 的全过程，
         // 长上下文 + 高推理强度时 180 秒真的会不够，所以这项必须可调。
         let timeout = preferences::load(&database).request_timeout();
-        let client = reqwest::Client::builder()
+        let client = crate::network::client_builder()
             .connect_timeout(Duration::from_secs(10))
             .timeout(timeout)
             .build()
@@ -1717,7 +1717,7 @@ mod tests {
         let (database, path) = test_database();
         let state = ProxyState {
             database: database.clone(),
-            client: reqwest::Client::new(),
+            client: crate::network::test_client(),
             api_keys: Arc::new(FakeApiKeyProvider),
             local_addr: None,
         };
@@ -1727,7 +1727,7 @@ mod tests {
         let router = router_with_targets(state, &["codex".to_string()]);
         let task = tokio::spawn(async move { axum::serve(listener, router).await });
 
-        let client = reqwest::Client::new();
+        let client = crate::network::test_client();
         // 探活和模型列表不受路由目标影响，否则客户端会误判代理没起来。
         let health = client
             .get(format!("http://{address}/health"))
@@ -1869,7 +1869,7 @@ mod tests {
 
             let api_key = credentials.get(&selected.id).unwrap().unwrap();
             let request = request_builder(
-                &reqwest::Client::new(),
+                &crate::network::test_client(),
                 &selected,
                 &api_key,
                 build_upstream_url(&selected.endpoint, "/v1/chat/completions").unwrap(),
@@ -2150,7 +2150,7 @@ mod tests {
         assert_eq!(prepared.payload["temperature"], 0.2);
 
         let request = request_builder(
-            &reqwest::Client::new(),
+            &crate::network::test_client(),
             &provider,
             "secret",
             prepared.url,
@@ -2274,7 +2274,7 @@ mod tests {
             .insert("X-Workspace".to_string(), "xy".to_string());
 
         let request = request_builder(
-            &reqwest::Client::new(),
+            &crate::network::test_client(),
             &provider,
             "selected-xai-token",
             reqwest::Url::parse("https://api.x.ai/v1/chat/completions").unwrap(),
@@ -2350,7 +2350,7 @@ mod tests {
         database.set_current_provider("mock").unwrap();
         let state = ProxyState {
             database: database.clone(),
-            client: reqwest::Client::new(),
+            client: crate::network::test_client(),
             api_keys: Arc::new(FakeApiKeyProvider),
             local_addr: None,
         };
@@ -2361,7 +2361,7 @@ mod tests {
                 async move { axum::serve(proxy_listener, router_with_state(state)).await },
             );
 
-        let response = reqwest::Client::new()
+        let response = crate::network::test_client()
             .post(format!("http://{proxy_address}/v1/chat/completions"))
             .json(&json!({"model":"ignored", "messages":[]}))
             .send()
@@ -2372,7 +2372,7 @@ mod tests {
         assert_eq!(body["model"], "configured-model");
         assert_eq!(body["ok"], true);
 
-        let responses = reqwest::Client::new()
+        let responses = crate::network::test_client()
             .post(format!("http://{proxy_address}/v1/responses"))
             .json(&json!({"model":"ignored", "input":"hello"}))
             .send()
@@ -2384,7 +2384,7 @@ mod tests {
             "configured-model"
         );
 
-        let stream = reqwest::Client::new()
+        let stream = crate::network::test_client()
             .post(format!("http://{proxy_address}/v1/chat/completions"))
             .json(&json!({"model":"ignored", "messages":[], "stream":true}))
             .send()
@@ -2517,7 +2517,7 @@ mod tests {
         }
         let state = ProxyState {
             database: database.clone(),
-            client: reqwest::Client::new(),
+            client: crate::network::test_client(),
             api_keys: Arc::new(FakeApiKeyProvider),
             local_addr: None,
         };
@@ -2531,7 +2531,7 @@ mod tests {
         database
             .set_current_provider("anthropic-codex-mock")
             .unwrap();
-        let anthropic_response = reqwest::Client::new()
+        let anthropic_response = crate::network::test_client()
             .post(format!("http://{proxy_address}/v1/chat/completions"))
             .json(&json!({
                 "model":"ignored",
@@ -2549,7 +2549,7 @@ mod tests {
         );
         assert_eq!(anthropic_body["usage"]["total_tokens"], 6);
 
-        let anthropic_stream = reqwest::Client::new()
+        let anthropic_stream = crate::network::test_client()
             .post(format!("http://{proxy_address}/v1/chat/completions"))
             .json(&json!({
                 "model":"ignored", "stream":true,
@@ -2569,7 +2569,7 @@ mod tests {
         database
             .set_current_provider("anthropic-gemini-mock")
             .unwrap();
-        let gemini_entry = reqwest::Client::new()
+        let gemini_entry = crate::network::test_client()
             .post(format!(
                 "http://{proxy_address}/v1beta/models/client-model:generateContent"
             ))
@@ -2587,7 +2587,7 @@ mod tests {
             "anthropic-ok"
         );
 
-        let gemini_entry_stream = reqwest::Client::new()
+        let gemini_entry_stream = crate::network::test_client()
             .post(format!(
                 "http://{proxy_address}/v1beta/models/client-model:streamGenerateContent"
             ))
@@ -2678,7 +2678,7 @@ mod tests {
         database.set_current_provider("primary").unwrap();
         let state = ProxyState {
             database: database.clone(),
-            client: reqwest::Client::new(),
+            client: crate::network::test_client(),
             api_keys: Arc::new(FakeApiKeyProvider),
             local_addr: None,
         };
@@ -2690,7 +2690,7 @@ mod tests {
             );
 
         for _ in 0..4 {
-            let response = reqwest::Client::new()
+            let response = crate::network::test_client()
                 .post(format!("http://{proxy_address}/v1/chat/completions"))
                 .json(&json!({"model":"ignored", "messages":[{"role":"user", "content":"hello"}]}))
                 .send()

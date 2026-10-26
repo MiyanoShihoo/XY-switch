@@ -1,6 +1,7 @@
+import { t, localizedLabels } from "../i18n/language";
 import type { ShadowAuditSetting, ShadowAuditStatus } from "../types/model-audit";
 
-const REASONS: Record<string, string> = {
+const REASONS: Record<string, string> = localizedLabels({
   "shadow.disabled": "未启用影子采样",
   "shadow.ineligible_history": "历史不符合只追加的纯文本对话条件",
   "shadow.incomplete": "响应未完整结束",
@@ -40,10 +41,10 @@ const REASONS: Record<string, string> = {
   "shadow.residuals_unstable": "残差不稳定，无法解释为固定开销",
   "shadow.intercept_unstable": "截距随样本变化，固定角色开销假设不成立",
   "shadow.slope_uncertain": "斜率区间不足以区分稳定偏离",
-};
+});
 
 export function shadowReasonLabel(reason: string): string {
-  return REASONS[reason] ?? `未完成采样或比较：${reason}`;
+  return REASONS[reason] ?? t("未完成采样或比较：{value0}", { value0: reason });
 }
 
 export function shadowSettingRequest(setting: ShadowAuditSetting | ShadowAuditStatus): ShadowAuditSetting {

@@ -278,7 +278,7 @@ pub async fn discover_provider_models(
             .ok_or_else(|| "请先配置 API Key".to_string())?,
     };
     let urls = model_list_urls(&request.endpoint, discovery_type)?;
-    let client = reqwest::Client::builder()
+    let client = crate::network::client_builder()
         .connect_timeout(Duration::from_secs(10))
         .timeout(Duration::from_secs(30))
         .build()

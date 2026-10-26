@@ -1,10 +1,12 @@
+import { useLanguage, t } from "../i18n/language";
 import { useId, useRef, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { IconButton } from "./IconButton";
 import { useDialogFocus } from "./useDialogFocus";
 
 interface DrawerProps { open: boolean; title: string; description?: string; side?: "left" | "right"; closeLabel?: string; onClose: () => void; children: ReactNode; footer?: ReactNode; busy?: boolean; }
-export function Drawer({ open, title, description, side = "right", closeLabel = "关闭面板", onClose, children, footer, busy = false }: DrawerProps) {
+export function Drawer({ open, title, description, side = "right", closeLabel = t("关闭面板"), onClose, children, footer, busy = false }: DrawerProps) {
+  useLanguage();
   const id = useId(), panelRef = useRef<HTMLDivElement>(null);
   useDialogFocus(open, panelRef, onClose, busy);
   if (!open) return null;

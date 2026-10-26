@@ -1,3 +1,4 @@
+import { useLanguage, t } from "../i18n/language";
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import { GripVertical } from "lucide-react";
 import { DEFAULT_INSPECTOR_WIDTH, inspectorWidthForKey, parseInspectorWidth, splitWorkspaceLayout } from "../lib/split-workspace";
@@ -27,6 +28,7 @@ function loadWidth(key: string) {
 }
 
 export function ResizableWorkspace({ storageKey, compact, primary, secondary, primaryLabel, secondaryLabel, className = "" }: ResizableWorkspaceProps) {
+  useLanguage();
   const id = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<Drag | null>(null);
@@ -117,18 +119,18 @@ export function ResizableWorkspace({ storageKey, compact, primary, secondary, pr
   return <div ref={rootRef} className={"split-workspace xy-ui-resizable-workspace " + className} data-compact={compact} data-resizing={dragging || undefined} style={style}>
     <div id={id + "-primary"} className="split-workspace__list xy-ui-resizable-workspace__primary" role="region" aria-label={primaryLabel} tabIndex={0}>{primary}</div>
     {!compact && <>
-      <div className="xy-ui-resizable-workspace__handle" role="separator" aria-label={"调整" + primaryLabel + "与" + secondaryLabel + "宽度"}
+      <div className="xy-ui-resizable-workspace__handle" role="separator" aria-label={t("调整") + primaryLabel + t("与") + secondaryLabel + t("宽度")}
         aria-orientation="vertical" aria-controls={id + "-secondary"} aria-describedby={id + "-help"}
         aria-valuemin={percent(layout.minimum)} aria-valuemax={percent(layout.maximum)} aria-valuenow={percent(layout.inspectorWidth)}
-        aria-valuetext={secondaryLabel + "宽度 " + Math.round(layout.inspectorWidth) + " 像素"} aria-disabled={!canResize || undefined}
-        tabIndex={canResize ? 0 : -1} title="左右拖动调整宽度；双击恢复默认。也可使用方向键调整，Enter 复位。"
+        aria-valuetext={secondaryLabel + t("宽度 ") + Math.round(layout.inspectorWidth) + t(" 像素")} aria-disabled={!canResize || undefined}
+        tabIndex={canResize ? 0 : -1} title={t("左右拖动调整宽度；双击恢复默认。也可使用方向键调整，Enter 复位。")}
         onPointerDown={beginDrag} onPointerMove={moveDrag} onPointerUp={event => endDrag(event, false)}
         onPointerCancel={event => endDrag(event, true)} onLostPointerCapture={event => endDrag(event, true)}
         onKeyDown={onKeyDown} onDoubleClick={reset}>
         <GripVertical size={12} aria-hidden="true" />
       </div>
       <div id={id + "-secondary"} className="xy-ui-resizable-workspace__secondary">{secondary}</div>
-      <span id={id + "-help"} className="sr-only">拖动分隔线调整左右宽度。左右方向键微调，Shift 加速，Home 和 End 移到边界；双击或 Enter 恢复默认。Escape 取消本次拖动。宽度自动保存，面板内可横向滚动。</span>
+      <span id={id + "-help"} className="sr-only">{t("拖动分隔线调整左右宽度。左右方向键微调，Shift 加速，Home 和 End 移到边界；双击或 Enter 恢复默认。Escape 取消本次拖动。宽度自动保存，面板内可横向滚动。")}</span>
     </>}
   </div>;
 }

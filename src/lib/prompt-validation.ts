@@ -1,3 +1,4 @@
+import { t } from "../i18n/language";
 export type PromptDraft = {
   name: string;
   content: string;
@@ -22,18 +23,18 @@ export function validatePromptDraft(draft: PromptDraft): PromptValidationErrors 
   const normalized = normalizePromptDraft(draft);
   const errors: PromptValidationErrors = {};
 
-  if (!normalized.name) errors.name = "请输入提示词名称";
+  if (!normalized.name) errors.name = t("请输入提示词名称");
   else if (normalized.name.length > PROMPT_NAME_MAX_LENGTH) {
-    errors.name = `提示词名称不能超过 ${PROMPT_NAME_MAX_LENGTH} 个字符`;
+    errors.name = t("提示词名称不能超过 {value0} 个字符", { value0: PROMPT_NAME_MAX_LENGTH });
   }
 
-  if (!normalized.content) errors.content = "请输入提示词内容";
+  if (!normalized.content) errors.content = t("请输入提示词内容");
   else if (normalized.content.length > PROMPT_CONTENT_MAX_LENGTH) {
-    errors.content = `提示词内容不能超过 ${PROMPT_CONTENT_MAX_LENGTH} 个字符`;
+    errors.content = t("提示词内容不能超过 {value0} 个字符", { value0: PROMPT_CONTENT_MAX_LENGTH });
   }
 
   if ((normalized.description?.length ?? 0) > PROMPT_DESCRIPTION_MAX_LENGTH) {
-    errors.description = `描述不能超过 ${PROMPT_DESCRIPTION_MAX_LENGTH} 个字符`;
+    errors.description = t("描述不能超过 {value0} 个字符", { value0: PROMPT_DESCRIPTION_MAX_LENGTH });
   }
 
   return errors;

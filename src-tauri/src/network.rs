@@ -1,5 +1,18 @@
 use std::error::Error;
 
+/// Production honors system/environment proxies; HTTP tests use isolated local servers.
+pub(crate) fn client_builder() -> reqwest::ClientBuilder {
+    let builder = reqwest::Client::builder();
+    #[cfg(test)]
+    let builder = builder.no_proxy();
+    builder
+}
+
+#[cfg(test)]
+pub(crate) fn test_client() -> reqwest::Client {
+    client_builder().build().expect("isolated HTTP test client")
+}
+
 /// Keep the transport cause without including request URLs or credentials.
 pub(crate) fn describe_error(error: reqwest::Error) -> String {
     let hint = if error.is_timeout() {

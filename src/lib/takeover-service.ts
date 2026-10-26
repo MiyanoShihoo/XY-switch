@@ -1,3 +1,4 @@
+import { t } from "../i18n/language";
 import { invoke } from "@tauri-apps/api/core";
 import type { AppTakeoverStatus, ManagedApp } from "../types/takeover";
 
@@ -20,6 +21,6 @@ export async function setAppTakeoverEnabled(
   app: ManagedApp,
   enabled: boolean,
 ): Promise<AppTakeoverStatus> {
-  if (!isDesktopRuntime()) throw new Error("浏览器预览模式不能修改 CLI 配置");
+  if (!isDesktopRuntime()) throw new Error(t("浏览器预览模式不能修改 CLI 配置"));
   return invoke<AppTakeoverStatus>("set_app_takeover_enabled", { app, enabled });
 }

@@ -1,3 +1,4 @@
+import { t } from "../i18n/language";
 import { invoke } from "@tauri-apps/api/core";
 import packageMetadata from "../../package.json";
 
@@ -24,7 +25,7 @@ export const PROJECT_REPOSITORY_URL = repositoryUrlFromMetadata(
 
 function requireRepositoryUrl(repository: string): string {
   const url = repositoryUrlFromMetadata(repository);
-  if (!url) throw new Error("仓库地址无效，仅支持不含凭据的 HTTP/HTTPS 项目地址。");
+  if (!url) throw new Error(t("仓库地址无效，仅支持不含凭据的 HTTP/HTTPS 项目地址。"));
   return url;
 }
 
@@ -36,7 +37,7 @@ export async function openProjectRepository(repository: string): Promise<void> {
 export async function copyProjectRepository(repository: string): Promise<void> {
   const url = requireRepositoryUrl(repository);
   if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
-    throw new Error("当前环境无法访问剪贴板，请手动复制仓库地址。");
+    throw new Error(t("当前环境无法访问剪贴板，请手动复制仓库地址。"));
   }
   await navigator.clipboard.writeText(url);
 }

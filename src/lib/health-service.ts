@@ -1,3 +1,4 @@
+import { t } from "../i18n/language";
 import { invoke } from "@tauri-apps/api/core";
 import type { ProviderHealth, RequestSummary } from "../types/provider";
 
@@ -22,11 +23,11 @@ export async function loadRequestSummary(): Promise<RequestSummary> {
 }
 
 export async function testProviderHealth(providerId: string): Promise<ProviderHealth> {
-  if (!isDesktopRuntime()) throw new Error("测速功能仅在桌面应用中可用");
+  if (!isDesktopRuntime()) throw new Error(t("测速功能仅在桌面应用中可用"));
   return invoke<ProviderHealth>("test_provider_health", { providerId });
 }
 
 export async function testAllProviderHealth(): Promise<ProviderHealth[]> {
-  if (!isDesktopRuntime()) throw new Error("测速功能仅在桌面应用中可用");
+  if (!isDesktopRuntime()) throw new Error(t("测速功能仅在桌面应用中可用"));
   return invoke<ProviderHealth[]>("test_all_provider_health");
 }

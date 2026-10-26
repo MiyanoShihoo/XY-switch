@@ -1,5 +1,7 @@
 # 多平台构建、验证与分发
 
+[English](packaging-en.md) | 简体中文 · [用户手册](user-guide-zh.md) · [1.1.0 发布说明](release-notes-1.1.0.md)
+
 构建脚本分别处理 Windows、Linux、macOS、Android 与 iOS，不把桌面托盘或跨应用目录权限伪装成移动端功能。版本号来自 `package.json`，桌面打包时检查其与 `src-tauri/tauri.conf.json` 一致。
 
 ## 通用准备
@@ -64,7 +66,7 @@ x64 默认输出：
 - `XY-Switch-<version>-windows-x64.msi`：MSI 安装包。
 - `manifest.json`、`SHA256SUMS.txt`。
 
-应用界面本身为简体中文。Windows ARM64 入口默认只使用 NSIS，不等于该架构已经过当前发布验证。未配置代码签名证书的包是未签名安装包，系统可能提示未知发布者；核对来源和校验和，不通过关闭系统防护解决签名提示。
+应用界面支持简体中文和英文，可在设置中选择跟随系统；语言选择与安装器语言独立。Windows ARM64 入口默认只使用 NSIS，不等于该架构已经过当前发布验证。未配置代码签名证书的包是未签名安装包，系统可能提示未知发布者；核对来源和校验和，不通过关闭系统防护解决签名提示。
 
 凭据往返测试只使用随机测试 ID，并在结束时清理：
 

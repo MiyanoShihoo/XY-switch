@@ -1,7 +1,9 @@
+import { useLanguage } from "../i18n/language";
 import { Children, cloneElement, isValidElement, useId, type ReactElement, type ReactNode } from "react";
 import { cx } from "./utils";
 interface FieldProps { label: string; htmlFor?: string; description?: string; error?: string; required?: boolean; children: ReactNode; className?: string; }
 export function Field({ label, htmlFor, description, error, required = false, children, className }: FieldProps) {
+  useLanguage();
   const generatedId = useId();
   const child = Children.toArray(children)[0];
   const childProps = isValidElement(child) ? child.props as Record<string, unknown> : {};

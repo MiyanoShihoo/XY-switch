@@ -1,3 +1,4 @@
+import { t } from "../i18n/language";
 import type { Provider, ProviderAdvancedConfig, UpstreamFormat } from "../types/provider";
 
 export const DEFAULT_PROVIDER_ICON = "/app-icon.png";

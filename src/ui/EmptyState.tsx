@@ -1,3 +1,4 @@
+import { useLanguage } from "../i18n/language";
 import type { ReactNode } from "react";
 import { Inbox } from "lucide-react";
 import { cx } from "./utils";
@@ -11,6 +12,7 @@ interface EmptyStateProps {
 }
 
 export function EmptyState({ title, description, action, icon = <Inbox size={28} />, className }: EmptyStateProps) {
+  useLanguage();
   return (
     <div className={cx("xy-ui-empty", className)}>
       <span aria-hidden="true">{icon}</span>

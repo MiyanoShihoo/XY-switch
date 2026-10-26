@@ -1,3 +1,4 @@
+import { t } from "../i18n/language";
 import { invoke } from "@tauri-apps/api/core";
 import type { ProxySettings, ProxyStatus } from "../types/proxy";
 
@@ -36,11 +37,11 @@ export async function loadInitialProxyStatus(): Promise<ProxyStatus> {
 }
 
 export async function saveProxySettings(settings: ProxySettings): Promise<ProxyStatus> {
-  if (!isDesktopRuntime()) throw new Error("浏览器预览模式不能修改本地路由");
+  if (!isDesktopRuntime()) throw new Error(t("浏览器预览模式不能修改本地路由"));
   return invoke<ProxyStatus>("save_proxy_settings", { settings });
 }
 
 export async function setProxyEnabled(enabled: boolean): Promise<ProxyStatus> {
-  if (!isDesktopRuntime()) throw new Error("浏览器预览模式不能启动本地路由");
+  if (!isDesktopRuntime()) throw new Error(t("浏览器预览模式不能启动本地路由"));
   return invoke<ProxyStatus>("set_proxy_enabled", { enabled });
 }

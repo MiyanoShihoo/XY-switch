@@ -1,11 +1,15 @@
 // Synthetic UI fixture only; no requests are sent to an upstream service.
-import React from 'react';
+import React, { useState } from 'react';
+import { Button, Field, Input } from '../../src/ui';
+import { t, useLanguage } from '../../src/i18n/language';
+import type { UsageFilter, UsageLogEntry } from '../../src/types/usage';
 import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import '../../src/design/index.css';
 import type { AuditRecord, PassiveAuditGroup, PassiveAuditReport, ShadowAuditReport, ShadowAuditSetting, ShadowAuditStatus } from '../../src/types/model-audit';
 
 const handoffQa = new URLSearchParams(location.search).has('handoff');
+const panelQa = new URLSearchParams(location.search).has('panel');
 
 const observation = { requestedModel: 'premium-model', forwardedModel: 'premium-model', upstreamModel: 'premium-model', inputTokens: 10, outputTokens: 8, totalTokens: 18, reasoningTokens: 0, maxTokens: 32, visibleOutputBytes: 24, toolPayloadBytes: 0, complete: true, textOnly: true, stream: null };
 const audit = { observation, flags: [], gaps: ['scv.no_stream'], modelStatus: 'matched', axes: { digit: 'not_comparable', han: 'not_comparable', space: 'not_comparable' } };
@@ -67,8 +71,9 @@ function shadowReport(): ShadowAuditReport {
 }
 Object.assign(window, { __AUDIT_QA__: fixture, __TAURI_INTERNALS__: { invoke: async (command: string, args?: Record<string, unknown>) => {
   fixture.calls.push({ command, args: args && structuredClone(args) });
+  if (command === 'sync_local_usage') return {codexImported:0,harnessImported:0,warnings:[]};
   if (command === 'get_usage_logs') return entries;
-  if (command === 'get_usage_summary') return { totalRequests:3, successCount:3, totalInputTokens:30, totalOutputTokens:54, totalCacheReadTokens:0, totalCacheCreationTokens:0, totalCostUsd:'0.0003', avgLatencyMs:42 };
+  if (command === 'get_usage_summary') return { unknownCostRequests:0, totalRequests:3, successCount:3, totalInputTokens:30, totalOutputTokens:54, totalCacheReadTokens:0, totalCacheCreationTokens:0, totalCostUsd:'0.0003', avgLatencyMs:42 };
   if (command === 'analyze_model_audit') return report;
   if (command === 'get_shadow_audit_settings') return structuredClone(fixture.settings);
   if (command === 'save_shadow_audit_setting') {
@@ -89,6 +94,24 @@ Object.assign(window, { __AUDIT_QA__: fixture, __TAURI_INTERNALS__: { invoke: as
   throw new Error(`Unexpected fixture command: ${command}`);
 } } });
 const { UsagePage } = await import('../../src/features/usage/UsagePage');
+const { ModelAuditPanel } = await import('../../src/features/usage/ModelAuditPanel');
+
+/** The production page exposes per-response evidence, not the standalone audit panel. */
+function StandaloneAuditQaHost() {
+  useLanguage();
+  const [draft, setDraft] = useState('');
+  const [filter, setFilter] = useState<UsageFilter>({ dateRange: 'today' });
+  return <section className="workspace-page usage-page">
+    <h1>{t('模型审计')}</h1>
+    <p>Synthetic standalone component QA; this panel is not a production UsagePage tab.</p>
+    <form onSubmit={event => { event.preventDefault(); setFilter({ dateRange: 'today', model: draft.trim() || undefined }); }}>
+      <Field label={t('模型 ID')}><Input value={draft} onChange={event => setDraft(event.target.value)} /></Field>
+      <Button type="submit">{t('应用筛选')}</Button>
+    </form>
+    <ModelAuditPanel filter={filter} logs={entries as UsageLogEntry[]} />
+  </section>;
+}
+
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 createRoot(document.getElementById('root')!).render(<main style={{ width: '100%', height: '100vh', overflow: 'auto' }}>
   {handoffQa && <section id="handoff-palette" style={{ padding: '18px 28px', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }} aria-label="合成样式验收图例">
@@ -100,5 +123,5 @@ createRoot(document.getElementById('root')!).render(<main style={{ width: '100%'
     <span className="audit-badge audit-statistical">统计偏离</span>
     <span className="ui-inline-error">表单错误状态</span>
   </section>}
-  <QueryClientProvider client={queryClient}><UsagePage providers={[]} /></QueryClientProvider>
+  <QueryClientProvider client={queryClient}>{panelQa ? <StandaloneAuditQaHost /> : <UsagePage providers={[]} />}</QueryClientProvider>
 </main>);

@@ -84,14 +84,14 @@ async fn grok_and_kimi_chat_bridge_support_full_tool_sessions_over_http() {
     let (db, path) = test_database();
     let state = ProxyState {
         database: db.clone(),
-        client: reqwest::Client::new(),
+        client: crate::network::test_client(),
         api_keys: Arc::new(FakeApiKeyProvider),
         local_addr: None,
     };
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let proxy_addr = listener.local_addr().unwrap();
     let task = tokio::spawn(async move { axum::serve(listener, router_with_state(state)).await });
-    let client = reqwest::Client::new();
+    let client = crate::network::test_client();
     for provider in ["grok", "kimi"] {
         let mut p: Provider = serde_json::from_value(json!({"id":provider,"name":provider,"appGroup":"Codex","endpoint":format!("http://{addr}/v1"),"model":format!("{provider}-fixture"),"enabled":true})).unwrap();
         p.advanced.upstream_format = "openai_chat".into();
@@ -303,13 +303,13 @@ async fn shadow_audit_real_http_pairs_background_usage_without_persisting_bodies
     let proxy_addr = listener.local_addr().unwrap();
     let state = ProxyState {
         database: db.clone(),
-        client: reqwest::Client::new(),
+        client: crate::network::test_client(),
         api_keys: Arc::new(FakeApiKeyProvider),
         local_addr: None,
     };
     let proxy_task =
         tokio::spawn(async move { axum::serve(listener, router_with_state(state)).await });
-    let client = reqwest::Client::new();
+    let client = crate::network::test_client();
     let mut expected_samples = 0_i64;
     for stream in [false, true] {
         let first =
@@ -495,13 +495,13 @@ async fn shadow_audit_responses_to_chat_http_uses_client_prefix_and_actual_reply
     let proxy_addr = listener.local_addr().unwrap();
     let state = ProxyState {
         database: db.clone(),
-        client: reqwest::Client::new(),
+        client: crate::network::test_client(),
         api_keys: Arc::new(FakeApiKeyProvider),
         local_addr: None,
     };
     let proxy_task =
         tokio::spawn(async move { axum::serve(listener, router_with_state(state)).await });
-    let client = reqwest::Client::new();
+    let client = crate::network::test_client();
     let mut sample_count = 0_i64;
     for stream in [false, true] {
         let initial = format!("PRIVATE_RESP_INITIAL_{stream}");
@@ -653,13 +653,13 @@ async fn model_audit_real_http_preserves_native_bytes_and_distinguishes_faults_a
     let proxy_addr = listener.local_addr().unwrap();
     let state = ProxyState {
         database: db.clone(),
-        client: reqwest::Client::new(),
+        client: crate::network::test_client(),
         api_keys: Arc::new(FakeApiKeyProvider),
         local_addr: None,
     };
     let proxy_task =
         tokio::spawn(async move { axum::serve(listener, router_with_state(state)).await });
-    let client = reqwest::Client::new();
+    let client = crate::network::test_client();
     for stream in [false, true] {
         for case in [
             "honest",

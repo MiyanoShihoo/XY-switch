@@ -1,3 +1,4 @@
+import { t } from "../i18n/language";
 import { invoke } from "@tauri-apps/api/core";
 import type { Provider, StoredProvider } from "../types/provider";
 import { providers as builtInProviders, normalizeProvider } from "./providers";
@@ -51,7 +52,7 @@ export async function saveSelectedProvider(id: string): Promise<void> {
 }
 
 export async function saveProvider(provider: Provider): Promise<void> {
-  if (!isDesktopRuntime()) throw new Error("浏览器预览模式不能修改供应商");
+  if (!isDesktopRuntime()) throw new Error(t("浏览器预览模式不能修改供应商"));
   const payload: StoredProvider = {
     id: provider.id,
     name: provider.name,
@@ -67,12 +68,12 @@ export async function saveProvider(provider: Provider): Promise<void> {
 }
 
 export async function deleteProvider(id: string): Promise<void> {
-  if (!isDesktopRuntime()) throw new Error("浏览器预览模式不能删除供应商");
+  if (!isDesktopRuntime()) throw new Error(t("浏览器预览模式不能删除供应商"));
   await invoke("delete_provider", { id });
 }
 
 export async function saveProviderOrder(ids: string[]): Promise<void> {
-  if (!isDesktopRuntime()) throw new Error("浏览器预览模式不能调整供应商顺序");
+  if (!isDesktopRuntime()) throw new Error(t("浏览器预览模式不能调整供应商顺序"));
   await invoke("reorder_providers", { providerIds: ids });
 }
 

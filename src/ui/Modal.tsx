@@ -1,3 +1,4 @@
+import { useLanguage, t } from "../i18n/language";
 import { useId, useRef, type ReactNode, type RefObject } from "react";
 import { X } from "lucide-react";
 import { IconButton } from "./IconButton";
@@ -10,7 +11,8 @@ export interface ModalProps {
   initialFocusRef?: RefObject<HTMLElement | null>;
 }
 
-export function Modal({ open, title, description, size = "md", closeLabel = "关闭弹窗", onClose, children, footer, busy = false, role = "dialog", hideClose = false, initialFocusRef }: ModalProps) {
+export function Modal({ open, title, description, size = "md", closeLabel = t("关闭弹窗"), onClose, children, footer, busy = false, role = "dialog", hideClose = false, initialFocusRef }: ModalProps) {
+  useLanguage();
   const id = useId();
   const panelRef = useRef<HTMLDivElement>(null);
   useDialogFocus(open, panelRef, onClose, busy, initialFocusRef);

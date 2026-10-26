@@ -50,7 +50,7 @@ describe("Skills 批量导入", () => {
     await expect(importSkillFolders([], async path => imported(path))).rejects.toThrow("没有可导入");
   });
   it("重复导入的反馈保留新增和已存在计数", () => {
-    expect(skillImportMessage([imported("root", 0, 50)])).toBe("新增 0 个技能引用，50 个已导入项已跳过；源文件未修改");
+    expect(skillImportMessage([imported("root", 0, 50)])).toBe("已新增 0 个技能引用；已跳过 50 个已导入项；源文件未修改");
   });
 });
 

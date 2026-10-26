@@ -11,6 +11,7 @@ mod model_verification;
 mod network;
 mod response_model_probe;
 mod preferences;
+mod interface_language;
 mod platform;
 mod proxy;
 mod proxy_manager;
@@ -228,6 +229,8 @@ pub fn run() {
             app_version,
             app_paths,
             platform::app_platform,
+            interface_language::get_interface_language,
+            interface_language::set_interface_language,
             preferences::get_app_preferences,
             preferences::save_app_preferences,
             preferences::get_autostart_enabled,
