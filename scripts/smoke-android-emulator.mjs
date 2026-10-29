@@ -31,6 +31,13 @@ export function parseInstrumentation(text, expected) {
   }
   return { passed: true, tests: +ok[1] };
 }
+export function instrumentationArgs(component, className, nativeProcess = false) {
+  // MonitoringInstrumentation otherwise destroys the last Activity before reporting.
+  // Tauri exits its shared process on destruction, killing the test runner as well.
+  // The test stops (but does not destroy) its Activity; the host owns final teardown.
+  const finish = nativeProcess ? ["-e", "waitForActivitiesToComplete", "false"] : [];
+  return ["shell", "am", "instrument", "-w", "-r", "-e", "class", className, ...finish, component];
+}
 export function execute(command, args, { bytes = false, timeout = 240000, allowFailure = false, spawn = spawnSync } = {}) {
   const result = spawn(command, args, { cwd: root, shell: false, encoding: bytes ? undefined : "utf8", maxBuffer: 32 * 1024 * 1024, timeout, windowsHide: true });
   if (result.error || (!allowFailure && result.status !== 0)) {
@@ -149,7 +156,7 @@ export async function main(args = process.argv.slice(2)) {
     await fs.writeFile(path.join(verification, "instrumentations.txt"), instrumentations + "\n");
     const cases = [
       { id: libraryTest, target: libraryTest, className: "com.xyswitch.credentials.AndroidCredentialStoreTest", name: "keystore", count: 4 },
-      { id: appTest, target: identifier, className: "com.xyswitch.desktop.NativeAppTest", name: "release-app", count: 1 },
+      { id: appTest, target: identifier, className: "com.xyswitch.desktop.NativeAppTest", name: "release-app", count: 1, nativeProcess: true },
     ];
     // A boot-completed property alone is not readiness: fresh Google API images still
     // initialize services and dex files, which can starve the app's startup process.
@@ -167,7 +174,7 @@ export async function main(args = process.argv.slice(2)) {
       let result;
       const log = path.join(verification, test.name + "-instrumentation.txt");
       try {
-        result = run(["shell", "am", "instrument", "-w", "-r", "-e", "class", test.className, component], { timeout: 300000 });
+        result = run(instrumentationArgs(component, test.className, test.nativeProcess), { timeout: 300000 });
       } catch (error) {
         // Keep partial test output even when adb times out; never turn a timeout into a pass.
         await fs.writeFile(log, [error.stdout, error.stderr, `Runner error: ${error.message}`].filter(Boolean).join("\n") + "\n");

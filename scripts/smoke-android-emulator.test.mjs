@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseArgs, assertEmulatorIdentity, parseInstrumentation, execute, parseEmulatorSnapshot, emulatorHealth, waitForEmulatorReady, captureEmulatorDiagnostics, isAppWindowFocused, waitForRenderedApp } from "./smoke-android-emulator.mjs";
+import { parseArgs, assertEmulatorIdentity, parseInstrumentation, instrumentationArgs, execute, parseEmulatorSnapshot, emulatorHealth, waitForEmulatorReady, captureEmulatorDiagnostics, isAppWindowFocused, waitForRenderedApp } from "./smoke-android-emulator.mjs";
 test("Android smoke test always requires an explicit emulator serial", () => {
   assert.deepEqual(parseArgs(["--serial", "emulator-5558"]), { serial: "emulator-5558" });
   for (const args of [[], ["--serial", "real-phone"], ["--serial", "emulator-5558", "--serial", "emulator-5556"], ["--unknown", "value"]]) assert.throws(() => parseArgs(args));
@@ -30,6 +30,16 @@ test("Android instrumentation requires full-line success and a unique successful
     "OK (1 test)\nINSTRUMENTATION_CODE: -1\nRunner error: fixture timeout",
   ]) assert.throws(() => parseInstrumentation(text, 1));
   assert.throws(() => parseInstrumentation("OK (0 tests)\nINSTRUMENTATION_CODE: -1", 0));
+});
+test("only native-process tests defer Activity destruction until after JUnit reports", () => {
+  const component = "com.xyswitch.desktop.test/androidx.test.runner.AndroidJUnitRunner";
+  const normal = ["shell", "am", "instrument", "-w", "-r", "-e", "class", "fixture.Test", component];
+  assert.deepEqual(instrumentationArgs(component, "fixture.Test"), normal);
+  assert.deepEqual(instrumentationArgs(component, "fixture.Test", true), [
+    ...normal.slice(0, -1), "-e", "waitForActivitiesToComplete", "false", component,
+  ]);
+  // Deferring lifecycle teardown must never waive complete, exact-count test results.
+  assert.throws(() => parseInstrumentation("INSTRUMENTATION_RESULT: shortMsg=Process crashed.\nINSTRUMENTATION_CODE: 0", 1));
 });
 test("Android readiness parses aggregate counters and does not double-count guest CPU", () => {
   const previous = parseEmulatorSnapshot("cpu 100 0 20 400 10 0 0 0 90 0\ncpu0 1 2", "MemTotal: 4194304 kB\nMemAvailable: 1048576 kB\n");

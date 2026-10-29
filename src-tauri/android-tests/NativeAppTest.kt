@@ -4,6 +4,7 @@ import android.content.Intent
 import android.webkit.WebView
 import android.view.View
 import android.view.ViewGroup
+import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -75,7 +76,8 @@ class NativeAppTest {
         val fixture = "android-ci-" + UUID.randomUUID().toString()
         val original = "fixture-secret-" + UUID.randomUUID().toString()
         val replacement = "fixture-replacement-" + UUID.randomUUID().toString()
-        launch().use { scenario ->
+        val scenario = launch()
+        try {
             waitForUi(scenario)
             val platform = ok(scenario, "app_platform").getJSONObject("value")
             assertEquals("android", platform.getString("os"))
@@ -132,6 +134,11 @@ class NativeAppTest {
                 ok(scenario, "delete_provider_api_key", args)
                 assertFalse(ok(scenario, "has_provider_api_key", args).getBoolean("value"))
             }
+        } finally {
+            // Closing the last Tauri Activity exits the shared native process before JUnit
+            // can report its result. Stop it without destruction; the host runner finishes
+            // instrumentation, force-stops, cold-starts and uninstalls the disposable app.
+            scenario.moveToState(Lifecycle.State.CREATED)
         }
     }
 }
