@@ -2,9 +2,9 @@
 
 ## 结论与范围
 
-本轮在 `codex/governance-acceptance-20261029` 分支新增「安全与验收」工作区，基于会话收藏版本 `cefd0a5`。访问控制、预留预算、合成监控、配置版本和显式挂载已落地为源码，并通过本轮 Windows Rust、前端和浏览器交互回归。**真实站点端到端验收尚未通过**：模型列表可读，Responses 与 Chat 上游配置各做一轮检查，均在首个生成请求收到 HTTP 500 后停止；Chat 补测的事件记录明确为上游 HTTP 500。版本仍为 **1.1.0**，本轮没有重建/发布安装包，不代表其他平台或原生安装流程已经验收。
+本轮在 `codex/governance-acceptance-20261029` 分支新增「安全与验收」工作区，基于会话收藏版本 `cefd0a5`。治理功能已通过 Windows Rust、前端和浏览器交互回归。首次 `gpt-5.5` 真实生成的两次 HTTP 500 保留在 E6/E7；随后使用网关列出的 `gpt-6.1-sol` 完成 Chat 上游 6/6、Responses 上游修复后 6/6 验收，详见[真实验收跟进](governance-live-followup-20261029.md)。版本进入 **1.2.0** 发布候选；安装包是否发布及目标平台结果以对应 Release 的源提交、CI 与校验清单为准，不由本文推断。
 
-测试对象为当前开发副本、隔离内存数据库、临时目录及回环代理；真实网络仅针对用户提供的测试站点，不扫描其他资产。浏览器 UI 使用独立 profile 和模拟 IPC，不读个人客户端配置。功能入口和操作步骤见[中文用户手册](user-guide-zh.md#使用安全与验收未发布2026-10-29)及[英文用户手册](user-guide-en.md#use-safety-and-acceptance-unreleased-2026-10-29)。
+测试对象为当前开发副本、隔离内存数据库、临时目录及回环代理；真实网络仅针对用户提供的测试站点，不扫描其他资产。浏览器 UI 使用独立 profile 和模拟 IPC，不读个人客户端配置。功能入口和操作步骤见[中文用户手册](user-guide-zh.md#使用安全与验收120)及[英文用户手册](user-guide-en.md#use-safety-and-acceptance-120)。
 
 ## 已实现的功能与默认值
 
@@ -129,7 +129,7 @@ pnpm test:ui:governance
 
 脚本创建并关闭自己的 CDP target。结束后关闭独立浏览器与 Vite。`QA_ONLY` 可选择单项，但会覆盖结果文件；完整结论应以不设置 `QA_ONLY` 的全量结果为准。
 
-默认 Rust 测试不会发起 live 请求。Windows live 测试为 `governance_live_acceptance_from_one_shot_pipe`，显式 `--ignored` 才可运行；还必须由一次性凭据管道供给严格 JSON 输入。`discover` 只查模型列表；`acceptance` 要求 `ALLOW PAID CHECKS`、明确模型/上游格式，最多六次检查，HTTP 错误/无 HTTP 状态立即停止，合计输出上限 128 Token。不要用 shell 历史、文件或凭据环境变量代替管道。
+默认 Rust 测试不会发起 live 请求。Windows live 测试为 `governance_live_acceptance_from_one_shot_pipe`，显式 `--ignored` 才可运行；还必须由一次性凭据管道供给严格 JSON 输入。`discover` 只查模型列表；`diagnose` 需要同样的收费确认，最多三个无重试的直连协议探针，输出上限分别 64/128/128，错误只返回固定分类；`acceptance` 要求 `ALLOW PAID CHECKS`、明确模型/上游格式，最多六次检查，HTTP 错误/无 HTTP 状态立即停止，合计输出上限 128 Token。不要用 shell 历史、文件或凭据环境变量代替管道。
 
 本轮生成的日志/截图仅在本地 `artifacts/governance-qa/`，不提交到 Git：
 
@@ -144,4 +144,4 @@ pnpm test:ui:governance
 - Grok/OpenCode 自动接管未增加；现有路由入口不等于自动接管支持。
 - 会话恢复仍只复制命令。没有新增自动执行、命令白名单执行器或无人值守执行流程。
 - 未重新验收 Linux/macOS/Android/iOS，也未验收本轮原生安装包/目录选择器完整 GUI 流程。
-- 在真实生成检查通过、目标平台原生验收及打包完成前，不把本轮源码称为已发布、全平台通过或真实 E2E 已完成。
+- 真实生成检查现已通过；目标平台原生验收及打包仍须以新版 Release 证据核实，不能把源码测试外推成已发布或全平台通过。

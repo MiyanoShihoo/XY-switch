@@ -1,5 +1,12 @@
 # Changelog / 更新日志
 
+## 1.2.0 — 2026-10-29
+
+- Promote maintenance, local-session favorites, pricing, and the safety/acceptance workspace into a new release candidate; never relabel existing 1.1.0 binaries.
+- Real proxy acceptance passed 6/6 using Chat upstream and 6/6 using Responses upstream with the gateway-reported test model. Preserve earlier HTTP 500 and 5/6 failure evidence.
+- Treat nullable OpenAI/Responses error fields correctly without accepting real errors or incomplete streams; add focused regression tests and bounded redacted live diagnostics.
+- [Release notes](docs/release-notes-1.2.0.md) and [live follow-up](docs/governance-live-followup-20261029.md). Package publication/native verification requires the exact Release evidence. E2EE sync is not included in this snapshot.
+
 ## Unreleased / 未发布 — 2026-10-29
 
 - Add the bilingual **Safety & Acceptance** workspace: overview, access control, hard-budget admission, synthetic monitoring, configuration versions, explicit mounts, and governance audit.

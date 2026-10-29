@@ -34,11 +34,11 @@ Protocol conversion, accepted tool calls, and a matching model name establish co
 
 **MCP:** create or edit server definitions, choose supported target clients, and use the explicit import/synchronization actions. Desktop client synchronization writes client configuration; it is unavailable on mobile. A server definition being saved does not establish that its executable, transport, or external service is available.
 
-**Prompts:** create, edit, delete, and enable/disable local Markdown prompts. Released 1.1.0 does not synchronize rule files; unreleased source adds the explicit-mount workflow below. Saving or enabling a prompt still **never automatically** writes `CLAUDE.md`, `AGENTS.md`, or `GEMINI.md`.
+**Prompts:** create, edit, delete, and enable/disable local Markdown prompts. Version 1.1.0 does not synchronize rule files; 1.2.0 adds the explicit-mount workflow below. Saving or enabling a prompt still **never automatically** writes `CLAUDE.md`, `AGENTS.md`, or `GEMINI.md`.
 
 **Skills:** desktop source switches start **off**. Enable only the sources you want read, or add a manual reference. Scanning is recursive, includes `.system`, and excludes plugin caches. Removing a manual reference removes its registration, not the referenced source files. Application-owned controls are translated; Skill names and source content are not.
 
-## Use safety and acceptance (unreleased, 2026-10-29)
+## Use safety and acceptance (1.2.0)
 
 This section describes current desktop source, not the published 1.1.0 installers. Open **Safety & Acceptance**:
 
@@ -50,7 +50,7 @@ This section describes current desktop source, not the published 1.1.0 installer
 
 Mobile shows only local overview, receipts, and audit, without a remote-device connection. Browser preview never simulates successful privileged writes. Session recovery still only copies commands. See the [governance and acceptance record](governance-acceptance-20261029.md), including the live HTTP failure and remaining limits.
 
-## Browse local sessions (unreleased maintenance, 2026-10-27)
+## Browse local sessions (1.2.0)
 
 The current desktop source supports Codex, Claude Code, and Gemini CLI transcript logs. This replaces the old empty native endpoints; it is not included in the published 1.1.0 packages.
 
@@ -78,7 +78,7 @@ The usage page combines proxy request records with supported local usage imports
 
 Missing price or usage information is **unknown**, not a zero-cost request. Declared model names and protocol/tool behavior do not authenticate model weights. Active verification may send additional requests and incur cost. Its confirmation budget is a soft control for that verification mechanism (default 100, range 0–10,000), **not a hard cap on every upstream bill**.
 
-### Manage model prices (unreleased maintenance)
+### Manage model prices (1.2.0)
 
 1. Open **Usage & audit → Model pricing**. Enter the exact model ID returned by the upstream and its input/output rates in USD per million tokens. Leave cache-read/write rates empty for unknown; `0` means free. Rates must be finite numbers from 0 to 1,000,000.
 2. Save to local SQLite. Custom rates match the full model ID exactly and are shared across providers using that ID; they are not provider-specific. Changes apply only to future requests and newly imported records. Historical costs and component snapshots are not recalculated.
@@ -92,7 +92,7 @@ Codex usage import handles per-event and cumulative counters, including incremen
 
 In **Settings → Data**, inspect paths returned by the running native process. Browser preview does not provide native data paths. Export ordinary configuration before an import; review the confirmation because matching IDs can update existing records and routing configuration can be imported.
 
-The unreleased source exports v2 configuration with custom prices and still accepts v1 backups; v1 cannot contain nonempty `modelPricing`. Public reference catalogs, historical usage and cost snapshots are excluded. Imports/exports are limited to 8 MiB, with 1,000 providers/prompts/MCP servers per kind and a 30,000-row pricing catalog limit. All supported sections are validated before mutation; provider, prompt and custom-price rows commit together in one SQLite transaction. MCP synchronization and proxy/listener changes are external operations, not an all-resource transaction. An I/O error reports partial progress and refreshes the displayed state. Imported MCP secret values are ignored; existing local environment/header credentials are preserved for matching server IDs. New devices require credentials to be entered again.
+Version 1.2.0 exports v2 configuration with custom prices and still accepts v1 backups; v1 cannot contain nonempty `modelPricing`. Public reference catalogs, historical usage and cost snapshots are excluded. Imports/exports are limited to 8 MiB, with 1,000 providers/prompts/MCP servers per kind and a 30,000-row pricing catalog limit. All supported sections are validated before mutation; provider, prompt and custom-price rows commit together in one SQLite transaction. MCP synchronization and proxy/listener changes are external operations, not an all-resource transaction. An I/O error reports partial progress and refreshes the displayed state. Imported MCP secret values are ignored; existing local environment/header credentials are preserved for matching server IDs. New devices require credentials to be entered again.
 
 Normal configuration export is **not a complete credential backup**. Credentials use Windows Credential Manager, Linux Secret Service, Apple Keychain, or Android Keystore with private AES-GCM records. Keep source credentials available for re-entry when moving devices or replacing an Android build signed by a different certificate. Removing an app's data or uninstalling it can remove stored settings and credentials.
 

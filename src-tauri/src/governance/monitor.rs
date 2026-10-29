@@ -149,7 +149,7 @@ fn verify(mode: &str, bytes: &[u8], evidence: &mut Evidence) -> Result<String, S
                     continue;
                 }
                 let v: Value = serde_json::from_str(data).map_err(|_| "malformed_sse")?;
-                if v.get("error").is_some() {
+                if v.get("error").is_some_and(|error| !error.is_null()) {
                     return Err("sse_error_event".into());
                 }
                 collect_evidence(&v, evidence);
@@ -170,7 +170,7 @@ fn verify(mode: &str, bytes: &[u8], evidence: &mut Evidence) -> Result<String, S
         return Ok("sse_terminal_finish_and_exact_text_verified".into());
     }
     let v: Value = serde_json::from_slice(bytes).map_err(|_| "invalid_response_json")?;
-    if v.get("error").is_some() {
+    if v.get("error").is_some_and(|error| !error.is_null()) {
         return Err("response_error_field".into());
     }
     collect_evidence(&v, evidence);

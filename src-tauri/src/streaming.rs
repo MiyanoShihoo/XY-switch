@@ -1374,7 +1374,7 @@ fn normalize_openai(data: &str, context: &mut Context) -> Result<Vec<Delta>, io:
     }
     let value: Value = serde_json::from_str(data)
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid OpenAI SSE JSON"))?;
-    if value.get("error").is_some() {
+    if value.get("error").is_some_and(|error| !error.is_null()) {
         return Err(io::Error::other("upstream returned an SSE error"));
     }
     if let Some(id) = value.get("id").and_then(Value::as_str) {
@@ -2320,6 +2320,15 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn openai_sse_null_error_is_not_an_error_event() {
+        let valid = r#"{"error":null,"choices":[{"delta":{"content":"OK"},"finish_reason":"stop"}]}"#;
+        assert!(normalize_openai(valid, &mut Context::new("test-model")).is_ok());
+        for invalid in [r#"{"error":{"message":"failure"}}"#, r#"{"error":false}"#, r#"{"error":{}}"#] {
+            assert!(normalize_openai(invalid, &mut Context::new("test-model")).is_err());
+        }
+    }
+
 
     fn render_frames(format: UpstreamFormat, client: ClientFormat, frames: &[&str]) -> String {
         let mut context = Context::new("test-model");
