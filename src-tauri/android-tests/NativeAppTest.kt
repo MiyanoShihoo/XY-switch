@@ -38,7 +38,10 @@ class NativeAppTest {
     private fun waitForUi(scenario: ActivityScenario<MainActivity>) {
         val end = System.nanoTime() + TimeUnit.SECONDS.toNanos(90)
         while (System.nanoTime() < end) {
-            if (evaluate(scenario, "!!(window.__TAURI__ && window.__TAURI__.core && document.getElementById('root') && document.getElementById('root').children.length)") == "true") return
+            // ActivityScenario can resume before Tauri attaches its asynchronously created WebView.
+            var attached = false
+            scenario.onActivity { activity -> attached = webView(activity.window.decorView) != null }
+            if (attached && evaluate(scenario, "!!(window.__TAURI__ && window.__TAURI__.core && document.getElementById('root') && document.getElementById('root').children.length)") == "true") return
             Thread.sleep(500)
         }
         fail("Release frontend and Tauri IPC did not become ready")
