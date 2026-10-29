@@ -24,7 +24,8 @@
     "build:android": "node scripts/package-android.mjs",
     "test:ui:i18n": "node scripts/verify-i18n-ui.mjs",
     "test:ui:website": "node scripts/verify-website-ui.mjs",
-    "test:ui:sessions": "node scripts/verify-session-favorites-ui.mjs"
+    "test:ui:sessions": "node scripts/verify-session-favorites-ui.mjs",
+    "test:ui:governance": "node scripts/verify-governance-ui.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

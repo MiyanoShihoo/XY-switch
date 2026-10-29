@@ -149,6 +149,13 @@ async fn perform_probe(
     mut cancellation: Option<tokio::sync::watch::Receiver<u64>>,
 ) -> Result<ProbeResult, String> {
     let mut prepared = proxy::prepare_bounded_model_probe(client, provider, key, model, output_limit)?;
+    // The global persisted admission gate covers manual and automatic probes too.
+    // Reserve before send, and retain it on cancellation, errors or unknown usage.
+    crate::governance::budget::reserve(db, provider, &mut prepared.payload, prepared.protocol, "model_probe")?;
+    prepared.request = prepared.request.json(&prepared.payload);
+    prepared.observation.max_tokens = prepared.payload.get("max_completion_tokens")
+        .or_else(|| prepared.payload.get("max_tokens")).or_else(|| prepared.payload.get("max_output_tokens"))
+        .and_then(serde_json::Value::as_u64);
     prepared.observation.verification_capture=capture;
     prepared.observation.verification_active=true;
     let started = Instant::now();
@@ -606,4 +613,26 @@ mod tests {
         );
         server.abort();
     }
+    #[tokio::test]
+    async fn governance_probe_budget_blocks_before_network_and_reports_actual_cap() {
+        use crate::governance::{self, budget, test_support as gov};
+        let (url, seen, task) = server(vec![(200, "application/json", chat(Some("gov-model")))]).await;
+        let p = provider(&url, "openai_chat"); let db = database(&p);
+        let mut policy=gov::budget(&db); policy.daily_tokens=0;
+        governance::save(&db,budget::KEY,&policy).unwrap();
+        assert!(run_probe(&db,&client(),&p,"probe-secret","gov-model").await.unwrap_err().contains("hard_token_budget_exhausted"));
+        assert_eq!(seen.lock().unwrap().len(),0);
+        assert_eq!(budget::status(&db).unwrap().attempts,0);
+        policy.daily_tokens=1028; policy.max_output_tokens=4;
+        governance::save(&db,budget::KEY,&policy).unwrap();
+        let result=run_probe(&db,&client(),&p,"probe-secret","gov-model").await.unwrap();
+        assert!(result.success);
+        assert_eq!(seen.lock().unwrap()[0]["body"]["max_completion_tokens"],4);
+        assert_eq!(result.audit.observation.max_tokens,Some(4));
+        assert_eq!(budget::status(&db).unwrap().reserved_tokens,1028);
+        assert!(run_probe(&db,&client(),&p,"probe-secret","gov-model").await.unwrap_err().contains("hard_token_budget_exhausted"));
+        assert_eq!(seen.lock().unwrap().len(),1);
+        task.abort();
+    }
+
 }

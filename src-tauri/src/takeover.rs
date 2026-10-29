@@ -216,6 +216,12 @@ impl AppTakeoverManager {
             .collect()
     }
 
+    pub(crate) fn inactive_guard(&self) -> Result<std::sync::MutexGuard<'_, ()>, String> {
+        let guard = self.operation_lock.lock().map_err(|_| "Takeover operation lock unavailable")?;
+        if self.has_active() { return Err("Restore all application takeovers first".into()); }
+        Ok(guard)
+    }
+
     pub fn has_active(&self) -> bool {
         ManagedApp::ALL.into_iter().any(|app| self.is_active(app))
     }
@@ -257,8 +263,8 @@ impl AppTakeoverManager {
             };
             (
                 target,
-                PROXY_TOKEN_PLACEHOLDER.to_string(),
-                PROXY_TOKEN_PLACEHOLDER.to_string(),
+                crate::governance::access::managed_token(&self.database)?,
+                crate::governance::access::managed_token(&self.database)?,
             )
         } else {
             let key = crate::credential_store::get_api_key(&provider.id)?
@@ -436,7 +442,7 @@ impl AppTakeoverManager {
                 .iter()
                 .map(|f| read_optional(&f.path))
                 .collect::<Result<Vec<_>, _>>()?;
-            let managed = build_managed_files(app, &files, &current, address, provider)?;
+            let managed = crate::governance::access::replace_managed(&self.database, build_managed_files(app, &files, &current, address, provider)?)?;
             for ((file, before), bytes) in files.into_iter().zip(current).zip(managed) {
                 let metadata_bytes = fs::read(self.metadata_path(&file))
                     .map_err(|e| format!("{} 接管备份不完整：{e}", app.label()))?;
@@ -492,6 +498,7 @@ impl AppTakeoverManager {
         enabled: bool,
     ) -> Result<AppTakeoverStatus, String> {
         let app = ManagedApp::parse(app_name)?;
+        let _proxy_guard = self.proxy.configuration_guard().await;
         let proxy_status = self.proxy.status().await?;
         if enabled && !proxy_status.running {
             return Err("请先启动本地路由，再开启应用接管".to_string());
@@ -569,7 +576,7 @@ impl AppTakeoverManager {
             .iter()
             .map(|file| read_optional(&file.path))
             .collect::<Result<Vec<_>, _>>()?;
-        let managed = build_managed_files(app, &files, &originals, proxy_address, &provider)?;
+        let managed = crate::governance::access::replace_managed(&self.database, build_managed_files(app, &files, &originals, proxy_address, &provider)?)?;
 
         fs::create_dir_all(&self.backup_dir)
             .map_err(|error| format!("创建接管备份目录失败：{error}"))?;

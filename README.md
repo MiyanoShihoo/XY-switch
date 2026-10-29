@@ -28,14 +28,19 @@ The Android CI runs an isolated x86_64 emulator; static ARM64 package checks do 
 | Protocol routing | Local proxy adapters for OpenAI Chat Completions, Responses, Anthropic Messages, and Gemini | Protocol/tool compatibility and declared model names are not proof of model-weight identity |
 | Desktop client takeover | Explicit configuration takeover and restoration for **Claude Code, Codex, and Gemini CLI** | Other displayed client groups do not imply takeover support; mobile cannot edit other apps’ CLI configuration |
 | MCP | Server management and supported client import/synchronization workflows | Platform permissions and client support still apply |
-| Prompts | Local create/edit/delete and enable/disable operations | Does **not** write prompts into `CLAUDE.md`, `AGENTS.md`, or `GEMINI.md` |
+| Prompts | Local create/edit/delete and enable/disable; explicit mounts in unreleased source | **Never automatically** writes `CLAUDE.md`, `AGENTS.md`, or `GEMINI.md`; each write needs a diff preview, confirmation, and backup |
 | Skills | Opt-in desktop source scanning and manual references | Sources start disabled; removing a manual reference does not delete its source files; plugin caches are excluded |
 | Usage and evidence | Proxy request/token/cache/cost records, response/model evidence, Codex and DeepSeek Harness local-usage reading | Missing price/usage stays unknown; imported session usage cannot provide real HTTP latency or billing evidence |
 | Local sessions (unreleased) | Three desktop CLI log formats, renamed Codex titles, custom client roots, search, message/tool display and guarded log deletion | No client-index rewriting, cloud sync, or automatic resume execution |
 | Model pricing (unreleased) | Persistent custom rates, public models.dev reference sync, immutable recorded costs and v2 configuration backups | Exact full model IDs; estimates are not provider bills; browser preview cannot write native data |
+| Safety and acceptance (unreleased) | Local tokens/scopes, shared rate/concurrency limits, cost/token reservation admission, six synthetic checks, scheduled monitoring, and audit | Authentication and budgets are opt-in; reservations do not guarantee upstream invoices; HTTP 200 still needs content assertions |
+| Config and explicit mounts (unreleased) | Manual snapshots, diffs, transactional rollback; preview/backup/rollback for prompt and Skill rule-file mounts | No automatic rule-file writes or Skill script execution; snapshots are not encrypted sync packages |
+| Read-only monitoring (unreleased) | Local usage, provider status, receipts, and loopback-only `GET /xy/status` | Status always requires a local token; mobile shows its own data, without cross-device connectivity or a persistent-background guarantee |
 | Language and settings | English/Simplified Chinese, system-language mode, themes, configuration import/export, actual data paths | Ordinary exports are not full credential backups |
 
 **Unreleased source maintenance (2026-10-27):** the current checkout can browse Codex, Claude Code, and Gemini CLI session logs, display messages/tool results, copy resume commands, and delete explicitly selected logs. Deletion does not update a client’s database/index. Browser previews and mobile do not gain native session access. The same maintenance adds **Usage & audit → Model pricing**, custom-price backups (v2 export, v1 import compatibility), and protects historical recorded costs from later price changes. These changes are not in the published 1.1.0 packages; see the [maintenance report](docs/maintenance-20261027.md).
+
+**Unreleased governance work (2026-10-29):** The sidebar now includes **Safety & Acceptance**. Windows Rust regression, renderer tests, and 11 browser interaction checks pass. Live model discovery succeeded, but the first generation check returned HTTP 500: **live end-to-end acceptance has not passed**. See the [governance and acceptance record](docs/governance-acceptance-20261029.md) for boundaries, usage, and evidence. The version remains 1.1.0; no new installers have been built or published.
 
 ## Get started
 
@@ -54,6 +59,8 @@ Configuration is local. Provider API keys use native credential storage, not the
 Inspect actual paths in **Settings → Data**. Exported configuration excludes provider keys and MCP secret values (field names may remain); re-enter credentials after migration. Takeover restoration affects the configuration managed by that operation, not all application data.
 
 Model-response evidence describes observable fields and protocol behavior, not cryptographic verification of a model’s weights. Unknown cost is not zero. The active-verification token budget is a **soft budget**, default 100 and range 0–10,000; it applies to that mechanism, not a global hard billing limit.
+
+The new global **hard budget gate** is separate from that model-verification soft budget. Once enabled, each supported upstream attempt needs a persistent reservation; exceeding either local token or cost allowance blocks dispatch. It is not universal exact token counting or an upstream invoice cap. Unknown prices, unbounded payloads, and native Gemini upstreams fail closed.
 
 ## Run from source
 

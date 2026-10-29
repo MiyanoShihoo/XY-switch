@@ -1,5 +1,5 @@
 import { useLanguage, t } from "../i18n/language";
-import { Activity, BookOpen, Box, Network, Settings, Sparkles, WandSparkles } from "lucide-react";
+import { Activity, BookOpen, Box, Network, Settings, ShieldCheck, Sparkles, WandSparkles } from "lucide-react";
 import type { AppView } from "./AppShell";
 export const navigation = [
   { view: "providers", label: "供应商", icon: Box, section: "配置" },
@@ -8,6 +8,7 @@ export const navigation = [
   { view: "skills", label: "Skills", icon: WandSparkles, section: "配置" },
   { view: "sessions", label: "会话", icon: BookOpen, section: "记录" },
   { view: "usage", label: "用量与审计", icon: Activity, section: "记录" },
+  { view: "governance", label: "安全与验收", icon: ShieldCheck, section: "系统" },
   { view: "settings", label: "设置", icon: Settings, section: "系统" },
 ] as const;
 export function SideNav({ activeView, onNavigate, providerCount }: { activeView: AppView; onNavigate: (view: AppView) => void; providerCount: number }) {

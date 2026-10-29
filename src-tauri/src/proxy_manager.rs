@@ -77,6 +77,7 @@ pub struct ProxyStatus {
 pub struct ProxyManager {
     database: Database,
     task: Arc<Mutex<Option<JoinHandle<()>>>>,
+    operation: Arc<Mutex<()>>,
     last_error: Arc<StdMutex<Option<String>>>,
 }
 
@@ -85,6 +86,7 @@ impl ProxyManager {
         Self {
             database,
             task: Arc::new(Mutex::new(None)),
+            operation: Arc::new(Mutex::new(())),
             last_error: Arc::new(StdMutex::new(None)),
         }
     }
@@ -144,7 +146,16 @@ impl ProxyManager {
         Ok(())
     }
 
+    pub(crate) async fn configuration_guard(&self) -> tokio::sync::OwnedMutexGuard<()> {
+        self.operation.clone().lock_owned().await
+    }
+
     pub async fn stop(&self) {
+        let _guard = self.configuration_guard().await;
+        self.stop_locked().await;
+    }
+
+    async fn stop_locked(&self) {
         let handle = self.task.lock().await.take();
         if let Some(handle) = handle {
             handle.abort();
@@ -153,6 +164,11 @@ impl ProxyManager {
     }
 
     pub async fn apply(&self, settings: ProxySettings) -> Result<ProxyStatus, String> {
+        let _guard = self.configuration_guard().await;
+        self.apply_locked(settings).await
+    }
+
+    async fn apply_locked(&self, settings: ProxySettings) -> Result<ProxyStatus, String> {
         settings.validate()?;
         let previous = self.settings()?;
         let was_running = self.is_running().await;
@@ -161,7 +177,7 @@ impl ProxyManager {
         let targets_changed = previous.route_targets != settings.route_targets;
 
         if was_running && (address_changed || targets_changed || !settings.enabled) {
-            self.stop().await;
+            self.stop_locked().await;
         }
         self.save_settings(&settings)?;
 
@@ -179,9 +195,10 @@ impl ProxyManager {
     }
 
     pub async fn set_enabled(&self, enabled: bool) -> Result<ProxyStatus, String> {
+        let _guard = self.configuration_guard().await;
         let mut settings = self.settings()?;
         settings.enabled = enabled;
-        self.apply(settings).await
+        self.apply_locked(settings).await
     }
 
     async fn is_running(&self) -> bool {

@@ -74,6 +74,10 @@ async fn verification_real_proxy_1000_default_requests_and_passive_sse_never_add
     let upstream_addr = listener.local_addr().unwrap();
     let upstream_task = tokio::spawn(async move { axum::serve(listener, upstream).await.unwrap() });
     let db = Database::open(std::path::Path::new(":memory:")).unwrap();
+    // This throughput fixture tests verification's zero-extra-call guarantee,
+    // not the independent default 120/minute governance admission limit.
+    crate::governance::save(&db, crate::governance::access::KEY,
+        &crate::governance::access::AccessPolicy { requests_per_minute: 10000, max_in_flight: 32, ..Default::default() }).unwrap();
     assert!(!db.verification.settings().unwrap().enabled);
     assert!(!db.verification.settings().unwrap().active_probe_enabled);
     let provider: Provider =

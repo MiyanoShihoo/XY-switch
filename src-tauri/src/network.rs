@@ -2,7 +2,9 @@ use std::error::Error;
 
 /// Production honors system/environment proxies; HTTP tests use isolated local servers.
 pub(crate) fn client_builder() -> reqwest::ClientBuilder {
-    let builder = reqwest::Client::builder();
+    // Each paid attempt must pass the explicit admission/budget path. Do not
+    // allow transport-level retries to send an unreserved request.
+    let builder = reqwest::Client::builder().retry(reqwest::retry::never());
     #[cfg(test)]
     let builder = builder.no_proxy();
     builder

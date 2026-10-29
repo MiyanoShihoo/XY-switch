@@ -4,6 +4,7 @@ mod adapters;
 mod commands;
 mod credential_store;
 mod database;
+mod governance;
 mod mcp;
 mod model_audit;
 mod model_pricing;
@@ -187,6 +188,8 @@ pub fn run() {
             ).with_codex_home(codex_home);
             #[cfg(desktop)]
             takeover_manager.recover_on_startup();
+            governance::monitor::start(database.clone(), proxy_manager.clone());
+            app.manage(governance::mounts::MountManager::default());
             app.manage(proxy_manager);
             app.manage(takeover_manager);
             app.manage(mcp_manager);
@@ -229,6 +232,30 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             app_version,
+            governance::access::get_access_policy,
+            governance::access::save_access_policy,
+            governance::access::create_access_token,
+            governance::access::list_access_tokens,
+            governance::access::revoke_access_token,
+            governance::budget::get_hard_budget,
+            governance::budget::save_hard_budget,
+            governance::versions::create_config_version,
+            governance::versions::list_config_versions,
+            governance::versions::delete_config_version,
+            governance::versions::preview_config_rollback,
+            governance::versions::apply_config_rollback,
+            governance::monitor::get_governance_status,
+            governance::monitor::get_synthetic_monitor,
+            governance::monitor::save_synthetic_monitor,
+            governance::monitor::run_synthetic_check,
+            governance::monitor::list_synthetic_runs,
+            governance::mounts::choose_mount_root,
+            governance::mounts::preview_explicit_mount,
+            governance::mounts::preview_mount_rollback,
+            governance::mounts::apply_explicit_mount,
+            governance::mounts::list_mount_backups,
+            governance::mounts::delete_mount_backup,
+            governance::governance_events,
             app_paths,
             platform::app_platform,
             interface_language::get_interface_language,

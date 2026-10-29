@@ -10,6 +10,7 @@ import { PromptsPage } from "./features/prompts/PromptsPage";
 import { SkillsPage } from "./features/skills/SkillsPage";
 import { SessionsPage } from "./features/sessions/SessionsPage";
 import { UsagePage } from "./features/usage/UsagePage";
+import { GovernancePage } from "./features/governance/GovernancePage";
 import { SettingsPage } from "./features/settings/SettingsPage";
 import { nextExplicitTheme, readThemePreference, resolveTheme, type ThemePreference } from "./lib/theme";
 import { loadInitialProxyStatus, loadProxyStatus, setProxyEnabled } from "./lib/proxy-service";
@@ -81,6 +82,7 @@ export default function App() {
     {activeView === "skills" && (platform.data?.mobile ? <p className="workspace-route-notice">{t("移动端不支持扫描桌面 Skills 目录，请在 Windows、macOS 或 Linux 端导入。")}</p> : <SkillsPage />)}
     {activeView === "sessions" && (platform.data?.mobile ? <p className="workspace-route-notice">{t("移动端无法读取其他应用的本机会话目录，请在对应桌面端查看。")}</p> : <SessionsPage />)}
     {activeView === "usage" && <UsagePage providers={providers.providers} />}
+    {activeView === "governance" && <GovernancePage providers={providers.providers} proxyStatus={proxyStatus} onRestored={imported} />}
     {activeView === "settings" && <SettingsPage themePreference={themePreference} onThemeChange={setThemePreference} providers={providers} proxyStatus={proxyStatus} proxyBusy={proxyBusy} runtimeError={runtimeError} mutateProxy={mutateProxy} onRefreshRuntime={refreshRuntime} onImported={imported} />}
   </AppShell>;
 }

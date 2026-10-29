@@ -121,6 +121,7 @@ impl ProxyState {
         // 长上下文 + 高推理强度时 180 秒真的会不够，所以这项必须可调。
         let timeout = preferences::load(&database).request_timeout();
         let client = crate::network::client_builder()
+            .redirect(reqwest::redirect::Policy::none())
             .connect_timeout(Duration::from_secs(10))
             .timeout(timeout)
             .build()
@@ -170,6 +171,11 @@ impl IntoResponse for ProxyError {
         )
             .into_response()
     }
+}
+
+async fn monitor_status(State(state): State<ProxyState>) -> Result<Json<Value>, ProxyError> {
+    crate::governance::monitor::read_only_status(&state.database).map(Json)
+        .map_err(|_| ProxyError::new(StatusCode::SERVICE_UNAVAILABLE, "monitor_unavailable", "Status is unavailable"))
 }
 
 async fn health() -> Json<Health> {
@@ -656,6 +662,7 @@ fn prepare_upstream_request(
 /// It never activates a provider, starts the proxy, retries, or falls back.
 pub(crate) struct PreparedModelProbe {
     pub request: reqwest::RequestBuilder,
+    pub payload: Value,
     pub format: UpstreamFormat,
     pub protocol: &'static str,
     pub model: String,
@@ -761,6 +768,7 @@ pub(crate) fn prepare_bounded_model_probe(client:&reqwest::Client,provider:&Prov
     );
     Ok(PreparedModelProbe {
         request,
+        payload: prepared.payload,
         format,
         protocol,
         model: prepared.model,
@@ -1238,9 +1246,9 @@ async fn forward(
             "Infinite proxy loop detected",
         ));
     }
-    let selected = state
-        .database
-        .current_provider()
+    let diagnostic = headers.get("x-xy-diagnostic-provider").map(|h|h.to_str().map(str::to_owned)).transpose()
+        .map_err(|_|ProxyError::new(StatusCode::BAD_REQUEST,"invalid_diagnostic_target","Invalid diagnostic target"))?;
+    let selected = match diagnostic.as_deref(){Some(id)=>state.database.get_provider(id),None=>state.database.current_provider()}
         .map_err(|error| {
             ProxyError::new(StatusCode::INTERNAL_SERVER_ERROR, "database_error", error)
         })?
@@ -1266,7 +1274,7 @@ async fn forward(
             ProxyError::new(StatusCode::INTERNAL_SERVER_ERROR, "database_error", error)
         })?
         .into_iter()
-        .filter(|provider| provider.enabled)
+        .filter(|provider| provider.enabled && diagnostic.as_ref().is_none_or(|id| &provider.id == id))
         .collect();
     candidates.sort_by_key(|provider| if provider.id == selected.id { 0 } else { 1 });
 
@@ -1316,19 +1324,36 @@ async fn forward(
         else {
             continue;
         };
+        let api_key = zeroize::Zeroizing::new(api_key);
         found_key = true;
         let client_shadow =
             state
                 .database
                 .shadow
                 .begin_capture(&provider.id, protocol.shadow_protocol(), &body);
-        let mut prepared = prepare_upstream_request(&provider, protocol, &body)?;
+        let mut route_provider = provider.clone();
+        if diagnostic.is_some() {
+            let source: Value = serde_json::from_slice(&body).map_err(|_| adapter_error("Invalid diagnostic JSON".into()))?;
+            let model = requested_model.as_deref().or_else(|| source.get("model").and_then(Value::as_str)).filter(|s| !s.trim().is_empty() && s.len() <= 256 && !s.chars().any(char::is_control))
+                .ok_or_else(|| adapter_error("An explicit diagnostic model is required".into()))?;
+            // Pin the requested test model without changing the saved provider.
+            // Paid diagnostics cannot inherit unbounded body overrides.
+            route_provider.model = model.to_owned();
+            route_provider.advanced.model_mappings.clear();
+            route_provider.advanced.body_overrides.clear();
+        }
+        let mut prepared = prepare_upstream_request(&route_provider, protocol, &body)?;
         if requested_model.is_some() {
             prepared.audit.requested_model = requested_model.clone();
         }
         prepared.audit.verification_capture = state.database.verification.capture(
             &provider, &api_key, prepared.upstream.shadow_protocol(),
             prepared.audit.requested_model.as_deref().unwrap_or(&provider.model));
+        if diagnostic.is_some() {
+            // Acceptance is exactly one attempt, not a trigger for another paid probe.
+            prepared.audit.verification_capture = None;
+            prepared.audit.verification_active = true;
+        }
         let mut shadow = client_shadow.and_then(|client| {
             prepared.audit.forwarded_model.as_deref().and_then(|model| {
                 state.database.shadow.capture(
@@ -1355,6 +1380,14 @@ async fn forward(
         };
         let mut retry_count = 0usize;
         loop {
+            crate::governance::budget::reserve(&state.database, &provider, &mut prepared.payload, prepared.upstream.shadow_protocol(), if diagnostic.is_some() { "synthetic" } else { "proxy" })
+                .map_err(|e| ProxyError::new(StatusCode::PAYMENT_REQUIRED, "budget_rejected", e))?;
+            // Audit the cap actually dispatched, including any budget clamp.
+            prepared.audit.max_tokens = if prepared.payload["n"].as_u64().unwrap_or(1) > 1 { None } else {
+                prepared.payload.get("max_completion_tokens").or_else(|| prepared.payload.get("max_tokens"))
+                    .or_else(|| prepared.payload.get("max_output_tokens"))
+                    .or_else(|| prepared.payload.pointer("/generationConfig/maxOutputTokens")).and_then(Value::as_u64)
+            };
             let started = Instant::now();
             let result = request_builder(
                 &state.client,
@@ -1375,7 +1408,7 @@ async fn forward(
             match result {
                 Ok(upstream) => {
                     let status = upstream.status();
-                    if is_retryable(status) && retry_count < 2 {
+                    if is_retryable(status) && retry_count < 2 && diagnostic.is_none() {
                         retry_count += 1;
                         tokio::time::sleep(Duration::from_millis(
                             RETRY_BASE_DELAY_MS * retry_count as u64,
@@ -1452,7 +1485,7 @@ async fn forward(
                     break;
                 }
                 Err(error) => {
-                    if retry_count < 2 {
+                    if retry_count < 2 && diagnostic.is_none() {
                         retry_count += 1;
                         tokio::time::sleep(Duration::from_millis(
                             RETRY_BASE_DELAY_MS * retry_count as u64,
@@ -1643,6 +1676,7 @@ fn router_with_targets(state: ProxyState, targets: &[String]) -> Router {
         // /health 与模型列表始终提供：它们是客户端探活和模型下拉的依赖，
         // 关掉只会让人以为代理没起来。
         .route("/health", get(health))
+        .route("/xy/status", get(monitor_status))
         .route("/v1/models", get(list_models))
         .route("/models", get(list_models));
 
@@ -1670,6 +1704,7 @@ fn router_with_targets(state: ProxyState, targets: &[String]) -> Router {
     }
 
     router
+        .layer(axum::middleware::from_fn_with_state(crate::governance::access::AccessState::new(state.database.clone()), crate::governance::access::protect))
         .layer(axum::middleware::from_fn_with_state(state.local_addr, crate::proxy_request_guard::protect))
         .layer(DefaultBodyLimit::max(MAX_REQUEST_BYTES))
         .with_state(state)
@@ -2842,3 +2877,11 @@ mod tests {
     }
 
 }
+
+#[cfg(test)]
+#[path = "governance/proxy_tests.rs"]
+mod governance_tests;
+
+#[cfg(all(test, windows))]
+#[path = "governance/live_tests.rs"]
+mod governance_live_tests;

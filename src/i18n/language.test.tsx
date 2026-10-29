@@ -171,10 +171,10 @@ describe("interface language", () => {
     for (const preference of ["zh-CN", "en"] as const) {
       await language.setLanguagePreference(preference);
       const html = renderToStaticMarkup(createElement(SideNav, { activeView: "providers", providerCount: 3, onNavigate: () => undefined }));
-      expect(html.match(/class="xy-shell-nav-item"/g)).toHaveLength(7);
+      expect(html.match(/class="xy-shell-nav-item"/g)).toHaveLength(8);
       for (const item of navigation) expect(html).toContain(`title="${language.t(item.label).replaceAll("&", "&amp;")}"`);
     }
-    expect(navigation.map(item => item.view)).toEqual(["providers", "mcp", "prompts", "skills", "sessions", "usage", "settings"]);
+    expect(navigation.map(item => item.view)).toEqual(["providers", "mcp", "prompts", "skills", "sessions", "usage", "governance", "settings"]);
   });
   it("localizes notifications in either direction while preserving opaque user values", async () => {
     const language = await import("./language");

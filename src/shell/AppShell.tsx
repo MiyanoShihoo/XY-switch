@@ -4,7 +4,7 @@ import type { ProxyStatus } from "../types/proxy";
 import { ContextBar } from "./ContextBar";
 import { RuntimeBar } from "./RuntimeBar";
 import { SideNav } from "./SideNav";
-export type AppView = "providers" | "mcp" | "prompts" | "skills" | "sessions" | "usage" | "settings";
+export type AppView = "providers" | "mcp" | "prompts" | "skills" | "sessions" | "usage" | "governance" | "settings";
 interface AppShellProps { activeView: AppView; onNavigate: (view: AppView) => void; providerCount: number; currentProviderName?: string; proxyStatus: ProxyStatus | null; onToggleProxy: () => void; proxyBusy?: boolean; theme: "light" | "dark"; onToggleTheme: () => void; mainRef?: RefObject<HTMLElement | null>; children: ReactNode; }
 export function AppShell({ activeView, onNavigate, providerCount, currentProviderName, proxyStatus, onToggleProxy, proxyBusy = false, theme, onToggleTheme, mainRef, children }: AppShellProps) {
   useLanguage();

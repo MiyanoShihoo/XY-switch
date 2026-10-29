@@ -34,9 +34,21 @@ Protocol conversion, accepted tool calls, and a matching model name establish co
 
 **MCP:** create or edit server definitions, choose supported target clients, and use the explicit import/synchronization actions. Desktop client synchronization writes client configuration; it is unavailable on mobile. A server definition being saved does not establish that its executable, transport, or external service is available.
 
-**Prompts:** create, edit, delete, and enable/disable local Markdown prompts. This version does **not** synchronize prompt content into `CLAUDE.md`, `AGENTS.md`, or `GEMINI.md`.
+**Prompts:** create, edit, delete, and enable/disable local Markdown prompts. Released 1.1.0 does not synchronize rule files; unreleased source adds the explicit-mount workflow below. Saving or enabling a prompt still **never automatically** writes `CLAUDE.md`, `AGENTS.md`, or `GEMINI.md`.
 
 **Skills:** desktop source switches start **off**. Enable only the sources you want read, or add a manual reference. Scanning is recursive, includes `.system`, and excludes plugin caches. Removing a manual reference removes its registration, not the referenced source files. Application-owned controls are translated; Skill names and source content are not.
+
+## Use safety and acceptance (unreleased, 2026-10-29)
+
+This section describes current desktop source, not the published 1.1.0 installers. Open **Safety & Acceptance**:
+
+1. **Access control:** Stop the proxy and restore active takeovers before changing policy. Legacy mode does not require authentication by default. After enabling it, issue `proxy` tokens for model clients or `monitor` tokens for read-only status. Tokens are shown once and support expiry/revocation. Failed authentication counts toward the shared request limit; the minimal `/health` liveness check is exempt.
+2. **Hard budget:** First save an exact custom price for the dispatched model ID in **Usage & audit → Model pricing**. Confirm daily token/cost reservations and per-attempt input/output limits. Retries, failover, and model probes reserve too; failures, cancellation, and missing usage do not refund. Restarting or changing limits does not erase the UTC-day ledger. This is local admission accounting, not an invoice guarantee; unsupported multimodal/remote-history/built-in-tool payloads and native Gemini upstreams fail closed.
+3. **Acceptance monitoring:** Enable the budget, run the proxy, choose a provider/model/mode, and type `ALLOW PAID CHECKS` before a paid manual check or enabled schedule. Modes cover Chat, SSE, tools, Responses, Anthropic, and Gemini client paths. Scheduling defaults off, with a 30-minute interval and 10 checks per UTC day shared by manual/scheduled runs. Alerts are recorded on failure/recovery transitions, not repeatedly for an unchanged state. Execution is not guaranteed while the app is closed or suspended.
+4. **Config versions:** Create snapshots manually. To restore, stop the proxy, restore takeovers, preview the diff, acknowledge it, and type `ROLLBACK`. The transaction backs up the current configuration first; stale previews are rejected. Snapshots exclude the credential vault, MCP, favorites, external files, and security policies; they are not complete backups.
+5. **Explicit mounts:** Grant a project through the native folder picker, choose saved prompts/authorized local Skills and one of the three root rule files, then preview without writing. Review the diff and type `WRITE FILE`. Previews expire in five minutes and are single-use; complete original content is backed up before atomic replacement. Intervening file changes block stale writes or restores. Only `SKILL.md` text is mounted; scripts and dependencies are not copied, executed, or installed.
+
+Mobile shows only local overview, receipts, and audit, without a remote-device connection. Browser preview never simulates successful privileged writes. Session recovery still only copies commands. See the [governance and acceptance record](governance-acceptance-20261029.md), including the live HTTP failure and remaining limits.
 
 ## Browse local sessions (unreleased maintenance, 2026-10-27)
 

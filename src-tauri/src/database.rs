@@ -306,7 +306,7 @@ impl ProviderAdvancedConfig {
     }
 }
 
-fn provider_from_row(row: &Row<'_>) -> rusqlite::Result<Provider> {
+pub(crate) fn provider_from_row(row: &Row<'_>) -> rusqlite::Result<Provider> {
     let advanced_json: String = row.get(8)?;
     let provider_type: String = row.get(2)?;
     let advanced = serde_json::from_str(&advanced_json)
@@ -438,7 +438,7 @@ pub(crate) fn validate_config_records(providers: &[Provider], prompts: &[Prompt]
     Ok(())
 }
 
-fn save_prompt_on(connection: &Connection, prompt: &Prompt) -> Result<(), String> {
+pub(crate) fn save_prompt_on(connection: &Connection, prompt: &Prompt) -> Result<(), String> {
     validate_prompt_record(prompt)?;
     let id = prompt.id.trim();
     let name = prompt.name.trim();
@@ -451,7 +451,7 @@ fn save_prompt_on(connection: &Connection, prompt: &Prompt) -> Result<(), String
         Ok(())
 }
 
-fn save_provider_on(connection: &Connection, provider: &Provider) -> Result<(), String> {
+pub(crate) fn save_provider_on(connection: &Connection, provider: &Provider) -> Result<(), String> {
     let advanced_json = validate_provider_record(provider)?;
         connection.execute(
             "INSERT INTO providers(id,name,provider_type,endpoint,model,app_group,enabled,sort_order,advanced_json) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9) ON CONFLICT(id) DO UPDATE SET name=excluded.name,provider_type=excluded.provider_type,endpoint=excluded.endpoint,model=excluded.model,app_group=excluded.app_group,enabled=excluded.enabled,sort_order=excluded.sort_order,advanced_json=excluded.advanced_json,updated_at=CURRENT_TIMESTAMP",
@@ -568,6 +568,7 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_shadow_audit_created ON shadow_audit_samples(created_at,id);
             CREATE INDEX IF NOT EXISTS idx_shadow_audit_provider ON shadow_audit_samples(provider_id,model);"
         ).map_err(|error| error.to_string())?;
+        crate::governance::init(&connection)?;
         let connection = Arc::new(Mutex::new(connection));
         let shadow = Arc::new(crate::shadow_audit_runtime::ShadowAuditRuntime::new(
             Arc::downgrade(&connection),

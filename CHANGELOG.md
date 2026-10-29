@@ -1,5 +1,17 @@
 # Changelog / 更新日志
 
+## Unreleased / 未发布 — 2026-10-29
+
+- Add the bilingual **Safety & Acceptance** workspace: overview, access control, hard-budget admission, synthetic monitoring, configuration versions, explicit mounts, and governance audit.
+- Add expiring/revocable, digest-only local tokens with proxy/monitor scopes. Status reads always require authentication; model authentication is opt-in for compatibility. Share rate limits across valid and rejected credentials and hold concurrency permits until streaming bodies finish.
+- Add SQLite reservation admission before every upstream attempt, retry, failover, and model probe. Require exact custom prices and bounded supported payloads; preserve reservations on cancellation/failure and across restarts. Disable implicit HTTP retries. Reservations are not an upstream invoice guarantee.
+- Add six bounded loopback-to-upstream synthetic checks, explicit paid confirmation, opt-in schedules, persistent daily limits, redacted receipts, and failure/recovery audit transitions. Live acceptance remains **not passed** after HTTP 500; model discovery alone is not E2E evidence.
+- Add manual configuration snapshots and hash-guarded transactional rollback with a pre-restore backup; do not restore credential stores or security ledgers/policies.
+- Add native-folder-granted prompt/Skill mounts for `CLAUDE.md`, `AGENTS.md`, and `GEMINI.md`: diff preview, five-minute single-use confirmation, original-content backups, atomic replacement, and guarded rollback. Never write automatically or execute Skill scripts.
+- Keep mobile governance read-only and browser privileged operations fail-closed. Add real-socket/file regression tests, an ignored Windows one-shot-pipe live test, and 11 isolated browser interaction checks.
+- 新增安全与验收工作区、访问令牌与共享限流、费用/Token 预留准入、六类收费验收与显式计划、配置版本回滚、提示词/Skills 显式挂载及本机只读监控。会话恢复仍只复制命令；跨设备加密同步、远程移动连接与更多接管适配未实现。
+- These are **unreleased source changes**. Version 1.1.0 is unchanged; no new installers were built or published. See [治理与验收记录](docs/governance-acceptance-20261029.md).
+
 ## Unreleased / 未发布 — 2026-10-27
 
 - Implement guarded desktop session-log browsing for Codex, Claude Code and Gemini CLI, including message/tool display, explicit read warnings and selected-log deletion. Client indexes are not rewritten.
