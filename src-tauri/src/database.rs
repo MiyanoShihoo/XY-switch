@@ -569,6 +569,7 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_shadow_audit_provider ON shadow_audit_samples(provider_id,model);"
         ).map_err(|error| error.to_string())?;
         crate::governance::init(&connection)?;
+        crate::encrypted_sync::store::init(&connection)?;
         let connection = Arc::new(Mutex::new(connection));
         let shadow = Arc::new(crate::shadow_audit_runtime::ShadowAuditRuntime::new(
             Arc::downgrade(&connection),

@@ -5,6 +5,7 @@ mod commands;
 mod credential_store;
 mod database;
 mod governance;
+mod encrypted_sync;
 mod mcp;
 mod model_audit;
 mod model_pricing;
@@ -190,6 +191,7 @@ pub fn run() {
             takeover_manager.recover_on_startup();
             governance::monitor::start(database.clone(), proxy_manager.clone());
             app.manage(governance::mounts::MountManager::default());
+            app.manage(encrypted_sync::SyncManager::default());
             app.manage(proxy_manager);
             app.manage(takeover_manager);
             app.manage(mcp_manager);
@@ -239,6 +241,16 @@ pub fn run() {
             governance::access::revoke_access_token,
             governance::budget::get_hard_budget,
             governance::budget::save_hard_budget,
+            encrypted_sync::load_session_favorites,
+            encrypted_sync::set_session_favorite,
+            encrypted_sync::preview_sync_export,
+            encrypted_sync::save_sync_export,
+            encrypted_sync::preview_sync_import,
+            encrypted_sync::apply_sync_import,
+            encrypted_sync::cancel_sync_preview,
+            encrypted_sync::list_sync_backups,
+            encrypted_sync::preview_sync_rollback,
+            encrypted_sync::apply_sync_rollback,
             governance::versions::create_config_version,
             governance::versions::list_config_versions,
             governance::versions::delete_config_version,

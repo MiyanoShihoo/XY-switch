@@ -19,7 +19,8 @@ const sessions = [
   { providerId: 'gemini', sessionId: 'qa-gemini', title: 'Gemini QA checklist', summary: 'Cross-client smoke checks', projectDir: 'QA:/workspace/gemini', createdAt: 1792195100, lastActiveAt: 1792195400 },
 ].map(session => ({ ...session, sourcePath: `QA:/sessions/${session.providerId}/${session.sessionId}.jsonl`, resumeCommand: `${session.providerId} --resume ${session.sessionId}` }));
 const fixture = await readFile(new URL('./workspace-qa/fixture.js', import.meta.url), 'utf8');
-const source = `(() => { const language = localStorage.getItem('xy-session-qa:language') || 'zh-CN'; localStorage.setItem('xy-qa:native-language', language); localStorage.setItem('xy-switch:language', language); })();\n${fixture}\nwindow.__XY_QA__.sessions = ${JSON.stringify(sessions)};`;
+const source = `(() => { const language = localStorage.getItem('xy-session-qa:language') || 'zh-CN'; localStorage.setItem('xy-qa:native-language', language); localStorage.setItem('xy-switch:language', language); })();\n${fixture}\nwindow.__XY_QA__.platform.os = "browser";
+window.__XY_QA__.sessions = ${JSON.stringify(sessions)};`;
 const c = await connect(undefined, { fresh: true });
 const reports = [], only = process.env.QA_ONLY?.split(',');
 let fixtureId;
