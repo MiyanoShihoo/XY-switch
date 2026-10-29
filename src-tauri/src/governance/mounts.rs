@@ -6,6 +6,7 @@ use std::{
     path::{Path, PathBuf},
     sync::Mutex,
 };
+#[cfg(desktop)]
 use tauri_plugin_dialog::DialogExt;
 const BEGIN: &str = "<!-- XY Switch managed begin -->";
 const END: &str = "<!-- XY Switch managed end -->";
@@ -271,17 +272,25 @@ pub async fn choose_mount_root(
     mounts: tauri::State<'_, MountManager>,
 ) -> Result<Option<RootGrant>, String> {
     crate::platform::require_desktop("Explicit rule mounts")?;
-    let selection =
-        tauri::async_runtime::spawn_blocking(move || app.dialog().file().blocking_pick_folder())
-            .await
-            .map_err(|e| e.to_string())?;
-    selection
-        .map(|p| {
-            p.into_path()
-                .map_err(|e| e.to_string())
-                .and_then(|p| mounts.grant(p))
-        })
-        .transpose()
+    #[cfg(desktop)]
+    {
+        let selection =
+            tauri::async_runtime::spawn_blocking(move || app.dialog().file().blocking_pick_folder())
+                .await
+                .map_err(|e| e.to_string())?;
+        selection
+            .map(|p| {
+                p.into_path()
+                    .map_err(|e| e.to_string())
+                    .and_then(|p| mounts.grant(p))
+            })
+            .transpose()
+    }
+    #[cfg(mobile)]
+    {
+        let _ = (app, mounts);
+        Err("Explicit rule mounts require a desktop application".into())
+    }
 }
 #[tauri::command]
 pub async fn preview_explicit_mount(
