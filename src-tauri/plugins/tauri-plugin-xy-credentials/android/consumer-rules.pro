@@ -1,0 +1,2 @@
+-keep class com.xyswitch.credentials.CredentialPlugin { *; }
+-keep class com.xyswitch.credentials.CredentialArgs { *; }

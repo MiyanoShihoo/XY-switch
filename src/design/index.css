@@ -1,0 +1,28 @@
+@import "./tokens.css";
+@import "./theme.css";
+@import "./motion.css";
+@import "./components.css";
+@import "./workspace.css";
+@import "../shell/shell.css";
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body, #root { width: 100%; height: 100%; margin: 0; }
+body { background: var(--xy-ds-bg); color: var(--xy-ds-text); font: var(--xy-ds-font-size-md)/var(--xy-ds-line-normal) var(--xy-ds-font-sans); }
+button, input, select, textarea { font: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: not-allowed; }
+button, a, input, select, textarea, [tabindex] { -webkit-tap-highlight-color: transparent; }
+:focus-visible { outline: 2px solid var(--xy-ds-focus-ring); outline-offset: 2px; }
+button:focus:not(:focus-visible) { outline: none; }
+h1, h2, h3, p { margin: 0; }
+h1 { font-size: 18px; line-height: 1.35; font-weight: 650; }
+h2 { font-size: 16px; font-weight: 650; }
+h3 { font-size: 14px; font-weight: 650; }
+a { color: var(--xy-ds-accent); }
+code, pre, .mono { font-family: var(--xy-ds-font-mono); }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+svg { flex-shrink: 0; }
+::selection { background: var(--xy-ds-accent-soft); color: var(--xy-ds-text); }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: var(--xy-ds-border-strong); border-radius: var(--xy-ds-radius-sm); }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }

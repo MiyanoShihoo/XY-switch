@@ -1,0 +1,94 @@
+# Rust target
+target/
+src-tauri/target/
+
+# Node modules
+node_modules/
+.pnpm-store/
+dist/
+
+# Logs & temp files
+*.log
+err.log
+out.log
+*.tmp
+artifacts/
+release/
+tools/
+
+# Test & diagnostic artifacts
+.cdp-release-diagnostic.mjs
+.provider-dom-diagnostic.mjs
+.chrome-acceptance-profile*
+.edge-acceptance-profile/
+.ui-qa/
+.ui-ux-pro-max-skill/
+.compare/
+acceptance-*.png
+ui-review-screen.png
+C.jpg
+
+# Temporary scratch scripts
+*.py
+*.cjs
+fix_*.cjs
+rewrite_*.cjs
+
+# Upstream reference folder
+.cc-switch-upstream/
+
+# OS and IDE files
+.DS_Store
+Thumbs.db
+*.tsbuildinfo
+.vscode/
+.idea/
+
+# Local authentication, secrets and application data
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+/.codex/
+/.agents/
+/.aws/
+
+# Local build / coverage state and private handoff reports
+/.codex-build/
+coverage/
+.vite/
+/交接文档-*.md
+/验收报告-*.md
+/复核报告-*.md
+
+# Generated mobile projects, schemas, release binaries and signing material
+/src-tauri/gen/
+/website/downloads/
+/.build-tools/
+*.mobileprovision
+*.provisionprofile
+*.p8
+*.ipa
+*.xcarchive/
+
+# Android build outputs and signing keys
+/src-tauri/plugins/*/android/.tauri/
+/src-tauri/plugins/*/android/build/
+.gradle/
+.kotlin/
+*.apk
+*.aab
+*.jks
+*.keystore
+keystore.properties
+local.properties

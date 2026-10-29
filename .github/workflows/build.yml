@@ -1,0 +1,255 @@
+name: Build and verify
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  frontend:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm test
+      - run: pnpm test:packaging
+      - run: pnpm build:renderer
+      - name: Validate shell scripts
+        run: for script in scripts/*.sh; do bash -n "$script"; done
+  desktop:
+    needs: frontend
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+          - os: ubuntu-22.04
+            platform: linux
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    env:
+      CARGO_TERM_COLOR: always
+      APPIMAGE_EXTRACT_AND_RUN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - name: Linux system prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev libdbus-1-dev libxdo-dev patchelf gnome-keyring dbus-x11 xvfb xdotool imagemagick
+      - name: Rust toolchain
+        run: |
+          rustup set profile minimal
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update
+          rustup default 1.98.1
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target/debug
+            src-tauri/target/release
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+      - run: pnpm install --frozen-lockfile
+      - run: cargo test --manifest-path src-tauri/Cargo.toml --locked
+      - name: Windows Credential Manager round trip
+        if: runner.os == 'Windows'
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked stores_reads_and_deletes_windows_credential -- --ignored --test-threads=1
+      - name: Isolated Linux Secret Service round trip
+        if: runner.os == 'Linux'
+        run: bash scripts/test-linux-keyring.sh
+      - run: pnpm build:${{ matrix.platform }}
+        env:
+          XY_SWITCH_TOOLS_DIR: ${{ runner.temp }}/xy-switch-tools
+      - name: Verify Windows installer, native window and uninstall
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/verify-windows-bundles.ps1
+      - name: Verify Linux dependencies and isolated package startup
+        if: runner.os == 'Linux'
+        run: bash scripts/verify-linux-bundles.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: xy-switch-${{ matrix.platform }}-${{ runner.arch }}
+          path: release/*/${{ matrix.platform }}-*/
+          if-no-files-found: error
+          retention-days: 14
+  ios-simulator:
+    needs: frontend
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - name: Apple toolchain
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphonesimulator --show-sdk-version
+          command -v pod || brew install cocoapods
+          rustup set profile minimal
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update
+          rustup default 1.98.1
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target/aarch64-apple-ios-sim
+            src-tauri/target/x86_64-apple-ios
+          key: ios-simulator-${{ runner.arch }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build:ios:simulator
+      - name: Install and launch in an isolated simulator
+        run: bash scripts/smoke-ios-simulator.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: xy-switch-ios-simulator-${{ runner.arch }}
+          path: release/*/ios-*-simulator/
+          if-no-files-found: error
+          retention-days: 14
+
+  macos:
+    needs: frontend
+    runs-on: macos-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - name: Apple and Rust toolchains
+        run: |
+          xcodebuild -version
+          rustup toolchain install 1.98.1 --profile minimal --no-self-update
+          rustup default 1.98.1
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: macos-universal-rust-1.98.1-${{ runner.arch }}-${{ hashFiles('src-tauri/Cargo.lock') }}
+      - run: pnpm install --frozen-lockfile
+      - run: cargo test --manifest-path src-tauri/Cargo.toml --locked
+      - name: Isolated native Apple Keychain round trip
+        run: bash scripts/test-macos-keychain.sh
+      - name: Build ARM64 and Intel universal bundles
+        run: pnpm build:macos:universal
+        env:
+          XY_SWITCH_TOOLS_DIR: ${{ runner.temp }}/xy-switch-macos-tools
+      - name: Verify app signature integrity, DMG and rendered window
+        run: bash scripts/verify-macos-bundles.sh universal
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: xy-switch-macos-universal
+          path: release/*/macos-universal/
+          if-no-files-found: error
+          retention-days: 14
+  android:
+    needs: frontend
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - name: Isolate Android tool state
+        shell: bash
+        run: |
+          tools="$RUNNER_TEMP/xy-switch-android-tools"
+          mkdir -p "$tools/gradle" "$tools/android-user"
+          printf '%s\n' "XY_SWITCH_TOOLS_DIR=$tools" "GRADLE_USER_HOME=$tools/gradle" "ANDROID_USER_HOME=$tools/android-user" >> "$GITHUB_ENV"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v4
+        with:
+          cmdline-tools-version: '13114758'
+          packages: 'platform-tools'
+      - name: Android and Rust toolchains
+        run: |
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;27.2.12479018'
+          echo "NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          rustup toolchain install 1.98.1 --profile minimal --target aarch64-linux-android --target x86_64-linux-android --no-self-update
+          rustup default 1.98.1
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+            ${{ runner.temp }}/xy-switch-android-tools/gradle/caches
+            ${{ runner.temp }}/xy-switch-android-tools/gradle/wrapper
+          key: android-rust-1.98.1-ndk27-${{ hashFiles('src-tauri/Cargo.lock', 'scripts/package-android.mjs', 'src-tauri/plugins/**/build.gradle.kts') }}
+      - run: pnpm install --frozen-lockfile
+      - name: Build and independently verify universal release APK
+        run: pnpm build:android --instrumentation
+      - name: Enable KVM for the disposable emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Verify real release APK, Rust IPC and Android Keystore
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 4
+          ram-size: 4096M
+          heap-size: 512M
+          avd-name: xy-switch-ci-${{ github.run_id }}-${{ github.run_attempt }}
+          emulator-port: 5554
+          force-avd-creation: true
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
+          script: node scripts/smoke-android-emulator.mjs --serial emulator-5554
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: xy-switch-android-universal
+          path: release/*/android-universal/
+          if-no-files-found: error
+          retention-days: 14

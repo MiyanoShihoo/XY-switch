@@ -1,0 +1,60 @@
+{
+  "name": "xy-switch",
+  "private": true,
+  "version": "1.1.0",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "dev": "tauri dev",
+    "dev:renderer": "vite",
+    "build": "tauri build",
+    "build:renderer": "tsc -b && vite build",
+    "build:windows": "node scripts/package-release.mjs windows",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "lint": "tsc -p tsconfig.app.json --noEmit",
+    "tauri": "tauri",
+    "test:ui": "node scripts/verify-workspace-ui.mjs",
+    "build:linux": "node scripts/package-release.mjs linux",
+    "build:ios": "bash scripts/package-ios.sh device",
+    "build:ios:simulator": "bash scripts/package-ios.sh simulator",
+    "test:packaging": "node --test scripts/package-release.test.mjs scripts/package-android.test.mjs scripts/smoke-android-emulator.test.mjs scripts/select-ios-simulator.test.mjs scripts/verify-native-screenshot.test.mjs scripts/verify-windows-payload.test.mjs",
+    "build:macos": "node scripts/package-release.mjs macos",
+    "build:macos:universal": "node scripts/package-release.mjs macos --universal",
+    "build:android": "node scripts/package-android.mjs",
+    "test:ui:i18n": "node scripts/verify-i18n-ui.mjs",
+    "test:ui:website": "node scripts/verify-website-ui.mjs"
+  },
+  "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
+    "@tanstack/react-query": "^5.87.1",
+    "@tauri-apps/api": "^2.8.0",
+    "lucide-react": "^0.542.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.8.4",
+    "@types/react": "^19.1.12",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^5.0.2",
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.17",
+    "typescript": "~5.8.3",
+    "vite": "^7.3.7",
+    "vitest": "^4.1.12"
+  },
+  "description": "Local AI configuration and protocol-routing workbench with English/Chinese UI: providers, model mappings, MCP, prompts, opt-in Skills, usage and model-response evidence. Built with Tauri, Rust and React.",
+  "author": "xy",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MiyanoShihoo/XY-switch.git"
+  },
+  "homepage": "https://github.com/MiyanoShihoo/XY-switch#readme",
+  "bugs": {
+    "url": "https://github.com/MiyanoShihoo/XY-switch/issues"
+  }
+}

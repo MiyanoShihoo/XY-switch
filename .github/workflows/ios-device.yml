@@ -1,0 +1,53 @@
+name: Build signed iOS device package
+on:
+  workflow_dispatch:
+    inputs:
+      export_method:
+        description: Provisioning profile must match the chosen export method
+        type: choice
+        required: true
+        default: app-store-connect
+        options: [app-store-connect, release-testing, debugging]
+permissions:
+  contents: read
+jobs:
+  signed-ipa:
+    runs-on: macos-latest
+    timeout-minutes: 90
+    env:
+      APPLE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_DEVELOPMENT_TEAM }}
+      IOS_CERTIFICATE: ${{ secrets.IOS_CERTIFICATE }}
+      IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+      IOS_MOBILE_PROVISION: ${{ secrets.IOS_MOBILE_PROVISION }}
+      IOS_EXPORT_METHOD: ${{ inputs.export_method }}
+    steps:
+      - name: Require real signing material
+        shell: bash
+        run: |
+          : "${APPLE_DEVELOPMENT_TEAM:?Missing APPLE_DEVELOPMENT_TEAM repository secret}"
+          : "${IOS_CERTIFICATE:?Missing IOS_CERTIFICATE repository secret}"
+          : "${IOS_CERTIFICATE_PASSWORD:?Missing IOS_CERTIFICATE_PASSWORD repository secret}"
+          : "${IOS_MOBILE_PROVISION:?Missing IOS_MOBILE_PROVISION repository secret}"
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - name: Apple toolchain
+        run: |
+          xcodebuild -version
+          command -v pod || brew install cocoapods
+          rustup set profile minimal
+          rustup update stable --no-self-update
+          rustup default stable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build:ios
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xy-switch-ios-signed-${{ inputs.export_method }}
+          path: release/*/ios-arm64-device/
+          if-no-files-found: error
+          retention-days: 7

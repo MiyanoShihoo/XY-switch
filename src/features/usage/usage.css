@@ -1,0 +1,27 @@
+@import "./audit.css";
+.usage-filter { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--xy-ds-space-3); border-bottom: 1px solid var(--xy-ds-border); padding-bottom: var(--xy-ds-space-4); }
+.usage-filter__actions { display: flex; align-items: end; justify-content: end; gap: var(--xy-ds-space-2); }
+.usage-page .metric-strip__value { font-size: 16px; overflow-wrap: anywhere; }
+.usage-trend { background: var(--xy-ds-surface); border: 1px solid var(--xy-ds-border); border-radius: var(--xy-ds-radius-sm); padding: var(--xy-ds-space-4); }
+.usage-trend .section-heading select { width: 140px; }
+.usage-trend__plot { display: flex; list-style: none; align-items: stretch; gap: var(--xy-ds-space-2); height: 132px; padding: 0; margin: 0; overflow-x: auto; }
+.usage-trend__plot li { display: flex; flex-direction: column; gap: var(--xy-ds-space-1); align-items: center; flex: 1; min-width: 35px; max-width: 72px; }
+.usage-trend__bar-slot { display: flex; align-items: end; justify-content: center; height: 100px; width: 100%; border-bottom: 1px solid var(--xy-ds-border-strong); }
+.usage-trend__bar { background: var(--xy-ds-accent); width: 60%; max-width: 26px; }
+.usage-trend__plot small { font-family: var(--xy-ds-font-mono); font-size: 10px; color: var(--xy-ds-text-muted); }
+.usage-trend__data summary { color: var(--xy-ds-text-muted); font-size: 12px; cursor: pointer; }
+.usage-cell-note { display: block; color: var(--xy-ds-text-muted); font-size: 11px; margin-top: var(--xy-ds-space-1); overflow-wrap: anywhere; }
+.usage-page .xy-ui-table td { vertical-align: top; }
+.usage-page .xy-ui-table strong, .usage-page .xy-ui-table code { overflow-wrap: anywhere; }
+.usage-refresh { display: flex; align-items: center; gap: var(--xy-ds-space-2); color: var(--xy-ds-text-muted); font-size: 12px; }
+.usage-refresh select { width: 86px; }
+.usage-pagination { display: flex; align-items: center; justify-content: space-between; gap: var(--xy-ds-space-3); flex-wrap: wrap; font-size: 12px; }
+.usage-pagination input { width: 60px; min-height: 32px; height: 32px; }
+.usage-footnote { color: var(--xy-ds-text-muted); font-size: 11px; }
+@media (max-width: 950px) { .usage-page .metric-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); } .usage-page .metric-strip__item:nth-child(2) { border-right: 0; } .usage-page .metric-strip__item:nth-child(-n+2) { border-bottom: 1px solid var(--xy-ds-border); } }
+@media (max-width: 700px) { .usage-filter { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+.model-pricing__rates, .model-pricing__filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.model-pricing__id { white-space: normal; overflow-wrap: anywhere; }
+.model-pricing .inline-actions { flex-wrap: wrap; }
+@media (max-width: 580px) { .model-pricing__rates, .model-pricing__filters { grid-template-columns: 1fr; } }
