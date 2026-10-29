@@ -50,6 +50,16 @@ The current desktop source supports Codex, Claude Code, and Gemini CLI transcrip
 
 Local usage import below is a separate feature.
 
+### Favorites and quick filters (source update, 2026-10-29)
+
+- Use a row's star or **Favorite session** in the detail view. Favorites appear first, with recent activity ordering inside each group. Starring a row does not select it. Favorites use the client and session ID together, so identical IDs from different clients stay independent.
+- Combine **Favorites only** with client and title/summary/ID/directory search. Its count includes only favorites present in the current catalog. Press `Esc` in the search box to clear just the text; **Clear filters** resets all filters and returns focus to search.
+- Favorites are stored locally in the app's WebView storage. Only client/session identifiers are added, never titles, directories, source paths, or message bodies; original session logs are unchanged. Windows sharing the same storage origin synchronize changes. There is no cross-device sync.
+- Storage failures or an unrecognized format show a retryable error. Unsaved changes last only on the current page; retry before navigating away or reloading. Unrecognized saved data is not overwritten.
+- A missing catalog entry does not erase its favorite. Only confirmed successful deletion removes it; errors and zero-count deletions preserve it. Unfavoriting a filtered-out detail on compact screens closes the drawer and returns focus to the filter button.
+
+This is a source-branch feature, not an update to existing 1.1.0 installers. See the [favorites verification notes](session-favorites-20261029.md) for reproducible checks.
+
 ## Read usage and model-response evidence
 
 The usage page combines proxy request records with supported local usage imports, including Codex and DeepSeek Harness. Request records can expose token, cache, latency, status, model, and cost evidence when that information actually exists. Local session usage does not manufacture HTTP status, request latency, or real billing evidence.

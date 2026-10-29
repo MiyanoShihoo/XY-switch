@@ -20,6 +20,14 @@ function render(options: { catalog?: SessionCatalog; detail?: SessionDetail; cat
 }
 
 describe("session catalog and detail presentation", () => {
+  it("exposes separate accessible favorite controls without nesting row buttons", () => {
+    const html = render();
+    expect(html).toContain('aria-label="仅看收藏" aria-pressed="false"');
+    expect(html).toContain('aria-label="收藏会话 A local conversation"');
+    expect(html).toContain('title="按 Esc 清除搜索"');
+    expect(html).toContain('aria-current="true"');
+    expect(html).toMatch(/<div class="session-index__row"[^>]*><button[^>]*>[\s\S]*?<\/button><button[^>]*class="xy-ui-icon-button session-favorite"/);
+  });
   it("shows real metadata, messages and supported clients", () => {
     const html = render();
     expect(html).toContain("A local conversation");

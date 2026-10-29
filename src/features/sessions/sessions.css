@@ -1,7 +1,7 @@
 .session-workspace { display: grid; grid-template-columns: 300px minmax(0, 1fr); border: 1px solid var(--xy-ds-border); border-radius: var(--xy-ds-radius-sm); background: var(--xy-ds-surface); min-width: 0; overflow: hidden; }
 .session-index { border-right: 1px solid var(--xy-ds-border); max-height: 640px; overflow-y: auto; }
 .session-index__item { display: grid; gap: var(--xy-ds-space-2); width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--xy-ds-border-subtle); color: var(--xy-ds-text); background: transparent; padding: var(--xy-ds-space-3); }
-.session-index__item[data-selected="true"] { background: var(--xy-ds-accent-soft); box-shadow: inset 2px 0 0 var(--xy-ds-accent); }
+.session-index__row[data-selected="true"] { background: var(--xy-ds-accent-soft); box-shadow: inset 2px 0 0 var(--xy-ds-accent); }
 .session-index__item strong, .session-index__item > .record-row__detail { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .session-detail { display: grid; align-content: start; min-width: 0; }
 .session-detail__header { display: grid; gap: var(--xy-ds-space-3); padding: var(--xy-ds-space-4); border-bottom: 1px solid var(--xy-ds-border); }
@@ -17,3 +17,12 @@
 
 .session-read-warnings { border: 1px solid var(--xy-ds-border); border-radius: var(--xy-ds-radius-sm); padding: var(--xy-ds-space-3); color: var(--xy-ds-text-muted); font-size: 12px; overflow-wrap: anywhere; }
 .session-read-warnings ul { margin: var(--xy-ds-space-2) 0 0; padding-inline-start: var(--xy-ds-space-4); }
+
+.session-index__row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; min-width: 0; padding-inline-end: var(--xy-ds-space-2); border-bottom: 1px solid var(--xy-ds-border-subtle); }
+.session-index__row .session-index__item { min-width: 0; border-bottom: 0; }
+.session-favorite[aria-pressed="true"], .session-favorites-filter[aria-pressed="true"] { color: var(--xy-ds-accent); background: var(--xy-ds-accent-soft); }
+.session-toolbar > .inline-actions { flex: 1 1 600px; min-width: 0; }
+.session-toolbar .xy-ui-select { width: auto; flex: 0 1 160px; min-width: 120px; max-width: 100%; }
+.session-toolbar .xy-ui-input-shell { flex: 1 1 240px; min-width: 160px; max-width: 480px; }
+.session-toolbar .toolbar__search { width: 100%; min-width: 0; }
+.session-results-summary { margin: 0; }

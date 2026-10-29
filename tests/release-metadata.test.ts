@@ -15,7 +15,7 @@ describe("release metadata and bilingual documentation", () => {
     expect(existsSync(resolve(root, `docs/release-notes-${version}.md`))).toBe(true);
   });
 
-  for (const file of ["README.md", "README.zh-CN.md", "docs/user-guide-en.md", "docs/user-guide-zh.md", "docs/packaging-en.md", "docs/packaging.md", "docs/release-notes-1.1.0.md"]) {
+  for (const file of ["README.md", "README.zh-CN.md", "docs/user-guide-en.md", "docs/user-guide-zh.md", "docs/session-favorites-20261029.md", "docs/packaging-en.md", "docs/packaging.md", "docs/release-notes-1.1.0.md"]) {
     it(`keeps local links resolvable in ${file}`, () => {
       for (const match of read(file).matchAll(/\[[^\]]*\]\(([^)]+)\)/g)) {
         const href = match[1].split("#")[0];
