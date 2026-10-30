@@ -5,7 +5,7 @@ import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { connect } from '../workspace-qa/cdp.mjs';
-import { decryptSync, requireDisposableRunner, sha256 } from './lib.mjs';
+import { decryptSync, requireDisposableRunner, sha256, waitForNativePage } from './lib.mjs';
 
 requireDisposableRunner();
 assert.equal(process.platform, 'win32');
@@ -90,6 +90,8 @@ try {
   for (let attempt = 0; attempt < 60 && !c; attempt++) {
     try { c = await connect(args.endpoint); } catch (error) { if (attempt === 59) throw error; await sleep(500); }
   }
+  const connection = await waitForNativePage(c);
+  await writeFile(join(output, 'native-page-connection.json'), JSON.stringify({ ...connection, processId: Number(args.pid) }, null, 2));
   assert.equal(await c.evaluate('location.origin'), 'http://tauri.localhost');
   assert.equal(await c.evaluate('Boolean(window.__TAURI_INTERNALS__?.invoke) && !window.__XY_QA__'), true);
   const platform = await invoke('app_platform');
@@ -203,7 +205,7 @@ try {
   reports.push({ name: activeStep, passed: false, error: scrub(error.stack ?? error) });
   if (c) {
     await shot('failure').catch(() => {});
-    const snapshot = await c.evaluate('({text:document.body.innerText,controls:[...document.querySelectorAll("button,input,select")].map(e=>({tag:e.tagName,label:e.getAttribute("aria-label"),text:e.textContent.slice(0,160),id:e.id,disabled:e.disabled}))})').catch(() => null);
+    const snapshot = await c.evaluate('({url:location.href,origin:location.origin,readyState:document.readyState,text:document.body?.innerText,controls:[...document.querySelectorAll("button,input,select")].map(e=>({tag:e.tagName,label:e.getAttribute("aria-label"),text:e.textContent.slice(0,160),id:e.id,disabled:e.disabled}))})').catch(() => null);
     await writeFile(join(output, 'failure.json'), scrub(JSON.stringify({ snapshot, exceptions: c.exceptions }, null, 2)));
   }
   console.error(scrub(error.stack ?? error)); process.exitCode = 1;

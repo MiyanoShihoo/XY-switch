@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { decryptSync, packageInput, requireDisposableRunner, safeFilename, sha256 } from './native-acceptance/lib.mjs';
+import { decryptSync, packageInput, requireDisposableRunner, safeFilename, sha256, waitForNativePage } from './native-acceptance/lib.mjs';
 
 const secret = 'synthetic native test passphrase';
 function encrypt(payload) {
@@ -95,4 +95,30 @@ test('WebView debug policy is per-app, disposable and restored even after failur
   assert(script.includes('$report.debugPolicyRestored = $true'));
   assert(script.includes('$report.passed -and $report.uninstalled -and $report.debugPolicyRestored'));
   assert(script.indexOf('requires a disposable GitHub-hosted Windows runner') < script.indexOf('New-Item -Path $debugPolicyPath'));
+});
+
+
+const readyPage = { url: 'http://tauri.localhost/', origin: 'http://tauri.localhost', readyState: 'complete', productionIpc: true, mockIpc: false, workspace: true };
+const blankPage = { ...readyPage, url: 'about:blank', origin: 'null', productionIpc: false, workspace: false };
+test('native page readiness waits for real navigation and the rendered workspace', async () => {
+  const states = [blankPage, { ...readyPage, workspace: false }, readyPage];
+  let calls = 0;
+  const client = { evaluate: async () => states[calls++] };
+  assert.deepEqual(await waitForNativePage(client, { timeoutMs: 1000, intervalMs: 1 }), readyPage);
+  assert.equal(calls, 3);
+});
+test('native page readiness tolerates only navigation context replacement', async () => {
+  let calls = 0;
+  const client = { evaluate: async () => { if (!calls++) throw new Error('Execution context was destroyed.'); return readyPage; } };
+  assert.deepEqual(await waitForNativePage(client, { timeoutMs: 1000, intervalMs: 1 }), readyPage);
+  await assert.rejects(waitForNativePage({ evaluate: async () => { throw new Error('Target closed'); } }), /Target closed/);
+});
+test('native page readiness rejects mock bridges and unrelated origins', async () => {
+  await assert.rejects(waitForNativePage({ evaluate: async () => ({ ...readyPage, mockIpc: true }) }), /must not attach to mock IPC/);
+  await assert.rejects(waitForNativePage({ evaluate: async () => ({ ...readyPage, origin: 'https://example.invalid' }) }), /Unexpected native page origin/);
+});
+test('native page readiness times out rather than navigating or fabricating IPC', async () => {
+  await assert.rejects(waitForNativePage({ evaluate: async () => blankPage }, { timeoutMs: 10, intervalMs: 1 }), /did not become ready/);
+  const script = await readFile(new URL('./native-acceptance/windows-sync.mjs', import.meta.url), 'utf8');
+  assert(script.indexOf('await waitForNativePage(c)') < script.indexOf("invoke('app_platform')"));
 });

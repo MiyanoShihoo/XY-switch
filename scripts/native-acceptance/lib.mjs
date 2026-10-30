@@ -2,11 +2,35 @@ import assert from 'node:assert/strict';
 import { createDecipheriv, createHash, pbkdf2Sync } from 'node:crypto';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 
 export function requireDisposableRunner(platform = process.platform, env = process.env) {
   assert.equal(env.GITHUB_ACTIONS, 'true', 'Native acceptance requires GitHub Actions');
   assert.equal(env.RUNNER_ENVIRONMENT, 'github-hosted', 'Native acceptance requires a disposable GitHub-hosted runner');
   assert.equal(platform, 'win32', 'This native acceptance harness requires Windows');
+}
+export async function waitForNativePage(client, { timeoutMs = 60_000, intervalMs = 150 } = {}) {
+  assert(Number.isSafeInteger(timeoutMs) && timeoutMs > 0);
+  assert(Number.isSafeInteger(intervalMs) && intervalMs >= 0);
+  const deadline = Date.now() + timeoutMs;
+  let state;
+  do {
+    try {
+      state = await client.evaluate(`({url:location.href,origin:location.origin,title:document.title,
+        readyState:document.readyState,productionIpc:Boolean(window.__TAURI_INTERNALS__?.invoke),
+        mockIpc:Boolean(window.__XY_QA__),workspace:Boolean(document.querySelector('.provider-workspace'))})`);
+    } catch (error) {
+      if (!/Execution context was destroyed|Cannot find context with specified id/.test(String(error))) throw error;
+      state = undefined;
+    }
+    if (state) {
+      assert(!state.mockIpc, 'Native acceptance must not attach to mock IPC');
+      assert(['null', 'http://tauri.localhost'].includes(state.origin), 'Unexpected native page origin');
+      if (state.origin === 'http://tauri.localhost' && state.readyState === 'complete' && state.productionIpc && state.workspace) return state;
+    }
+    await delay(intervalMs);
+  } while (Date.now() < deadline);
+  throw new Error('Packaged native page did not become ready: ' + JSON.stringify(state));
 }
 export const sha256 = data => createHash('sha256').update(data).digest('hex');
 export function decryptSync(file, passphrase) {
