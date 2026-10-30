@@ -170,8 +170,14 @@ try {
     for (let index = 0; index < selects.length; index++) {
       const row = selects[index];
       await c.fill(`[id=${JSON.stringify(row.id)}]`, row.label.includes('qa-native-keep-local') ? 'local' : 'incoming');
-      if (index < selects.length - 1) await disabled('确认合并所选变更');
+      await disabled('确认合并所选变更');
     }
+    assert.equal(await c.evaluate(panel + '.querySelector(".gov-check input").checked'), false, 'Changing import choices must clear review');
+    const confirmationCleared = await c.evaluate('(() => { const label = [...' + panel + '.querySelectorAll("label")].find(e => e.textContent.trim() === "输入确认文字 · IMPORT"); return Boolean(label) && document.getElementById(label.htmlFor)?.value === ""; })()');
+    assert.equal(confirmationCleared, true, 'Changing import choices must clear confirmation');
+    await confirm('IMPORT'); await disabled('确认合并所选变更');
+    await c.click('.encrypted-sync-settings .gov-check input');
+    await c.waitFor(buttonExpr('确认合并所选变更') + '?.disabled === false', 10_000);
     await disabled('确认合并所选变更', false); await shot('import-choices');
     await button('确认合并所选变更'); await message('已合并 4 项');
     after = await state(); assert.equal(after.backups.length, 1); assert.equal(after.backups[0].used, false);

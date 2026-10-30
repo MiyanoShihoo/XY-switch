@@ -47,7 +47,7 @@ npm run test:packaging
 
 ## 已有结果
 
-- 本地打包、产物安全解包、桌面平台范围与验收脚本回归：**75/75 通过**；PowerShell 5.1 语法和原生控件互操作 C# 编译检查通过，未在本机执行 GUI 或 Win32 控件操作。
+- 本地打包、产物安全解包、桌面平台范围与验收脚本回归：**76/76 通过**；PowerShell 5.1 语法和原生控件互操作 C# 编译检查通过，未在本机执行 GUI 或 Win32 控件操作。
 - Windows 第二轮原生 CI：[41014384150 / attempt 1](https://github.com/MiyanoShihoo/XY-switch/actions/runs/41014384150)，脚本提交 `d75623d301326f0c6bec9ee6f7c94e33792d0a6a`。原始 EXE 摘要匹配，实际供应商页面已加载，卸载完成；由于 CDP 未监听，尚未执行加密同步交互，**该轮失败**。
 - 上述 Windows 诊断 artifact **12959165985** 的 ZIP SHA-256 为 `5a327efb05b115856dbe2d5657cc1df25e27ec9e9b19973326410d90c93f33c1`，本地下载已核验。保留进程树、命令行、监听状态和实际窗口截图。
 - iOS 旧运行的截图显示供应商界面已加载；旧测试把原生 Switch 错当成 Button，不能据此声称应用永久卡在初始化。该项已移出当前平台范围，不再追加 iOS 修复/验收运行。
@@ -64,5 +64,7 @@ npm run test:packaging
 - 第七轮 [41023437110 / attempt 1](https://github.com/MiyanoShihoo/XY-switch/actions/runs/41023437110)，脚本 `a708b0a3cdb881708e47b061a40a7a6d364dd7a8`：Win32 控件识别已生效，原生保存窗口 341 ms 就绪，路径回读、原生按钮调用、窗口关闭均通过，应用提示保存完成；但请求路径下未找到文件，因此独立解密尚未执行，仍记失败。文件名输入改用 EM_SETSEL + EM_REPLACESEL，让 shell 收到实际编辑变更通知，而非仅 WM_SETTEXT；增加失败时任务临时目录和 Documents 顶层 `.xysync` 文件位置诊断，不自动接受其他路径。Windows artifact `12962184149`，ZIP SHA-256 `905640785351f5aa9ac6f95ed1a694986e46f961f745df69c401e29ddcb8825e`，下载及原生截图已核验；官网、来源检查、卸载及策略恢复通过。
 
 - 第八轮 [41024265306 / attempt 1](https://github.com/MiyanoShihoo/XY-switch/actions/runs/41024265306)，脚本 `ca06ad5fcd3fb116e16cc4c1bd41b391e8fd2806`：生产 IPC、真实另存为与独立解密、取消且不写入，前三组原生验收通过。实际文件 1957 字节，SHA-256 `23c0941539e4c81b58a17076465491877c4ad4a3b2c12348da032c0d63144897`；AES-GCM、KDF、白名单、错误口令和篡改认证均独立验证。随后原生 Open 窗口的文件名 Edit ID 为 `1148`，不同于 Save As 的 `1001`，旧选择器未匹配而失败；现按操作类型使用两个已观察到的 ID，并在底层再次验证类名/进程/子孙关系，不接受同 ID 的 ComboBox 或地址栏。Windows artifact `12962079364`，ZIP SHA-256 `21acbc5534e2d1c30d2a9e3b6152454d313f9182df855508a5f5d860cdaaa8be`，完整证据已下载校验；官网、来源检查、卸载及策略恢复通过。
+
+- 第九轮 [41025569690 / attempt 1](https://github.com/MiyanoShihoo/XY-switch/actions/runs/41025569690)，脚本 `a83c92eac3a0f0c0219ced166d7b40f0d222ef32`：四个真实文件对话框均通过，正确保存/独立解密、取消不写入、原生打开错误口令不写入四组验收通过。导入预览成功且保持原状态，但逐项选择后合并按钮仍禁用；失败截图和生产组件均证实，改变选择会清除提前输入的确认文字及勾选，应用行为符合保护约定。脚本现验证每次选择后仍不可提交、两项确认确实清除，再在所有选择完成后重新输入 IMPORT 并勾选检查，不放宽应用保护。该轮仍记失败。Windows artifact `12963222947`，ZIP SHA-256 `f9ea8ba981fabbd8a449cd5f5bf852943e9365090dc829635ae79b32327c90d2`；完整证据已下载校验，官网、来源检查、卸载及 HKLM 策略恢复通过。
 
 新的 Windows 原生运行结果须单独核验后再记录；本地脚本回归不能替代实际文件选择器、导入与回滚验收。

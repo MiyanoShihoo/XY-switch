@@ -168,3 +168,21 @@ test('native save and open filename fields use distinct observed control IDs', a
   assert(native.includes('controlId != 1001 && controlId != 1148'));
   assert(native.includes('RequireControl(dialog, edit, processId, "Edit", controlId)'));
 });
+
+test('native import renews review and confirmation only after every explicit choice', async () => {
+  const script = await readFile(new URL('./native-acceptance/windows-sync.mjs', import.meta.url), 'utf8');
+  const flow = script.slice(script.indexOf("await step('native-import-preview-explicit-choices-and-backup'"), script.indexOf("await step('native-rollback-preview-and-persisted-restoration'"));
+  const choices = flow.indexOf('for (let index = 0; index < selects.length; index++)');
+  const reset = flow.indexOf("'Changing import choices must clear review'");
+  const confirmationReset = flow.indexOf("'Changing import choices must clear confirmation'");
+  const renewedConfirmation = flow.lastIndexOf("await confirm('IMPORT')");
+  const renewedReview = flow.lastIndexOf("await c.click('.encrypted-sync-settings .gov-check input')");
+  const enabled = flow.indexOf("await disabled('确认合并所选变更', false)");
+  assert(choices > 0 && choices < reset && reset < confirmationReset);
+  assert(confirmationReset < renewedConfirmation && renewedConfirmation < renewedReview && renewedReview < enabled);
+  assert(flow.slice(choices, reset).includes("await disabled('确认合并所选变更');"));
+  assert(!flow.includes('if (index < selects.length - 1)'));
+  assert(flow.slice(renewedConfirmation, renewedReview).includes("await disabled('确认合并所选变更');"));
+  assert(flow.slice(renewedReview, enabled).includes("'?.disabled === false', 10_000"));
+  assert(enabled < flow.indexOf("await button('确认合并所选变更')"));
+});
