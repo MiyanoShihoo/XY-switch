@@ -139,11 +139,11 @@ test('native dialog waits for its PID-bound controls and retains failure evidenc
 test('native dialog handles UIA Pane proxies through exact Win32 control identities', async () => {
   const script = await readFile(new URL('./native-acceptance/windows-dialog.ps1', import.meta.url), 'utf8');
   const native = await readFile(new URL('./native-acceptance/windows-dialog-native.cs', import.meta.url), 'utf8');
-  assert(script.includes("$_.Current.ClassName -eq 'Edit' -and $_.Current.AutomationId -eq '1001'"));
+  assert(script.includes("$_.Current.ClassName -eq 'Edit' -and $_.Current.AutomationId -eq [string]$editId"));
   assert(script.includes("$_.Current.ClassName -eq 'Button' -and $_.Current.AutomationId -eq $buttonId"));
   assert(!script.includes('$_.Current.ControlType -eq'));
   for (const required of ['ProcessId(dialog) == processId', 'ClassName(dialog) == "#32770"', 'IsChild(dialog, control)', 'ProcessId(control) == processId', 'ClassName(control) == className', 'GetDlgCtrlID(control) == controlId', 'IsWindowVisible(control)', 'IsWindowEnabled(control)', 'SendMessageTimeoutW', '5000', 'controlId != 1 && controlId != 2']) assert(native.includes(required), required);
-  assert(script.includes('::ReadFileName($dialogHandle, $editHandle, $AppProcessId) -cne $SelectedPath'));
+  assert(script.includes('::ReadFileName($dialogHandle, $editHandle, $AppProcessId, $editId) -cne $SelectedPath'));
   assert(script.includes('$report.fileNameVerified = $true'));
   assert(script.includes("$report.actionMethod = 'win32-bm-click'"));
   assert(!/SendKeys|SendInput|SetCursorPos/.test(native));
@@ -157,4 +157,14 @@ test('native filename entry notifies the shell via actual edit replacement', asy
   assert(!native.includes('SetTextMessage(edit, 0x000C'));
   assert(script.includes("$report.editMethod = 'win32-em-replacesel'"));
   assert(script.indexOf('::ReadFileName') < script.indexOf('::ClickAction'));
+});
+
+test('native save and open filename fields use distinct observed control IDs', async () => {
+  const script = await readFile(new URL('./native-acceptance/windows-dialog.ps1', import.meta.url), 'utf8');
+  const native = await readFile(new URL('./native-acceptance/windows-dialog-native.cs', import.meta.url), 'utf8');
+  assert(script.includes("$editId = if ($Operation -eq 'save') { 1001 } else { 1148 }"));
+  assert(script.includes("$AppProcessId, 'Edit', $editId)"));
+  assert(script.includes('::SetFileName($dialogHandle, $editHandle, $AppProcessId, $editId, $SelectedPath)'));
+  assert(native.includes('controlId != 1001 && controlId != 1148'));
+  assert(native.includes('RequireControl(dialog, edit, processId, "Edit", controlId)'));
 });

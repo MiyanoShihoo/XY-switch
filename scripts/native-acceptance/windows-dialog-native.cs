@@ -40,8 +40,12 @@ public static class XYNativeDialog {
         if (!IsControl(dialog, control, processId, className, controlId) || !IsWindowEnabled(control))
             throw new InvalidOperationException("Native control identity, ancestry or enabled-state mismatch");
     }
-    public static void SetFileName(IntPtr dialog, IntPtr edit, uint processId, string path) {
-        RequireControl(dialog, edit, processId, "Edit", 1001);
+    private static void RequireFileNameControl(IntPtr dialog, IntPtr edit, uint processId, int controlId) {
+        if (controlId != 1001 && controlId != 1148) throw new ArgumentException("Only native save/open filename controls are accepted");
+        RequireControl(dialog, edit, processId, "Edit", controlId);
+    }
+    public static void SetFileName(IntPtr dialog, IntPtr edit, uint processId, int controlId, string path) {
+        RequireFileNameControl(dialog, edit, processId, controlId);
         if (String.IsNullOrEmpty(path) || path.Length >= 32767 || path.IndexOf('\0') >= 0 || !System.IO.Path.IsPathRooted(path))
             throw new ArgumentException("An absolute native fixture path is required");
         UIntPtr result;
@@ -51,8 +55,8 @@ public static class XYNativeDialog {
         if (SetTextMessage(edit, 0x00C2, new UIntPtr(1), path, 2, 5000, out result) == IntPtr.Zero)
             throw new InvalidOperationException("Native EM_REPLACESEL failed or timed out");
     }
-    public static string ReadFileName(IntPtr dialog, IntPtr edit, uint processId) {
-        RequireControl(dialog, edit, processId, "Edit", 1001);
+    public static string ReadFileName(IntPtr dialog, IntPtr edit, uint processId, int controlId) {
+        RequireFileNameControl(dialog, edit, processId, controlId);
         var text = new StringBuilder(32768);
         UIntPtr result;
         if (GetTextMessage(edit, 0x000D, new UIntPtr((uint)text.Capacity), text, 2, 5000, out result) == IntPtr.Zero)

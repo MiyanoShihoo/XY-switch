@@ -31,6 +31,7 @@ $condition = New-Object Windows.Automation.AndCondition(
 )
 $dialog = $null
 $buttonId = if ($Operation -eq 'cancel') { '2' } else { '1' }
+$editId = if ($Operation -eq 'save') { 1001 } else { 1148 }
 $report = [ordered]@{operation=$Operation;processId=$AppProcessId;completed=$false;screenshotCaptured=$false;controlAttempts=0;nodes=@()}
 $started = [DateTime]::UtcNow
 $deadline = $started.AddSeconds(75)
@@ -51,14 +52,14 @@ try {
                 $report.dialogHandle = $dialogHandle.ToInt64()
                 $report.nodes = @($all | ForEach-Object { [ordered]@{name=$_.Current.Name;id=$_.Current.AutomationId;type=$_.Current.ControlType.ProgrammaticName;class=$_.Current.ClassName;enabled=$_.Current.IsEnabled;handle=$_.Current.NativeWindowHandle} })
                 # The runner can expose standard Win32 Edit/Button controls as UIA Pane.
-                $edits = @($all | Where-Object { $_.Current.ClassName -eq 'Edit' -and $_.Current.AutomationId -eq '1001' })
+                $edits = @($all | Where-Object { $_.Current.ClassName -eq 'Edit' -and $_.Current.AutomationId -eq [string]$editId })
                 $buttons = @($all | Where-Object { $_.Current.ClassName -eq 'Button' -and $_.Current.AutomationId -eq $buttonId })
                 $editPattern = $null
                 $buttonPattern = $null
                 $editReady = $Operation -eq 'cancel'
                 if (-not $editReady -and $edits.Count -eq 1) {
                     $editHandle = [IntPtr]$edits[0].Current.NativeWindowHandle
-                    $editReady = [XYNativeDialog]::IsControl($dialogHandle, $editHandle, $AppProcessId, 'Edit', 1001) -and [XYNativeDialog]::IsWindowEnabled($editHandle)
+                    $editReady = [XYNativeDialog]::IsControl($dialogHandle, $editHandle, $AppProcessId, 'Edit', $editId) -and [XYNativeDialog]::IsWindowEnabled($editHandle)
                     if ($editReady) { $null = $edits[0].TryGetCurrentPattern([Windows.Automation.ValuePattern]::Pattern, [ref]$editPattern) }
                 }
                 $buttonReady = $false
@@ -81,10 +82,10 @@ try {
             ([Windows.Automation.ValuePattern]$editPattern).SetValue($SelectedPath)
             $report.editMethod = 'uia-value-pattern'
         } else {
-            [XYNativeDialog]::SetFileName($dialogHandle, $editHandle, $AppProcessId, $SelectedPath)
+            [XYNativeDialog]::SetFileName($dialogHandle, $editHandle, $AppProcessId, $editId, $SelectedPath)
             $report.editMethod = 'win32-em-replacesel'
         }
-        if ([XYNativeDialog]::ReadFileName($dialogHandle, $editHandle, $AppProcessId) -cne $SelectedPath) { throw 'Native filename edit did not retain the exact selected path' }
+        if ([XYNativeDialog]::ReadFileName($dialogHandle, $editHandle, $AppProcessId, $editId) -cne $SelectedPath) { throw 'Native filename edit did not retain the exact selected path' }
         $report.requestedPath = $SelectedPath
         $report.fileName = [IO.Path]::GetFileName($SelectedPath)
         $report.editId = $edits[0].Current.AutomationId

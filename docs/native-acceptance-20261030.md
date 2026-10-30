@@ -15,7 +15,7 @@ iOS 验收按用户要求停止，不再是本轮待完成项。之前的 iOS �
 CDP 仅绑定 loopback。[微软确认](https://github.com/MicrosoftEdge/WebView2Feedback/issues/5645#issuecomment-4934355430) WebView2 150 起会忽略管理员进程的环境变量和 HKCU 调试覆盖；GitHub-hosted Windows runner 正处于该环境。当前脚本使用微软支持的 **HKLM、仅限应用标识/EXE 名称** 的临时覆盖，不使用通配应用策略、不降级运行时。必须先通过一次性 runner 和实际管理员权限检查。原值及类型在内存中保存，并在 `finally` 中恢复；已有注册表键不重建，恢复或卸载失败都会使验收失败。安装包和可执行文件不修改。
 
 - 使用生产 IPC 构造 `.invalid` 域名的合成供应商、收藏和自定义价格；不读取或配置真实供应商密钥，不调用付费接口。
-- 导出、导入、取消及回滚操作实际 UI。独立进程通过 Windows UI Automation 操作属于被测 PID 的 `#32770` 文件对话框，保存控件树和截图，不替换 IPC 或文件选择器。
+- 导出、导入、取消及回滚操作实际 UI。独立进程通过 Windows UI Automation 定位属于被测 PID 的 `#32770` 文件对话框，再核验真实 Win32 类名、控件 ID、HWND、进程与子孙关系。优先使用 UIA Pattern；若系统把原生 Edit/Button 暴露为无 Pattern 的 Pane，则通过有界 EM_SETSEL / EM_REPLACESEL 和 BM_CLICK 操作同一控件，回读完整文件名并验证窗口关闭。保存控件树、操作方式和截图，不替换 IPC 或文件选择器。
 - 独立解密实际保存的 `.xysync`，验证 AES-256-GCM / PBKDF2 参数、白名单、同步身份隔离、错误口令与 tag 篡改拒绝。
 - 验证取消与错误口令不写入；正确预览不应用配置；逐项明确选择，覆盖接受与保留本地。
 - 验证同目标合并保留本机 advanced，变更目标保留原供应商并创建新禁用副本；验证备份和回滚。同步新增副本在回滚后仍保留为禁用，这是产品约定。
@@ -47,7 +47,7 @@ npm run test:packaging
 
 ## 已有结果
 
-- 本地打包、产物安全解包、桌面平台范围与验收脚本回归：**74/74 通过**；PowerShell 5.1 语法和原生控件互操作 C# 编译检查通过，未在本机执行 GUI 或 Win32 控件操作。
+- 本地打包、产物安全解包、桌面平台范围与验收脚本回归：**75/75 通过**；PowerShell 5.1 语法和原生控件互操作 C# 编译检查通过，未在本机执行 GUI 或 Win32 控件操作。
 - Windows 第二轮原生 CI：[41014384150 / attempt 1](https://github.com/MiyanoShihoo/XY-switch/actions/runs/41014384150)，脚本提交 `d75623d301326f0c6bec9ee6f7c94e33792d0a6a`。原始 EXE 摘要匹配，实际供应商页面已加载，卸载完成；由于 CDP 未监听，尚未执行加密同步交互，**该轮失败**。
 - 上述 Windows 诊断 artifact **12959165985** 的 ZIP SHA-256 为 `5a327efb05b115856dbe2d5657cc1df25e27ec9e9b19973326410d90c93f33c1`，本地下载已核验。保留进程树、命令行、监听状态和实际窗口截图。
 - iOS 旧运行的截图显示供应商界面已加载；旧测试把原生 Switch 错当成 Button，不能据此声称应用永久卡在初始化。该项已移出当前平台范围，不再追加 iOS 修复/验收运行。
@@ -62,5 +62,7 @@ npm run test:packaging
 - 第六轮 [41022727924 / attempt 1](https://github.com/MiyanoShihoo/XY-switch/actions/runs/41022727924)，脚本 `8a6402042ed2a2b48ce38df85991aa0fe26467cc`：75 秒、272 次 UIA 控件读取后仍失败。原生 Save As 截图证明窗口完整可操作；Edit `1001` 和 Button `1/2` 始终暴露为 Pane，并非仍在加载。现按实际 Win32 类名和控件 ID 识别，同时核验 HWND、进程、对话框子孙关系及可见/启用状态；优先 UIA Pattern，否则向同一真实控件发送有界 WM_SETTEXT / BM_CLICK，并回读文件名、验证窗口关闭及截图。Windows artifact `12962401452`，ZIP SHA-256 `c81f6c521e9c33453b9671bccc2d23d8e95c644122cfaa79c6fdfb3b55fb99cb`，下载及原生截图已核验；卸载及策略恢复通过。
 
 - 第七轮 [41023437110 / attempt 1](https://github.com/MiyanoShihoo/XY-switch/actions/runs/41023437110)，脚本 `a708b0a3cdb881708e47b061a40a7a6d364dd7a8`：Win32 控件识别已生效，原生保存窗口 341 ms 就绪，路径回读、原生按钮调用、窗口关闭均通过，应用提示保存完成；但请求路径下未找到文件，因此独立解密尚未执行，仍记失败。文件名输入改用 EM_SETSEL + EM_REPLACESEL，让 shell 收到实际编辑变更通知，而非仅 WM_SETTEXT；增加失败时任务临时目录和 Documents 顶层 `.xysync` 文件位置诊断，不自动接受其他路径。Windows artifact `12962184149`，ZIP SHA-256 `905640785351f5aa9ac6f95ed1a694986e46f961f745df69c401e29ddcb8825e`，下载及原生截图已核验；官网、来源检查、卸载及策略恢复通过。
+
+- 第八轮 [41024265306 / attempt 1](https://github.com/MiyanoShihoo/XY-switch/actions/runs/41024265306)，脚本 `ca06ad5fcd3fb116e16cc4c1bd41b391e8fd2806`：生产 IPC、真实另存为与独立解密、取消且不写入，前三组原生验收通过。实际文件 1957 字节，SHA-256 `23c0941539e4c81b58a17076465491877c4ad4a3b2c12348da032c0d63144897`；AES-GCM、KDF、白名单、错误口令和篡改认证均独立验证。随后原生 Open 窗口的文件名 Edit ID 为 `1148`，不同于 Save As 的 `1001`，旧选择器未匹配而失败；现按操作类型使用两个已观察到的 ID，并在底层再次验证类名/进程/子孙关系，不接受同 ID 的 ComboBox 或地址栏。Windows artifact `12962079364`，ZIP SHA-256 `21acbc5534e2d1c30d2a9e3b6152454d313f9182df855508a5f5d860cdaaa8be`，完整证据已下载校验；官网、来源检查、卸载及策略恢复通过。
 
 新的 Windows 原生运行结果须单独核验后再记录；本地脚本回归不能替代实际文件选择器、导入与回滚验收。
