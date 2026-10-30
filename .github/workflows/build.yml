@@ -355,8 +355,6 @@ jobs:
     env:
       NATIVE_SOURCE_RUN: ${{ inputs.native_source_run }}
       NATIVE_SOURCE_COMMIT: ${{ inputs.native_source_commit }}
-      XY_IOS_PACKAGE_ROOT: ${{ runner.temp }}/source-ios
-      XY_IOS_QA_OUTPUT: ${{ github.workspace }}/artifacts/native-acceptance/ios
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -375,6 +373,9 @@ jobs:
           NATIVE_ARTIFACT_DIGEST: ${{ needs.native-source.outputs.ios_digest }}
       - name: Native iOS ready state, preference write/relaunch and mobile sync read-only UI
         run: bash scripts/smoke-ios-simulator.sh
+        env:
+          XY_IOS_PACKAGE_ROOT: ${{ runner.temp }}/source-ios
+          XY_IOS_QA_OUTPUT: ${{ github.workspace }}/artifacts/native-acceptance/ios
       - uses: actions/upload-artifact@v4
         if: always()
         with:
