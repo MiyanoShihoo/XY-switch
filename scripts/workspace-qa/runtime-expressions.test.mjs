@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { Script } from 'node:vm';
 import ts from 'typescript';
+import { predicateExpression } from './runtime-predicate.mjs';
 
 // Compile static browser expressions without executing them or launching a browser.
 // Node --check alone cannot see syntax errors inside Runtime.evaluate strings.
@@ -24,14 +25,14 @@ for (const name of ['navigation', 'workspace', 'i18n', 'sessions', 'governance',
           ['evaluate', 'waitFor'].includes(node.expression.name.text) &&
           ts.isStringLiteralLike(node.arguments[0])) {
         const expression = node.arguments[0];
-        expressions.push({ value: expression.text, line: parsed.getLineAndCharacterOfPosition(expression.getStart()).line + 1 });
+        expressions.push({ value: expression.text, predicate: node.expression.name.text === 'waitFor', line: parsed.getLineAndCharacterOfPosition(expression.getStart()).line + 1 });
       }
       ts.forEachChild(node, visit);
     }
     visit(parsed);
     assert(expressions.length > 0, file + ' must contain browser expressions to validate');
-    for (const { value, line } of expressions) {
-      assert.doesNotThrow(() => new Script(value), file + ':' + line + ' contains an invalid browser expression');
+    for (const { value, predicate, line } of expressions) {
+      assert.doesNotThrow(() => new Script(predicate ? predicateExpression(value) : value), file + ':' + line + ' contains an invalid browser expression');
     }
   });
 }

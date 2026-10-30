@@ -26,7 +26,7 @@
     "test:ui:sync": "node scripts/verify-encrypted-sync-ui.mjs",
     "test:ui:navigation": "node scripts/verify-workspace-navigation-ui.mjs",
     "test:ui:headless": "node scripts/verify-workspace-headless.mjs",
-    "test:ui:network": "node --test scripts/workspace-qa/network-policy.test.mjs scripts/workspace-qa/devtools-readiness.test.mjs scripts/workspace-qa/runtime-expressions.test.mjs scripts/workspace-qa/document-navigation.test.mjs"
+    "test:ui:network": "node --test scripts/workspace-qa/network-policy.test.mjs scripts/workspace-qa/devtools-readiness.test.mjs scripts/workspace-qa/runtime-expressions.test.mjs scripts/workspace-qa/document-navigation.test.mjs scripts/workspace-qa/runtime-predicate.test.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

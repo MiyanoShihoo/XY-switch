@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { writeFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { navigateFreshDocument } from './document-navigation.mjs';
+import { waitForPredicate } from './runtime-predicate.mjs';
 
 export function isLocalRendererRequest(value, base) {
   try {
@@ -35,7 +36,7 @@ export async function connect(endpoint = process.env.CDP_ENDPOINT ?? 'http://127
   });
   function call(method,params={}) { return new Promise((resolve,reject)=>{const id=++sequence;const timer=setTimeout(()=>{pending.delete(id);reject(new Error('CDP timeout: '+method));},20000);pending.set(id,{resolve,reject,timer});socket.send(JSON.stringify({id,method,params}));}); }
   async function evaluate(expression) { const result=await call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(result.exceptionDetails)throw new Error(result.exceptionDetails.exception?.description??result.exceptionDetails.text);return result.result.value; }
-  async function waitFor(expression, timeout=10000) { const start=Date.now();while(Date.now()-start<timeout){if(await evaluate(expression))return;await new Promise(r=>setTimeout(r,60));}throw new Error('Timed out: '+expression); }
+  const waitFor = (expression, timeout = 10000) => waitForPredicate(evaluate, expression, { timeout });
   async function clickExpression(expression) {
     const point = await evaluate('(() => { const e = '+expression+'; if (!e) throw new Error("Missing click target"); if(e.disabled)throw new Error("Disabled click target");e.scrollIntoView({block:"center",inline:"nearest"});const r=e.getBoundingClientRect(); return {x:r.x+r.width/2,y:r.y+r.height/2}; })()');
     await call('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',clickCount:1,...point});
