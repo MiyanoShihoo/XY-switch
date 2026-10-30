@@ -48,6 +48,9 @@ async function reset({ language = 'zh-CN', theme = 'light', width = 1440, height
   await c.waitFor('Boolean(window.__XY_QA__) && document.querySelector(".xy-shell-root") && !document.querySelector(".xy-shell-main .xy-ui-loading")');
   await c.waitFor('document.documentElement.lang===' + JSON.stringify(language));
   await c.waitFor('document.documentElement.dataset.theme===' + JSON.stringify(theme));
+  assert.equal(await c.evaluate('window.__XY_QA__.providers.length'), 3, 'reset must restore the original fixture providers');
+  assert.equal(await c.evaluate('window.__XY_QA__.current'), 'qa-p1', 'reset must restore the original current provider');
+  await noAutomaticRequests();
 }
 async function run(name, work) {
   console.log('RUN ' + name);

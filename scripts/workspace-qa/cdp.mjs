@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { writeFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
+import { navigateFreshDocument } from './document-navigation.mjs';
 
 export function isLocalRendererRequest(value, base) {
   try {
@@ -47,7 +48,7 @@ export async function connect(endpoint = process.env.CDP_ENDPOINT ?? 'http://127
   const key=async(key,modifiers=0)=>{const windowsVirtualKeyCode=({Tab:9,Escape:27,Enter:13,ArrowRight:39,ArrowLeft:37,ArrowDown:40,ArrowUp:38,Home:36,End:35})[key];const text=key==='Enter'?'\r':undefined;await call('Input.dispatchKeyEvent',{type:'keyDown',key,code:key,modifiers,windowsVirtualKeyCode,text,unmodifiedText:text});await call('Input.dispatchKeyEvent',{type:'keyUp',key,code:key,modifiers,windowsVirtualKeyCode});await new Promise(r=>setTimeout(r,50));};
   async function screenshot(file){const image=await call('Page.captureScreenshot',{format:'png',fromSurface:true});await mkdir(dirname(file),{recursive:true});await writeFile(file,Buffer.from(image.data,'base64'));}
   const viewport=(width,height)=>call('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:false});
-  const navigate=async url=>{await call('Page.navigate',{url});await waitFor('document.readyState === "complete" && Boolean(document.querySelector("h1"))');};
+  const navigate=url=>navigateFreshDocument({call,evaluate},url);
   const snapshot=()=>evaluate('({text:document.body.innerText,controls:[...document.querySelectorAll("button,input,select,textarea,summary")].filter(e=>e.getClientRects().length).map(e=>({tag:e.tagName,text:e.textContent.slice(0,120),label:e.getAttribute("aria-label"),id:e.id,value:e.value,disabled:e.disabled})),active:document.activeElement?.outerHTML.slice(0,300),width:innerWidth,scrollWidth:document.documentElement.scrollWidth})');
   const assertLocalNetwork = () => {
     const base = process.env.APP_URL ?? 'http://127.0.0.1:1431';
