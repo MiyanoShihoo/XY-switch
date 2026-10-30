@@ -8,6 +8,12 @@ iOS 验收按用户要求停止，不再是本轮待完成项。之前的 iOS �
 
 **已发布 1.2.0 不含加密同步，本轮不重新发布版本。** Windows 加密同步验收使用 feature CI **40908795739 / attempt 1** 的原始 NSIS 包，应用源码为 `614e2b21ea59b7256d09c7f34b30f6aeecd9064c`；验收脚本提交单独记录。CI 必须确认应用源码、配置、前端资源、依赖与版本未变，并校验 GitHub artifact 摘要、包内清单和安装后 EXE 摘要，才允许复用旧二进制。
 
+## 本轮结论
+
+**桌面平台收敛与 Windows 加密同步原生验收均已完成。** [最终 CI 41026416736 / attempt 1](https://github.com/MiyanoShihoo/XY-switch/actions/runs/41026416736) 的官网、原包来源与 Windows 原生验收全部成功：脚本回归 **76/76**、官网 **8/8**、Windows 实际同步 **6/6**。完整 artifact 摘要与离线证据核验通过，并逐张复核 10 张原生窗口/页面截图及 2 张官网宽/窄屏截图。
+
+本轮未在本机运行被测应用，未重新构建或发布安装包，也未修改应用生产输入。macOS / Linux 保留此前独立构建和后端验收结果，不宣称已完成本轮原生同步 UI 验收。最终来源与摘要见文末。
+
 ## Windows 验收机制
 
 只在一次性 GitHub-hosted Windows runner 上运行，拒绝预先存在的应用数据库；不在日常账户运行或安装被测应用。
@@ -45,7 +51,7 @@ npm run test:packaging
 
 本机测试因 Kaspersky 注入跨域资源而失败；该记录保留。不关闭安全软件、不放宽“零跨域资源”断言，也不把受污染的本地运行计作通过。CI 的实际结果单独记录。
 
-## 已有结果
+## 验收历史（保留失败证据）
 
 - 本地打包、产物安全解包、桌面平台范围与验收脚本回归：**76/76 通过**；PowerShell 5.1 语法和原生控件互操作 C# 编译检查通过，未在本机执行 GUI 或 Win32 控件操作。
 - Windows 第二轮原生 CI：[41014384150 / attempt 1](https://github.com/MiyanoShihoo/XY-switch/actions/runs/41014384150)，脚本提交 `d75623d301326f0c6bec9ee6f7c94e33792d0a6a`。原始 EXE 摘要匹配，实际供应商页面已加载，卸载完成；由于 CDP 未监听，尚未执行加密同步交互，**该轮失败**。
@@ -67,4 +73,36 @@ npm run test:packaging
 
 - 第九轮 [41025569690 / attempt 1](https://github.com/MiyanoShihoo/XY-switch/actions/runs/41025569690)，脚本 `a83c92eac3a0f0c0219ced166d7b40f0d222ef32`：四个真实文件对话框均通过，正确保存/独立解密、取消不写入、原生打开错误口令不写入四组验收通过。导入预览成功且保持原状态，但逐项选择后合并按钮仍禁用；失败截图和生产组件均证实，改变选择会清除提前输入的确认文字及勾选，应用行为符合保护约定。脚本现验证每次选择后仍不可提交、两项确认确实清除，再在所有选择完成后重新输入 IMPORT 并勾选检查，不放宽应用保护。该轮仍记失败。Windows artifact `12963222947`，ZIP SHA-256 `f9ea8ba981fabbd8a449cd5f5bf852943e9365090dc829635ae79b32327c90d2`；完整证据已下载校验，官网、来源检查、卸载及 HKLM 策略恢复通过。
 
-新的 Windows 原生运行结果须单独核验后再记录；本地脚本回归不能替代实际文件选择器、导入与回滚验收。
+## 第十轮最终验收与证据
+
+[41026416736 / attempt 1](https://github.com/MiyanoShihoo/XY-switch/actions/runs/41026416736) 全部要求的 job 成功。验收脚本提交为 `bf0fc91f3acb7e3058665ba6f092e6432532a0d7`；`frontend`、`desktop`、`macos` 在 native-only 模式下按预期跳过，不是本轮重新构建。
+
+| Windows 真实验收 | 结果 |
+| --- | --- |
+| 实际 Tauri 页面、生产 IPC、合成记录 | 通过；没有 mock IPC |
+| 原生另存为与实际文件独立解密 | 通过；AES-256-GCM / PBKDF2-HMAC-SHA256，600000 次；错误口令和篡改 tag 拒绝 |
+| 目标端本地冲突与原生取消 | 通过；取消不写入 |
+| 原生打开文件、错误口令 | 通过；无导入预览、状态不变 |
+| 正确预览、逐项选择、合并与备份 | 通过；5 项明确选择，接受 4 项；保留本机 advanced 和未接受的本地价格，变更目标创建 1 个禁用副本 |
+| 回滚预览与持久化恢复 | 通过；预览不写入，原供应商/价格/收藏恢复，备份标记已用，新增副本仍保留禁用 |
+
+四个真实文件对话框均通过 PID/HWND/类名/原生 ID 检查、文件名回读和窗口关闭验证；Save As 使用 Edit `1001`，Open 使用 Edit `1148`。口令输入框、WebView 存储、SQLite 的检查通过；实际数据库完整性为 `ok`，外键违规为 `0`。原 EXE 摘要一致，应用卸载及 HKLM 原值/类型恢复通过，CDP 仅监听 `127.0.0.1`。
+
+实际加密文件为 **1957 字节**，导出 6 个供应商（含预置模板）、1 个收藏、2 项价格；白名单和独立同步身份检查通过。官网中英文 × 1180/820/390 的浏览器验证及两项语言切换检查合计 8/8，通过实际 CJK 字体、恰好三个桌面平台、零跨域资源、无横向溢出和独立浏览器关闭断言。
+
+| 来源 / 证据 | 标识或 SHA-256 |
+| --- | --- |
+| 应用源码（生产输入未变） | `614e2b21ea59b7256d09c7f34b30f6aeecd9064c` |
+| 原 feature CI / Windows artifact | `40908795739 / attempt 1 / 12914121439` |
+| 原 Windows artifact ZIP | `a61719d0e711f1a5856f0874abf184b1f85fb2e48e30b1671eb66562e87efaf6` |
+| 原 NSIS 安装包 | `1ae3bc519ac4b800ca64559b6a97503f1843fed454b516ae86b52b797ecb797a` |
+| 安装后原 EXE | `a0e2224aa3b18bedafb3a5349a3bd17bc6659bf2592c59bcb6c51343462bf3dd` |
+| 实际 `native-exchange.xysync` | `d8238466656954adc4e7879051978256484a4056c0917b598ced215f2a875901` |
+| 最终 Windows artifact `12963304096` ZIP | `e5c051bc4755898a86921650f68105931e3f31257b480a7e92ce64f35b982c8d` |
+| 最终官网 artifact `12963702078` ZIP | `39ab8615673925a8cf99816f8c750bcf088b3b08368896f5c5e2a7c4d352552e` |
+| 最终来源 artifact `12963791898` ZIP | `dddad5fc5c3c39788aa672172512b84a76875c82907e16e8cafd4eff1f161f7d` |
+| 最终日志 ZIP | `9f6b2f773bcabddbea625caae7a8aea38e5f7bfb9f570c5ce2eca1af32d0a7ad` |
+
+本地完整证据保存在 `artifacts/native-acceptance/ci-41026416736/attempt-1/`。`native-ci-evidence.json` 记录来源及 artifact 摘要；`delivery-evidence-verification.json` 记录六组原生步骤、四个文件对话框、独立加密/持久化状态与官网证据的离线核验；`visual-review.json` 逐张记录本次实际查看的 12 张截图、摘要和观察。原始失败轮次保留在各自目录，不覆盖或改写。
+
+**已发布 1.2.0 不包含加密同步；本轮没有新 Release，也没有把原有 Release 替换成 feature 安装包。**
