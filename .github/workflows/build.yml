@@ -5,6 +5,19 @@ on:
     tags: ['v*']
   pull_request:
   workflow_dispatch:
+    inputs:
+      native_acceptance_only:
+        description: 'Run focused native acceptance against verified existing feature artifacts (no release)'
+        type: boolean
+        default: false
+      native_source_run:
+        description: 'Successful Build and verify run that produced the feature packages'
+        type: string
+        default: '40908795739'
+      native_source_commit:
+        description: 'Exact 40-character source commit; production inputs must still match'
+        type: string
+        default: '614e2b21ea59b7256d09c7f34b30f6aeecd9064c'
 permissions:
   contents: read
 concurrency:
@@ -12,6 +25,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   frontend:
+    if: ${{ !inputs.native_acceptance_only }}
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     steps:
@@ -251,5 +265,120 @@ jobs:
         with:
           name: xy-switch-android-universal
           path: release/*/android-universal/
+          if-no-files-found: error
+          retention-days: 14
+
+  native-source:
+    if: ${{ inputs.native_acceptance_only }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      windows_id: ${{ steps.source.outputs.windows_id }}
+      windows_digest: ${{ steps.source.outputs.windows_digest }}
+      ios_id: ${{ steps.source.outputs.ios_id }}
+      ios_digest: ${{ steps.source.outputs.ios_digest }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Test native acceptance harness and validate shell syntax
+        run: |
+          node --test scripts/native-acceptance.test.mjs
+          bash -n scripts/smoke-ios-simulator.sh
+      - name: Bind source commit, production inputs and immutable artifact digests
+        id: source
+        run: node scripts/native-acceptance/artifact.mjs source artifacts/native-acceptance/source.json
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NATIVE_SOURCE_RUN: ${{ inputs.native_source_run }}
+          NATIVE_SOURCE_COMMIT: ${{ inputs.native_source_commit }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-acceptance-source
+          path: artifacts/native-acceptance/source.json
+          if-no-files-found: error
+          retention-days: 14
+
+  native-windows-sync:
+    needs: native-source
+    runs-on: windows-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+    env:
+      NATIVE_SOURCE_RUN: ${{ inputs.native_source_run }}
+      NATIVE_SOURCE_COMMIT: ${{ inputs.native_source_commit }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download exact feature artifact and verify its GitHub SHA256
+        shell: pwsh
+        run: |
+          node scripts/native-acceptance/artifact.mjs download "$env:RUNNER_TEMP/source-windows.zip"
+          if ($LASTEXITCODE -ne 0) { throw 'Artifact verification failed' }
+          node scripts/native-acceptance/extract-artifact.mjs "$env:RUNNER_TEMP/source-windows.zip" "$env:RUNNER_TEMP/source-windows"
+          if ($LASTEXITCODE -ne 0) { throw 'Artifact extraction failed' }
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NATIVE_ARTIFACT_ID: ${{ needs.native-source.outputs.windows_id }}
+          NATIVE_ARTIFACT_DIGEST: ${{ needs.native-source.outputs.windows_digest }}
+      - name: Packaged native file picker, encryption, import and rollback
+        shell: pwsh
+        run: ./scripts/native-acceptance/windows.ps1 -ArtifactDirectory "$env:RUNNER_TEMP/source-windows" -OutputDirectory artifacts/native-acceptance/windows
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-acceptance-windows-sync
+          path: artifacts/native-acceptance/windows/
+          if-no-files-found: error
+          retention-days: 14
+
+  native-ios-readiness:
+    needs: native-source
+    runs-on: macos-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+    env:
+      NATIVE_SOURCE_RUN: ${{ inputs.native_source_run }}
+      NATIVE_SOURCE_COMMIT: ${{ inputs.native_source_commit }}
+      XY_IOS_PACKAGE_ROOT: ${{ runner.temp }}/source-ios
+      XY_IOS_QA_OUTPUT: ${{ github.workspace }}/artifacts/native-acceptance/ios
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download exact feature artifact and verify its GitHub SHA256
+        run: |
+          node scripts/native-acceptance/artifact.mjs download "$RUNNER_TEMP/source-ios.zip"
+          node scripts/native-acceptance/extract-artifact.mjs "$RUNNER_TEMP/source-ios.zip" "$RUNNER_TEMP/source-ios"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NATIVE_ARTIFACT_ID: ${{ needs.native-source.outputs.ios_id }}
+          NATIVE_ARTIFACT_DIGEST: ${{ needs.native-source.outputs.ios_digest }}
+      - name: Native iOS ready state, preference write/relaunch and mobile sync read-only UI
+        run: bash scripts/smoke-ios-simulator.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-acceptance-ios-readiness
+          path: artifacts/native-acceptance/ios/
           if-no-files-found: error
           retention-days: 14
