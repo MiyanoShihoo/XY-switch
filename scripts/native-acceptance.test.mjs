@@ -122,3 +122,16 @@ test('native page readiness times out rather than navigating or fabricating IPC'
   const script = await readFile(new URL('./native-acceptance/windows-sync.mjs', import.meta.url), 'utf8');
   assert(script.indexOf('await waitForNativePage(c)') < script.indexOf("invoke('app_platform')"));
 });
+
+test('native dialog waits for its PID-bound controls and retains failure evidence', async () => {
+  const script = await readFile(new URL('./native-acceptance/windows-dialog.ps1', import.meta.url), 'utf8');
+  const loop = script.slice(script.indexOf('while ([DateTime]::UtcNow -lt $deadline)'), script.indexOf('$report.controlsWaitMs'));
+  for (const required of ['$uia::RootElement.FindFirst($children, $condition)', '$dialog.FindAll', '$report.controlAttempts++', '$editReady -and $buttonReady', 'TryGetCurrentPattern', 'Start-Sleep -Milliseconds 150']) assert(loop.includes(required), required);
+  assert(script.includes('$uia::ProcessIdProperty, $AppProcessId'));
+  assert(script.includes("$uia::ClassNameProperty, '#32770'"));
+  assert(script.includes("if (-not $ready) { throw 'Native filename/action controls did not become ready"));
+  assert(script.indexOf('if (-not $ready)') < script.indexOf(').SetValue($SelectedPath)'));
+  assert(script.includes('if ($dialog -and -not $report.screenshotCaptured)'));
+  assert(script.includes('$report.error = $_.Exception.Message'));
+  assert(!/SendKeys|SendInput|SetCursorPos/.test(script));
+});

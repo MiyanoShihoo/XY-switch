@@ -55,7 +55,7 @@ async function dialog(operation, name, clickLabel) {
   let diagnostic = '';
   worker.stdout.on('data', chunk => { diagnostic += chunk; }); worker.stderr.on('data', chunk => { diagnostic += chunk; });
   const done = new Promise((resolve, reject) => {
-    const timer = setTimeout(() => { worker.kill(); reject(new Error('Native dialog worker timed out')); }, 100_000);
+    const timer = setTimeout(() => { worker.kill(); reject(new Error('Native dialog worker timed out')); }, 120_000);
     worker.on('error', error => { clearTimeout(timer); reject(error); });
     worker.on('close', code => { clearTimeout(timer); code === 0 ? resolve() : reject(new Error(`Native dialog worker exited ${code}: ${diagnostic}`)); });
   });

@@ -47,7 +47,7 @@ npm run test:packaging
 
 ## 已有结果
 
-- 本地打包、产物安全解包、桌面平台范围与验收脚本回归：**71/71 通过**；PowerShell 语法检查通过。
+- 本地打包、产物安全解包、桌面平台范围与验收脚本回归：**72/72 通过**；PowerShell 语法检查通过。
 - Windows 第二轮原生 CI：[41014384150 / attempt 1](https://github.com/MiyanoShihoo/XY-switch/actions/runs/41014384150)，脚本提交 `d75623d301326f0c6bec9ee6f7c94e33792d0a6a`。原始 EXE 摘要匹配，实际供应商页面已加载，卸载完成；由于 CDP 未监听，尚未执行加密同步交互，**该轮失败**。
 - 上述 Windows 诊断 artifact **12959165985** 的 ZIP SHA-256 为 `5a327efb05b115856dbe2d5657cc1df25e27ec9e9b19973326410d90c93f33c1`，本地下载已核验。保留进程树、命令行、监听状态和实际窗口截图。
 - iOS 旧运行的截图显示供应商界面已加载；旧测试把原生 Switch 错当成 Button，不能据此声称应用永久卡在初始化。该项已移出当前平台范围，不再追加 iOS 修复/验收运行。
@@ -56,5 +56,7 @@ npm run test:packaging
 
 - 第四轮 [41020451774 / attempt 1](https://github.com/MiyanoShihoo/XY-switch/actions/runs/41020451774)，脚本 `23c90ebf0cc1d0b4ba6f014c3fda845e44b35aac`：官网 8/8 通过；中文标题确实使用 Noto Sans CJK SC，1180/820/390 宽度的平台区截图已复核。官网 artifact `12961701030`，ZIP SHA-256 `437cccb28dffb5b7191fd1adda007c6b4cb067a6341f50a47fd3908fea3e19b8`，下载已核验。
 - 同轮 Windows 的应用专属 HKLM 设置已生效：WebView2 `155.0.4283.62` 的 CDP 仅监听 `127.0.0.1`。测试在最初的 `about:blank` 页面过早断言 origin，因此未开始同步交互；已加入真实页面/生产 IPC/供应商工作区就绪等待和导航上下文切换回归，不手动导航或注入 mock。该轮仍记失败；原始 EXE 摘要一致，卸载及策略恢复通过。
+
+- 第五轮 [41021900095 / attempt 1](https://github.com/MiyanoShihoo/XY-switch/actions/runs/41021900095)，脚本 `249940ea4ce8f3c96bd13aef12e235accac6aa67`：已等待到真实应用页面，生产 IPC 和合成测试记录步骤通过，已打开 PID 绑定的原生 Save As 窗口；窗口初始 UIA 树尚无文件名编辑框和确认按钮，验收脚本过早取快照而失败。现改为重新读取同一进程原生窗口的控件树，等待唯一文件名/操作控件及 UIA Pattern 就绪，并在失败时保存原生窗口截图；不绕过文件选择器。Windows artifact `12961957063`，ZIP SHA-256 `f7004a124004dac5742e4aa2d572bcc5680b3ee19d81acc2fa7ca12d779301dc`，下载已核验；卸载及 HKLM 策略恢复通过。
 
 新的 Windows 原生运行结果须单独核验后再记录；本地脚本回归不能替代实际文件选择器、导入与回滚验收。
