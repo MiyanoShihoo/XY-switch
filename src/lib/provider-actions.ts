@@ -36,6 +36,7 @@ export function duplicateProvider(source: Provider, providers: Provider[]): Prov
     name,
     icon: DEFAULT_PROVIDER_ICON,
     builtIn: false,
+    enabled: false,
     providerType: source.providerType ?? "custom",
     sortOrder: highestSortOrder + 10,
     advanced: cloneAdvanced(source.advanced),

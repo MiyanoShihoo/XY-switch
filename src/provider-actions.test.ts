@@ -36,6 +36,9 @@ describe("provider actions", () => {
     expect(first.id).toBe("openai-copy");
     expect(second.id).toBe("openai-copy-2");
     expect(first.builtIn).toBe(false);
+    expect(first.enabled).toBe(false);
+    expect(second.enabled).toBe(false);
+    expect(source.enabled).toBe(true);
     expect(first.icon).toBe(DEFAULT_PROVIDER_ICON);
     first.advanced.modelMappings[0].model = "changed";
     expect(source.advanced.modelMappings[0].model).toBe("m1");
