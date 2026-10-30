@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { spawn, execFileSync } from 'node:child_process';
-import { access, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { createServer } from 'vite';
+import { waitForDevTools } from './workspace-qa/devtools-readiness.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const artifacts = resolve(root, 'artifacts');
@@ -104,12 +105,14 @@ async function runSuite(name, endpoint) {
   assert.equal(code, 0, name + ' renderer acceptance failed');
 }
 try {
+  report.stage = 'renderer-server';
   server = await createServer({ root, clearScreen: false, optimizeDeps: { entries: ['index.html'] }, server: { host: '127.0.0.1', port: 0, strictPort: true, open: false } });
   await server.listen();
   const address = server.httpServer.address();
   assert.equal(address.address, '127.0.0.1', 'Renderer must bind only the IPv4 loopback interface');
   report.appUrl = 'http://127.0.0.1:' + address.port;
   assert((await fetch(report.appUrl, { signal: AbortSignal.timeout(10000) })).ok, 'Renderer server did not respond');
+  report.stage = 'browser-startup';
   browser = spawn(executable, [
     '--headless=new', '--remote-debugging-port=0', '--remote-debugging-address=127.0.0.1',
     '--user-data-dir=' + profile, '--no-first-run', '--no-default-browser-check',
@@ -119,23 +122,26 @@ try {
   browser.on('error', error => { startupError = error; });
   browserClosed = new Promise(resolve => browser.once('close', resolve));
   browser.stderr.on('data', data => { browserLog = (browserLog + data).slice(-100000); });
-  let endpoint;
-  for (let i = 0; i < 120; i++) {
-    if (startupError) throw startupError;
-    assert(browser.exitCode === null && browser.signalCode === null, 'Dedicated browser exited early');
-    const activePort = await readFile(join(profile, 'DevToolsActivePort'), 'utf8').catch(() => '');
-    if (/^\d+\r?\n/.test(activePort)) {
-      endpoint = 'http://127.0.0.1:' + activePort.split(/\r?\n/)[0]; break;
-    }
-    await delay(250);
-  }
-  assert(endpoint, 'Isolated browser CDP did not start');
-  version = await fetch(endpoint + '/json/version', { signal: AbortSignal.timeout(5000) }).then(r => r.json());
+  report.stage = 'devtools-readiness';
+  const ready = await waitForDevTools({
+    profile,
+    assertAlive: () => {
+      if (startupError) throw startupError;
+      assert(browser.exitCode === null && browser.signalCode === null, 'Dedicated browser exited early');
+    },
+    onProgress: progress => { report.devtoolsReadiness = progress; },
+  });
+  version = ready.version;
   report.browser = version.Browser;
-  for (const name of selected) await runSuite(name, endpoint);
+  for (const name of selected) {
+    report.stage = 'suite:' + name;
+    await runSuite(name, ready.endpoint);
+  }
+  report.stage = 'completed';
   report.passed = true;
 } catch (error) {
   report.error = String(error);
+  report.errorStack = error.stack;
   process.exitCode = 1;
 } finally {
   for (const child of runningTests) child.kill();
