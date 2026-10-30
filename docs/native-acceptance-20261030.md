@@ -12,7 +12,7 @@ iOS 验收按用户要求停止，不再是本轮待完成项。之前的 iOS �
 
 只在一次性 GitHub-hosted Windows runner 上运行，拒绝预先存在的应用数据库；不在日常账户运行或安装被测应用。
 
-CDP 仅绑定 loopback。原始环境变量方式未在该 runner 的 WebView2 中生效，因此当前脚本同时设置被测子进程环境和 **仅限应用标识/EXE 名称** 的临时 WebView2 注册表覆盖，不使用通配应用策略。原值在内存中保存，并在 `finally` 中恢复；恢复或卸载失败都会使验收失败。安装包和可执行文件不修改。
+CDP 仅绑定 loopback。[微软确认](https://github.com/MicrosoftEdge/WebView2Feedback/issues/5645#issuecomment-4934355430) WebView2 150 起会忽略管理员进程的环境变量和 HKCU 调试覆盖；GitHub-hosted Windows runner 正处于该环境。当前脚本使用微软支持的 **HKLM、仅限应用标识/EXE 名称** 的临时覆盖，不使用通配应用策略、不降级运行时。必须先通过一次性 runner 和实际管理员权限检查。原值及类型在内存中保存，并在 `finally` 中恢复；已有注册表键不重建，恢复或卸载失败都会使验收失败。安装包和可执行文件不修改。
 
 - 使用生产 IPC 构造 `.invalid` 域名的合成供应商、收藏和自定义价格；不读取或配置真实供应商密钥，不调用付费接口。
 - 导出、导入、取消及回滚操作实际 UI。独立进程通过 Windows UI Automation 操作属于被测 PID 的 `#32770` 文件对话框，保存控件树和截图，不替换 IPC 或文件选择器。
@@ -41,7 +41,7 @@ npm run test:packaging
 
 ## 官网隔离验证
 
-官网浏览器验证作为独立 Linux CI job 执行，不安装应用或恢复前端依赖。仅使用一次性浏览器配置和 loopback HTTP/CDP，检查中英文、三个桌面下载卡片、三种窗口宽度、文档链接、语言切换及持久化，并保存 DOM 状态、截图和浏览器版本。
+官网浏览器验证作为独立 Linux CI job 执行，不安装应用或恢复前端依赖。仅使用一次性浏览器配置和 loopback HTTP/CDP，检查中英文、三个桌面下载卡片、三种窗口宽度、文档链接、语言切换及持久化，并保存 DOM 状态、首页及平台区截图和浏览器版本。CI 安装 Noto CJK 字库，并通过 CDP 检查中文标题实际使用 CJK 字体，避免仅 DOM 翻译正确但截图显示缺字框。
 
 本机测试因 Kaspersky 注入跨域资源而失败；该记录保留。不关闭安全软件、不放宽“零跨域资源”断言，也不把受污染的本地运行计作通过。CI 的实际结果单独记录。
 
@@ -51,5 +51,7 @@ npm run test:packaging
 - Windows 第二轮原生 CI：[41014384150 / attempt 1](https://github.com/MiyanoShihoo/XY-switch/actions/runs/41014384150)，脚本提交 `d75623d301326f0c6bec9ee6f7c94e33792d0a6a`。原始 EXE 摘要匹配，实际供应商页面已加载，卸载完成；由于 CDP 未监听，尚未执行加密同步交互，**该轮失败**。
 - 上述 Windows 诊断 artifact **12959165985** 的 ZIP SHA-256 为 `5a327efb05b115856dbe2d5657cc1df25e27ec9e9b19973326410d90c93f33c1`，本地下载已核验。保留进程树、命令行、监听状态和实际窗口截图。
 - iOS 旧运行的截图显示供应商界面已加载；旧测试把原生 Switch 错当成 Button，不能据此声称应用永久卡在初始化。该项已移出当前平台范围，不再追加 iOS 修复/验收运行。
+
+- 第三轮 [41019279833 / attempt 1](https://github.com/MiyanoShihoo/XY-switch/actions/runs/41019279833)，脚本 `e20b9acc917f510be7a9498badc06570c44b95da`：官网 8 项 DOM/交互检查通过，但截图复核发现 CJK 字库缺失；已补充字体与实际渲染检查，等待新结果。Windows 的 HKCU 覆盖仍被运行时忽略，未进入同步 UI，卸载和策略恢复均完成；该轮失败。Windows artifact `12961375593`，ZIP SHA-256 `51847eb4055c2196d604cbb9280f2b9c7ae728f3b0b185ac83685179c0ce4fe4`，下载已核验。
 
 新的 Windows 原生运行结果须单独核验后再记录；本地脚本回归不能替代实际文件选择器、导入与回滚验收。

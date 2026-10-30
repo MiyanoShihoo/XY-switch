@@ -14,11 +14,14 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const output = resolve(process.env.WEBSITE_QA_OUTPUT ?? join(root, 'artifacts/website-ui-qa'));
 const executable = process.env.CHROME_BIN ?? '/usr/bin/google-chrome';
 await access(executable);
+const cjkFont = execFileSync('fc-match', ['--format=%{family}', 'sans-serif:lang=zh-cn'], { encoding: 'utf8' }).trim();
+assert(/\bCJK\b/.test(cjkFont), 'Install fonts-noto-cjk before capturing the Chinese website');
 await mkdir(output, { recursive: true });
 const profile = await mkdtemp(join(tmpdir(), 'xy-desktop-website-'));
 const report = {
   sourceCommit: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(),
   runner: process.env.RUNNER_ENVIRONMENT,
+  cjkFont,
   profile,
   packagedApplicationExecuted: false,
   passed: false,
@@ -70,7 +73,7 @@ try {
   report.browser = version.Browser;
   const child = spawn(process.execPath, ['scripts/verify-website-ui.mjs'], {
     cwd: root,
-    env: { ...process.env, APP_URL: report.appUrl, CDP_ENDPOINT: endpoint, WEBSITE_QA_OUTPUT: output },
+    env: { ...process.env, APP_URL: report.appUrl, CDP_ENDPOINT: endpoint, WEBSITE_QA_OUTPUT: output, WEBSITE_QA_EXPECT_CJK: 'true' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   child.stdout.on('data', data => { testLog += data; process.stdout.write(data); });

@@ -24,7 +24,9 @@ New-Item -ItemType Directory -Path $temporary | Out-Null
 $install = Join-Path $temporary 'application'
 $exe = Join-Path $install 'xy-switch.exe'
 $app = $null; $installed = $false; $primaryFailure = $null
-$debugPolicyPath = 'HKCU:\Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments'
+$debugPolicyPath = 'HKLM:\Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments'
+$hostElevated = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $hostElevated) { throw 'App-scoped HKLM test policy requires the elevated disposable runner' }
 $debugPolicyExisted = Test-Path -LiteralPath $debugPolicyPath
 $debugPolicyBackups = [Collections.Generic.List[object]]::new()
 $report = [ordered]@{passed=$false;sourceCommit=$env:NATIVE_SOURCE_COMMIT;harnessCommit=$env:GITHUB_SHA;sourceRun=$env:NATIVE_SOURCE_RUN;installed=$false;uninstalled=$false;scope='Packaged Windows NSIS payload, actual WebView DOM, native picker and production Rust IPC; no mock IPC or picker bypass'}
@@ -34,6 +36,8 @@ function Invoke-Installer([string]$File, [string[]]$Arguments) {
     if ($process.ExitCode -notin 0,3010) { throw "Installer exited $($process.ExitCode)" }
 }
 try {
+    $report.hostElevated = $hostElevated
+    $report.debugPolicyHive = 'HKLM'
     $report.phase = 'installation'
     Invoke-Installer $package.installer @('/S', "/D=$install")
     $installed = $true; $report.installed = $true
@@ -47,10 +51,10 @@ try {
     $start = [Diagnostics.ProcessStartInfo]::new()
     $start.FileName = $exe; $start.WorkingDirectory = $install
     $start.UseShellExecute = $false; $start.WindowStyle = [Diagnostics.ProcessWindowStyle]::Hidden
-    # The observed runner WebView ignored environment-only arguments. Use Microsoft's
-    # app-scoped override in this disposable account, preserving and restoring every value.
+    # WebView2 150+ ignores environment/HKCU overrides in elevated hosts. Microsoft's
+    # supported HKLM override remains app-scoped, with every original value restored.
     $debugArguments = "--remote-debugging-port=$port --remote-debugging-address=127.0.0.1"
-    New-Item -Path $debugPolicyPath -Force | Out-Null
+    if (-not $debugPolicyExisted) { New-Item -Path $debugPolicyPath -Force | Out-Null }
     foreach ($name in @($config.identifier, 'xy-switch.exe')) {
         $key = Get-Item -LiteralPath $debugPolicyPath
         try {
@@ -81,6 +85,9 @@ try {
     if (-not $connections.Count) { throw 'Test-only WebView CDP did not start' }
     if (@($connections | Where-Object LocalAddress -notin '127.0.0.1','::1').Count) { throw 'CDP must not listen outside loopback' }
     $report.debugListenerAddresses = @($connections.LocalAddress)
+    $runtime = Invoke-RestMethod -Uri "http://127.0.0.1:$port/json/version" -TimeoutSec 10
+    $report.webviewRuntime = $runtime.Browser
+    $report.debugProtocolVersion = $runtime.'Protocol-Version'
     $report.phase = 'native-ui'
     & node scripts/native-acceptance/windows-sync.mjs --endpoint "http://127.0.0.1:$port" --pid $app.Id --output $OutputDirectory --files $temporary --database $database
     if ($LASTEXITCODE -ne 0) { throw 'Native encrypted sync acceptance failed; see results.json' }

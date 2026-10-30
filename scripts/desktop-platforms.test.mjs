@@ -70,6 +70,10 @@ test('website acceptance uses a disposable isolated browser without weakening ch
   const runner = await read('scripts/verify-website-headless.mjs');
   const verifier = await read('scripts/verify-website-ui.mjs');
   assert(workflow.includes('node scripts/verify-website-headless.mjs'));
+  assert(workflow.includes('sudo apt-get install -y fonts-noto-cjk'));
+  assert(runner.includes("WEBSITE_QA_EXPECT_CJK: 'true'"));
+  assert(verifier.includes("'CSS.getPlatformFontsForNode'"));
+  assert(verifier.includes("'-platforms.png'"));
   for (const required of ["process.env.RUNNER_ENVIRONMENT, 'github-hosted'", "process.platform, 'linux'", "'--remote-debugging-address=127.0.0.1'", "'--user-data-dir=' + profile", "mkdtemp(join(tmpdir()", "method: 'Browser.close'", "packagedApplicationExecuted: false"]) {
     assert(runner.includes(required), required);
   }

@@ -23,28 +23,45 @@ async function run(name, work) {
   }
 }
 try {
+  await c.call('DOM.enable');
+  await c.call('CSS.enable');
   for (const language of ['en','zh-CN']) for (const width of [1180,820,390]) {
     await run(language+'-'+width,async()=>{
       await c.viewport(width,width===390?844:760);
       await c.navigate(base+'/website/?lang='+language);
       await c.waitFor('document.documentElement.lang==='+JSON.stringify(language));
+      await c.evaluate('document.fonts.ready.then(() => true)');
+      const { root } = await c.call('DOM.getDocument');
+      const { nodeId } = await c.call('DOM.querySelector', { nodeId: root.nodeId, selector: 'h1' });
+      const { fonts } = await c.call('CSS.getPlatformFontsForNode', { nodeId });
       const state=await c.evaluate(`(() => {
         const language=document.documentElement.lang;
         const catalog=JSON.parse(document.getElementById('translations').textContent)[language];
         return {language, platforms:[...document.querySelectorAll(".platform h3")].map(e=>e.dataset.i18n), width:innerWidth, scroll:document.documentElement.scrollWidth,
           untranslated:[...document.querySelectorAll('[data-i18n]')].filter(e=>e.textContent!==catalog[e.dataset.i18n]).map(e=>e.dataset.i18n),
+          platformRects:[...document.querySelectorAll('.platform')].map(e=>{const r=e.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height};}),
+          columns:getComputedStyle(document.querySelector('.platforms')).gridTemplateColumns.split(' ').length,
           selected:document.querySelector('[data-language][aria-pressed=true]')?.dataset.language,
           docs:[...document.querySelectorAll('[data-document]')].map(e=>e.href),
           remoteResources:performance.getEntriesByType('resource').filter(e=>new URL(e.name).origin!==location.origin).map(e=>e.name)};
       })()`);
+      state.fonts = fonts;
       await writeFile(join(output,language+'-'+width+'-state.json'), JSON.stringify(state,null,2));
       assert.equal(state.language,language);assert.equal(state.selected,language);
       assert.equal(state.untranslated.length,0);assert(state.scroll<=state.width,JSON.stringify(state));
       assert.equal(state.remoteResources.length,0,JSON.stringify(state.remoteResources));
       assert.deepEqual(state.platforms,["windows","linux","macos"]);
+      for (const card of state.platformRects) assert(card.x>=0 && card.x+card.width<=state.width+1 && card.width>0 && card.height>0, JSON.stringify(card));
+      if (width===1180) assert.equal(state.columns,3);
+      if (width===390) assert.equal(state.columns,1);
+      if (language==='zh-CN' && process.env.WEBSITE_QA_EXPECT_CJK==='true') {
+        assert(fonts.some(font=>font.glyphCount>0 && /\bCJK\b/.test(font.familyName)), JSON.stringify(fonts));
+      }
       assert(state.docs[0].endsWith(language==='en'?'user-guide-en.md':'user-guide-zh.md'));
       assert(state.docs[1].endsWith(language==='en'?'packaging-en.md':'packaging.md'));
       await c.screenshot(join(output,language+'-'+width+'.png'));
+      await c.evaluate('document.querySelector("#platforms").scrollIntoView({block:"start",behavior:"instant"})');
+      await c.screenshot(join(output,language+'-'+width+'-platforms.png'));
     });
   }
   await run('language-buttons-and-persistence',async()=>{

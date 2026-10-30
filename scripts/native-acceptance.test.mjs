@@ -85,6 +85,10 @@ test('Windows diagnostics retain the original failure and await detached NSIS re
 test('WebView debug policy is per-app, disposable and restored even after failure', async () => {
   const script = await readFile(new URL('./native-acceptance/windows.ps1', import.meta.url), 'utf8');
   assert(script.includes("@($config.identifier, 'xy-switch.exe')"));
+  assert(script.includes("$debugPolicyPath = 'HKLM:"));
+  assert(script.includes('WindowsBuiltInRole]::Administrator'));
+  assert(script.includes('if (-not $debugPolicyExisted) { New-Item -Path $debugPolicyPath'));
+  assert(!/Name ['"]\*['"]/.test(script));
   assert(script.includes('$debugPolicyBackups.Add($backup)'));
   assert(script.includes('$key.SetValue($backup.name, $backup.value, $backup.kind)'));
   assert(script.includes('Remove-ItemProperty -LiteralPath $debugPolicyPath -Name $backup.name'));
