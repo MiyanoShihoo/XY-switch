@@ -47,7 +47,7 @@ npm run test:packaging
 
 ## 已有结果
 
-- 本地打包、产物安全解包、桌面平台范围与验收脚本回归：**73/73 通过**；PowerShell 5.1 语法和原生控件互操作 C# 编译检查通过，未在本机执行 GUI 或 Win32 控件操作。
+- 本地打包、产物安全解包、桌面平台范围与验收脚本回归：**74/74 通过**；PowerShell 5.1 语法和原生控件互操作 C# 编译检查通过，未在本机执行 GUI 或 Win32 控件操作。
 - Windows 第二轮原生 CI：[41014384150 / attempt 1](https://github.com/MiyanoShihoo/XY-switch/actions/runs/41014384150)，脚本提交 `d75623d301326f0c6bec9ee6f7c94e33792d0a6a`。原始 EXE 摘要匹配，实际供应商页面已加载，卸载完成；由于 CDP 未监听，尚未执行加密同步交互，**该轮失败**。
 - 上述 Windows 诊断 artifact **12959165985** 的 ZIP SHA-256 为 `5a327efb05b115856dbe2d5657cc1df25e27ec9e9b19973326410d90c93f33c1`，本地下载已核验。保留进程树、命令行、监听状态和实际窗口截图。
 - iOS 旧运行的截图显示供应商界面已加载；旧测试把原生 Switch 错当成 Button，不能据此声称应用永久卡在初始化。该项已移出当前平台范围，不再追加 iOS 修复/验收运行。
@@ -60,5 +60,7 @@ npm run test:packaging
 - 第五轮 [41021900095 / attempt 1](https://github.com/MiyanoShihoo/XY-switch/actions/runs/41021900095)，脚本 `249940ea4ce8f3c96bd13aef12e235accac6aa67`：已等待到真实应用页面，生产 IPC 和合成测试记录步骤通过，已打开 PID 绑定的原生 Save As 窗口；初始 UIA 树把原生 Edit/Button 报告为 Pane，限定 ControlType 的选择器未匹配。此时先补充控件树轮询及失败截图，用下一轮区分加载时序和控件类型问题。Windows artifact `12961957063`，ZIP SHA-256 `f7004a124004dac5742e4aa2d572bcc5680b3ee19d81acc2fa7ca12d779301dc`，下载已核验；卸载及 HKLM 策略恢复通过。
 
 - 第六轮 [41022727924 / attempt 1](https://github.com/MiyanoShihoo/XY-switch/actions/runs/41022727924)，脚本 `8a6402042ed2a2b48ce38df85991aa0fe26467cc`：75 秒、272 次 UIA 控件读取后仍失败。原生 Save As 截图证明窗口完整可操作；Edit `1001` 和 Button `1/2` 始终暴露为 Pane，并非仍在加载。现按实际 Win32 类名和控件 ID 识别，同时核验 HWND、进程、对话框子孙关系及可见/启用状态；优先 UIA Pattern，否则向同一真实控件发送有界 WM_SETTEXT / BM_CLICK，并回读文件名、验证窗口关闭及截图。Windows artifact `12962401452`，ZIP SHA-256 `c81f6c521e9c33453b9671bccc2d23d8e95c644122cfaa79c6fdfb3b55fb99cb`，下载及原生截图已核验；卸载及策略恢复通过。
+
+- 第七轮 [41023437110 / attempt 1](https://github.com/MiyanoShihoo/XY-switch/actions/runs/41023437110)，脚本 `a708b0a3cdb881708e47b061a40a7a6d364dd7a8`：Win32 控件识别已生效，原生保存窗口 341 ms 就绪，路径回读、原生按钮调用、窗口关闭均通过，应用提示保存完成；但请求路径下未找到文件，因此独立解密尚未执行，仍记失败。文件名输入改用 EM_SETSEL + EM_REPLACESEL，让 shell 收到实际编辑变更通知，而非仅 WM_SETTEXT；增加失败时任务临时目录和 Documents 顶层 `.xysync` 文件位置诊断，不自动接受其他路径。Windows artifact `12962184149`，ZIP SHA-256 `905640785351f5aa9ac6f95ed1a694986e46f961f745df69c401e29ddcb8825e`，下载及原生截图已核验；官网、来源检查、卸载及策略恢复通过。
 
 新的 Windows 原生运行结果须单独核验后再记录；本地脚本回归不能替代实际文件选择器、导入与回滚验收。

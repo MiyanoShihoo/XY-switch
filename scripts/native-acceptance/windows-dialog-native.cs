@@ -12,6 +12,8 @@ public static class XYNativeDialog {
     [DllImport("user32.dll")] private static extern bool IsChild(IntPtr parent, IntPtr window);
     [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr window);
     [DllImport("user32.dll")] public static extern bool IsWindowEnabled(IntPtr window);
+    [DllImport("user32.dll", SetLastError = true, EntryPoint = "SendMessageTimeoutW")]
+    private static extern IntPtr EditMessage(IntPtr window, uint message, UIntPtr parameter, IntPtr value, uint flags, uint timeoutMs, out UIntPtr result);
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true, EntryPoint = "SendMessageTimeoutW")]
     private static extern IntPtr SetTextMessage(IntPtr window, uint message, UIntPtr parameter, string text, uint flags, uint timeoutMs, out UIntPtr result);
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true, EntryPoint = "SendMessageTimeoutW")]
@@ -43,8 +45,11 @@ public static class XYNativeDialog {
         if (String.IsNullOrEmpty(path) || path.Length >= 32767 || path.IndexOf('\0') >= 0 || !System.IO.Path.IsPathRooted(path))
             throw new ArgumentException("An absolute native fixture path is required");
         UIntPtr result;
-        if (SetTextMessage(edit, 0x000C, UIntPtr.Zero, path, 2, 5000, out result) == IntPtr.Zero || result == UIntPtr.Zero)
-            throw new InvalidOperationException("Native WM_SETTEXT failed or timed out");
+        // EM_REPLACESEL performs an edit and notifies the shell's filename control host.
+        if (EditMessage(edit, 0x00B1, UIntPtr.Zero, new IntPtr(-1), 2, 5000, out result) == IntPtr.Zero)
+            throw new InvalidOperationException("Native EM_SETSEL failed or timed out");
+        if (SetTextMessage(edit, 0x00C2, new UIntPtr(1), path, 2, 5000, out result) == IntPtr.Zero)
+            throw new InvalidOperationException("Native EM_REPLACESEL failed or timed out");
     }
     public static string ReadFileName(IntPtr dialog, IntPtr edit, uint processId) {
         RequireControl(dialog, edit, processId, "Edit", 1001);

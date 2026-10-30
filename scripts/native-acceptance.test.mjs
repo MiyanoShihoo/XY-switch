@@ -148,3 +148,13 @@ test('native dialog handles UIA Pane proxies through exact Win32 control identit
   assert(script.includes("$report.actionMethod = 'win32-bm-click'"));
   assert(!/SendKeys|SendInput|SetCursorPos/.test(native));
 });
+
+test('native filename entry notifies the shell via actual edit replacement', async () => {
+  const native = await readFile(new URL('./native-acceptance/windows-dialog-native.cs', import.meta.url), 'utf8');
+  const script = await readFile(new URL('./native-acceptance/windows-dialog.ps1', import.meta.url), 'utf8');
+  assert(native.includes('EditMessage(edit, 0x00B1, UIntPtr.Zero, new IntPtr(-1), 2, 5000'));
+  assert(native.includes('SetTextMessage(edit, 0x00C2, new UIntPtr(1), path, 2, 5000'));
+  assert(!native.includes('SetTextMessage(edit, 0x000C'));
+  assert(script.includes("$report.editMethod = 'win32-em-replacesel'"));
+  assert(script.indexOf('::ReadFileName') < script.indexOf('::ClickAction'));
+});

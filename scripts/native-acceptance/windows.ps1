@@ -99,6 +99,16 @@ try {
 } catch {
     $primaryFailure = $_
     $report.error = $_.ToString()
+    try {
+        $candidates = @(@($temporary, [Environment]::GetFolderPath('MyDocuments')) | Select-Object -Unique | ForEach-Object {
+            if (Test-Path -LiteralPath $_ -PathType Container) {
+                Get-ChildItem -LiteralPath $_ -Filter '*.xysync' -File | ForEach-Object {
+                    [ordered]@{path=$_.FullName;bytes=$_.Length;sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}
+                }
+            }
+        })
+        ConvertTo-Json -InputObject $candidates -Depth 4 | Set-Content -LiteralPath (Join-Path $OutputDirectory 'native-file-location-diagnostics.json') -Encoding utf8
+    } catch { $report.fileDiagnosticError = $_.ToString() }
     if ($app) {
         try { & (Join-Path $PSScriptRoot 'windows-diagnostics.ps1') -AppProcessId $app.Id -OutputDirectory $OutputDirectory }
         catch { $report.diagnosticError = $_.ToString() }

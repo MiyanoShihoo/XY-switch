@@ -82,9 +82,10 @@ try {
             $report.editMethod = 'uia-value-pattern'
         } else {
             [XYNativeDialog]::SetFileName($dialogHandle, $editHandle, $AppProcessId, $SelectedPath)
-            $report.editMethod = 'win32-wm-settext'
+            $report.editMethod = 'win32-em-replacesel'
         }
         if ([XYNativeDialog]::ReadFileName($dialogHandle, $editHandle, $AppProcessId) -cne $SelectedPath) { throw 'Native filename edit did not retain the exact selected path' }
+        $report.requestedPath = $SelectedPath
         $report.fileName = [IO.Path]::GetFileName($SelectedPath)
         $report.editId = $edits[0].Current.AutomationId
         $report.editHandle = $editHandle.ToInt64()
