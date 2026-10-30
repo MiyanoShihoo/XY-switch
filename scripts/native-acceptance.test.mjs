@@ -98,3 +98,12 @@ with zipfile.ZipFile(sys.argv[1], 'w') as z:
   assert.equal(await readFile(join(target, 'nested/file.txt'), 'utf8'), 'fixture');
   assert.notEqual(spawnSync(process.execPath, [cli, archive, target]).status, 0, 'Existing extraction targets must not be overwritten');
 });
+
+test('Windows diagnostics retain the original failure and await detached NSIS removal', async () => {
+  const script = await readFile(new URL('./native-acceptance/windows.ps1', import.meta.url), 'utf8');
+  assert(script.includes('$report.error = $_.ToString()'));
+  assert(script.includes('$report.cleanupError = $_.ToString()'));
+  assert(script.includes('if (-not $primaryFailure) { $primaryFailure = $_ }'));
+  assert(script.includes('$attempt -lt 30 -and (Test-Path -LiteralPath $exe)'));
+  assert(script.indexOf('windows-diagnostics.ps1') < script.indexOf("Invoke-Installer (Join-Path $install 'uninstall.exe')"));
+});

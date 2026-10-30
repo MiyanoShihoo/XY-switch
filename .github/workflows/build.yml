@@ -10,6 +10,11 @@ on:
         description: 'Run focused native acceptance against verified existing feature artifacts (no release)'
         type: boolean
         default: false
+      native_target:
+        description: 'Native platform(s) to verify without repeating a completed platform'
+        type: choice
+        options: [all, windows, ios]
+        default: all
       native_source_run:
         description: 'Successful Build and verify run that produced the feature packages'
         type: string
@@ -306,6 +311,7 @@ jobs:
           retention-days: 14
 
   native-windows-sync:
+    if: ${{ inputs.native_target != 'ios' }}
     needs: native-source
     runs-on: windows-latest
     timeout-minutes: 20
@@ -346,6 +352,7 @@ jobs:
           retention-days: 14
 
   native-ios-readiness:
+    if: ${{ inputs.native_target != 'windows' }}
     needs: native-source
     runs-on: macos-latest
     timeout-minutes: 30
