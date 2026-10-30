@@ -9,7 +9,7 @@ assert(['127.0.0.1', 'localhost', '[::1]'].includes(new URL(base).hostname), 'Us
 const output = resolve(process.env.QA_OUTPUT ?? 'artifacts/workspace-navigation-qa');
 await mkdir(output, { recursive: true });
 const c = await connect(undefined, { fresh: true });
-const reports = [], screenshots = [], contrasts = [];
+const reports = [], screenshots = [], contrasts = [], layouts = [];
 let fixtureId;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const fixture = script => c.evaluate('(()=>{const q=window.__XY_QA__;' + script + '})()');
@@ -31,6 +31,12 @@ function localNetwork() {
 async function noOverflow() {
   const metrics = await c.evaluate('({width:innerWidth,root:document.documentElement.scrollWidth,body:document.body.scrollWidth,main:document.querySelector(".xy-shell-main")?.scrollWidth,mainClient:document.querySelector(".xy-shell-main")?.clientWidth})');
   assert(metrics.root <= metrics.width && metrics.body <= metrics.width && metrics.main <= metrics.mainClient, JSON.stringify(metrics));
+}
+async function fullWidthProviders() {
+  const metrics = await c.evaluate('(()=>{const page=document.querySelector(".providers-page"),list=document.querySelector(".provider-workspace"),style=getComputedStyle(page),pageRect=page.getBoundingClientRect(),listRect=list.getBoundingClientRect();const left=pageRect.left+page.clientLeft+parseFloat(style.paddingLeft),width=page.clientWidth-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight);return {viewport:innerWidth,contentLeft:left,contentRight:left+width,contentWidth:width,listLeft:listRect.left,listRight:listRect.right,listWidth:listRect.width};})()');
+  layouts.push(metrics);
+  assert(metrics.contentWidth > 0 && Math.abs(metrics.listLeft - metrics.contentLeft) <= 2 && Math.abs(metrics.listRight - metrics.contentRight) <= 2,
+    'Providers list must fill the page content box, excluding intentional page padding: ' + JSON.stringify(metrics));
 }
 async function screenshot(name) {
   await pause(140); await c.screenshot(join(output, name + '.png')); screenshots.push(name + '.png');
@@ -86,8 +92,7 @@ try {
     assert.equal(await c.evaluate('document.querySelectorAll(".xy-shell-nav-item").length'), 9);
     assert.equal(await c.evaluate('document.querySelectorAll(".xy-shell-nav-group").length'), 3);
     assert.equal(await c.evaluate('Boolean(document.querySelector(".provider-inspector,[role=separator],[role=dialog]"))'), false);
-    const widths = await c.evaluate('({page:document.querySelector(".providers-page").clientWidth,list:document.querySelector(".provider-workspace").clientWidth})');
-    assert(widths.list >= widths.page - 2, 'providers list uses the full page width');
+    await fullWidthProviders();
     await noAutomaticRequests(); await noOverflow(); await screenshot('providers-1440-zh-CN-light');
   });
   await run('history-and-focus', async () => {
@@ -173,7 +178,7 @@ try {
     await screenshot('diagnostics-connection-error');
   });
   await run('keyboard-sort-without-activation', async () => {
-    await reset(); await c.evaluate('document.querySelector("[aria-label=\"拖动排序 Orion\"]").focus()');
+    await reset(); await c.evaluate('document.querySelector(' + JSON.stringify('[aria-label="拖动排序 Orion"]') + ').focus()');
     await c.key('Enter'); await c.waitFor('document.querySelector(".provider-row[data-dragging=true]")');
     await c.key('ArrowDown'); await c.key('Enter'); await c.waitFor('window.__XY_QA__.calls.some(c=>c.command==="reorder_providers")');
     assert.deepEqual(await c.evaluate('window.__XY_QA__.providers.map(p=>p.id)'), ['qa-p2', 'qa-p1', 'qa-p3']);
@@ -185,6 +190,7 @@ try {
       for (const language of ['zh-CN', 'en']) for (const theme of ['light', 'dark']) {
         for (const [page, hash] of [['providers', ''], ['configuration', '#providers/qa-p2/configuration'], ['diagnostics', '#diagnostics/qa-p2']]) {
           await reset({ width, height, language, theme, hash }); await noOverflow(); await noAutomaticRequests();
+          if (page === 'providers') await fullWidthProviders();
           assert.equal(await c.evaluate('Boolean(document.querySelector(".provider-inspector,[role=separator],[role=dialog]"))'), false);
           if (language === 'en') {
             assert.equal(await c.evaluate('[...document.querySelectorAll(".xy-shell-nav-item")].some(e=>/[\u3400-\u9fff]/u.test(e.getAttribute("aria-label")))'), false);
@@ -201,7 +207,7 @@ try {
   });
   localNetwork();
   await writeFile(join(output, 'acceptance.json'), JSON.stringify({ passed: true, scope: 'Isolated renderer with synthetic IPC; not packaged native acceptance', reports, screenshots,
-    contrasts, networkOrigins: [...new Set(c.networkRequests.map(value => new URL(value).origin))], exceptionCount: c.exceptions.length,
+    contrasts, layouts, networkOrigins: [...new Set(c.networkRequests.map(value => new URL(value).origin))], exceptionCount: c.exceptions.length,
     packagedApplicationExecuted: false, realProviderRequests: false }, null, 2));
   console.log(JSON.stringify({ passed: reports.length, output }));
 } finally {
