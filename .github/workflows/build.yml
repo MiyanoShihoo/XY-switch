@@ -44,6 +44,23 @@ jobs:
       - run: pnpm build:renderer
       - name: Validate shell scripts
         run: for script in scripts/*.sh; do bash -n "$script"; done
+  website:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify desktop website in a dedicated headless browser
+        run: node scripts/verify-website-headless.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: desktop-website-ui
+          path: artifacts/website-ui-qa/
+          if-no-files-found: error
+          retention-days: 14
   desktop:
     needs: frontend
     strategy:

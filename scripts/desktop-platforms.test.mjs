@@ -16,7 +16,7 @@ test('public build commands retain only Windows, macOS and Linux targets', async
 test('CI contains only desktop builds and the Windows native acceptance path', async () => {
   const workflow = await read('.github/workflows/build.yml');
   const jobs = [...workflow.slice(workflow.indexOf("\njobs:\n")).matchAll(/^  ([a-z][a-z-]*):$/gm)].map(match => match[1]);
-  assert.deepEqual(jobs, ['frontend', 'desktop', 'macos', 'native-source', 'native-windows-sync']);
+  assert.deepEqual(jobs, ['frontend', 'website', 'desktop', 'macos', 'native-source', 'native-windows-sync']);
   assert(!/ios|android|simulator|native_target/i.test(workflow));
   for (const line of ['platform: windows', 'platform: linux', 'pnpm build:macos:universal']) assert(workflow.includes(line));
   await assert.rejects(access(new URL('.github/workflows/ios-device.yml', root)), { code: 'ENOENT' });
@@ -62,4 +62,18 @@ test('current setup guides no longer offer mobile build or signing instructions'
     assert(!/build:ios|build:android|IOS_CERTIFICATE|XY_ANDROID_KEYSTORE_PATH|^## (?:Android|iOS)/m.test(text), path);
     for (const platform of ['Windows', 'macOS', 'Linux']) assert(text.includes(platform), path);
   }
+});
+
+
+test('website acceptance uses a disposable isolated browser without weakening checks', async () => {
+  const workflow = await read('.github/workflows/build.yml');
+  const runner = await read('scripts/verify-website-headless.mjs');
+  const verifier = await read('scripts/verify-website-ui.mjs');
+  assert(workflow.includes('node scripts/verify-website-headless.mjs'));
+  for (const required of ["process.env.RUNNER_ENVIRONMENT, 'github-hosted'", "process.platform, 'linux'", "'--remote-debugging-address=127.0.0.1'", "'--user-data-dir=' + profile", "mkdtemp(join(tmpdir()", "method: 'Browser.close'", "packagedApplicationExecuted: false"]) {
+    assert(runner.includes(required), required);
+  }
+  assert(!/--no-sandbox|--ignore-certificate-errors|--disable-web-security/.test(runner));
+  assert(verifier.includes('assert.equal(state.remoteResources.length,0'));
+  assert(verifier.includes("'-state.json'"));
 });

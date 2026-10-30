@@ -37,9 +37,10 @@ try {
           docs:[...document.querySelectorAll('[data-document]')].map(e=>e.href),
           remoteResources:performance.getEntriesByType('resource').filter(e=>new URL(e.name).origin!==location.origin).map(e=>e.name)};
       })()`);
+      await writeFile(join(output,language+'-'+width+'-state.json'), JSON.stringify(state,null,2));
       assert.equal(state.language,language);assert.equal(state.selected,language);
       assert.equal(state.untranslated.length,0);assert(state.scroll<=state.width,JSON.stringify(state));
-      assert.equal(state.remoteResources.length,0);
+      assert.equal(state.remoteResources.length,0,JSON.stringify(state.remoteResources));
       assert.deepEqual(state.platforms,["windows","linux","macos"]);
       assert(state.docs[0].endsWith(language==='en'?'user-guide-en.md':'user-guide-zh.md'));
       assert(state.docs[1].endsWith(language==='en'?'packaging-en.md':'packaging.md'));
