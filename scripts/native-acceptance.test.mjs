@@ -72,3 +72,29 @@ test('iOS acceptance cannot succeed solely on a nonblank loading screenshot', as
   assert(script.includes('xcodebuild test')); assert(script.includes('s.passedTests>=1')); assert(script.includes("preferences['requestTimeoutSecs'] == 175"));
   assert(!script.includes('rendered=true')); assert(script.indexOf('xcodebuild test') < script.indexOf('verify-native-screenshot.mjs'));
 });
+
+test('artifact extraction rejects traversal, links, duplicate paths and Windows aliases', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'xy-native-zip-'));
+  const cli = fileURLToPath(new URL('./native-acceptance/extract-artifact.mjs', import.meta.url));
+  const python = `import json,stat,sys,zipfile
+with zipfile.ZipFile(sys.argv[1], 'w') as z:
+ for name,mode in json.loads(sys.argv[2]):
+  e=zipfile.ZipInfo();e.filename=name;e.external_attr=mode<<16;z.writestr(e,'fixture')`;
+  const cases = [
+    [['../outside.txt', 0]], [['C:/outside.txt', 0]], [['folder\\outside.txt', 0]],
+    [['link', 0o120777]], [['duplicate', 0], ['DUPLICATE', 0]], [['file:stream', 0]],
+    [['trailing.', 0]], [['trailing ', 0]], [['CON.txt', 0]], [['nested/LPT1', 0]],
+    [['bad?name', 0]], [['bad\0name', 0]], [['a/./b', 0]], [['a//b', 0]],
+    [['file', 0], ['file/child', 0]], [['/absolute', 0]],
+  ];
+  for (const [index, entries] of cases.entries()) {
+    const archive = join(root, `bad-${index}.zip`), target = join(root, `bad-${index}`);
+    const zip = spawnSync('python', ['-c', python, archive, JSON.stringify(entries)], { encoding: 'utf8' }); assert.equal(zip.status, 0, zip.stderr);
+    const result = spawnSync(process.execPath, [cli, archive, target], { encoding: 'utf8' }); assert.notEqual(result.status, 0, `Unsafe case ${index}: ${JSON.stringify(entries)}\n${result.stdout}\n${result.stderr}`);
+  }
+  const archive = join(root, 'good.zip'), target = join(root, 'good');
+  assert.equal(spawnSync('python', ['-c', python, archive, JSON.stringify([['nested/file.txt', 0]])]).status, 0);
+  const result = spawnSync(process.execPath, [cli, archive, target], { encoding: 'utf8' }); assert.equal(result.status, 0, result.stderr);
+  assert.equal(await readFile(join(target, 'nested/file.txt'), 'utf8'), 'fixture');
+  assert.notEqual(spawnSync(process.execPath, [cli, archive, target]).status, 0, 'Existing extraction targets must not be overwritten');
+});
