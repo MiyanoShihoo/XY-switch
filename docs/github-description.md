@@ -14,10 +14,10 @@ Local AI configuration and protocol-routing workbench with English/Chinese UI: p
 
 ## Topics
 
-`tauri` `rust` `react` `typescript` `ai-tools` `mcp` `openai-compatible` `i18n` `windows` `linux` `macos` `android` `ios`
+`tauri` `rust` `react` `typescript` `ai-tools` `mcp` `openai-compatible` `i18n` `windows` `linux` `macos`
 
 ## Publication contract
 
-Publish reviewed source to the repository and verified packages/checksums to Releases. Bind the packages, native screenshots and verification report to one commit and one successful six-job Actions run. A simulator archive must be labeled **iOS Simulator**, never offered as an iPhone IPA.
+Publish reviewed source to the repository and verified packages/checksums to Releases. Bind the packages, native screenshots and verification report to one commit and one successful desktop Actions run (frontend, Windows, Linux, macOS). Current distribution and CI target Windows, macOS, and Linux only; earlier mobile assets are historical.
 
 Do not publish credentials, databases, personal client configuration, signing keys/certificates, local diagnostics or browser profiles. Dated validation documents describe their own snapshot. See each release's report for actual tests and signing limits.

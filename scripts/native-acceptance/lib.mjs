@@ -6,7 +6,7 @@ import { basename, join, resolve } from 'node:path';
 export function requireDisposableRunner(platform = process.platform, env = process.env) {
   assert.equal(env.GITHUB_ACTIONS, 'true', 'Native acceptance requires GitHub Actions');
   assert.equal(env.RUNNER_ENVIRONMENT, 'github-hosted', 'Native acceptance requires a disposable GitHub-hosted runner');
-  assert(['win32', 'darwin'].includes(platform), 'Unsupported native acceptance host');
+  assert.equal(platform, 'win32', 'This native acceptance harness requires Windows');
 }
 export const sha256 = data => createHash('sha256').update(data).digest('hex');
 export function decryptSync(file, passphrase) {
@@ -55,15 +55,5 @@ export async function packageInput(root, platform, version) {
     assert.match(original.installedSha256, /^[0-9a-f]{64}$/);
     return { directory, installer: join(directory, nsis[0].name), installerSha256: nsis[0].sha256, installedSha256: original.installedSha256, version, platform };
   }
-  assert.match(platform, /^ios-(arm64|x64)-simulator$/);
-  const name = `XY-Switch-${version}-${platform}.zip`;
-  const matches = await find(root, candidate => candidate === name);
-  assert.equal(matches.length, 1, 'Expected one simulator archive');
-  const archive = matches[0], directory = resolve(archive, '..');
-  const sums = (await readFile(join(directory, 'SHA256SUMS.txt'), 'utf8')).trim().split(/\r?\n/);
-  const lines = sums.filter(line => line.slice(66).replace(/^\*/, '') === name);
-  assert.equal(lines.length, 1, 'Missing simulator archive checksum');
-  const digest = sha256(await readFile(archive));
-  assert.equal(digest, lines[0].slice(0, 64));
-  return { directory, archive, archiveSha256: digest, version, platform };
+  throw new Error('Unsupported native acceptance package: ' + platform);
 }

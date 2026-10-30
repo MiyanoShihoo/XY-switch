@@ -37,15 +37,6 @@ test('cross-platform package filenames cannot escape the artifact directory', ()
   for (const name of ['../x', '..\\x', 'C:\\x', '/x', '..', 'x:y', 'a\0b', '']) assert.throws(() => safeFilename(name));
   assert.equal(safeFilename('XY-Switch-1.2.0.exe'), 'XY-Switch-1.2.0.exe');
 });
-test('simulator package requires an exact checksum, not just an archive filename', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'xy-native-package-'));
-  const path = join(root, '1.2.0', 'ios-arm64-simulator'); await mkdir(path, { recursive: true });
-  const name = 'XY-Switch-1.2.0-ios-arm64-simulator.zip', data = Buffer.from('synthetic archive');
-  await writeFile(join(path, name), data); await writeFile(join(path, 'SHA256SUMS.txt'), `${sha256(data)}  ${name}\n`);
-  assert.equal((await packageInput(root, 'ios-arm64-simulator', '1.2.0')).archiveSha256, sha256(data));
-  await writeFile(join(path, name), Buffer.from('tampered'));
-  await assert.rejects(packageInput(root, 'ios-arm64-simulator', '1.2.0'));
-});
 test('Windows installer verification binds the package and previously installed payload', async () => {
   const root = await mkdtemp(join(tmpdir(), 'xy-native-windows-')), path = join(root, 'windows-x64'); await mkdir(path);
   const data = Buffer.from('synthetic installer'), name = 'setup.exe';
@@ -56,23 +47,6 @@ test('Windows installer verification binds the package and previously installed 
   await assert.rejects(packageInput(root, 'windows-x64', '1.2.1'));
   await writeFile(join(path, name), Buffer.from('modified installer')); await assert.rejects(packageInput(root, 'windows-x64', '1.2.0'));
 });
-test('standalone XCTest generation does not alter or rebuild the tested application', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'xy-native-xcode-'));
-  const cli = fileURLToPath(new URL('./native-acceptance/ios-project.mjs', import.meta.url));
-  const result = spawnSync(process.execPath, [cli, root], { encoding: 'utf8' }); assert.equal(result.status, 0, result.stderr);
-  const project = await readFile(join(root, 'NativeAcceptance.xcodeproj/project.pbxproj'), 'utf8');
-  assert(project.includes('com.apple.product-type.bundle.ui-testing')); assert(project.includes('CODE_SIGNING_ALLOWED = NO'));
-  const swift = await readFile(join(root, 'NativeAcceptanceTests.swift'), 'utf8');
-  assert(swift.includes('XCUIApplication(bundleIdentifier: "com.xyswitch.desktop")'));
-  assert(swift.includes('app.terminate(); app.launch()')); assert(swift.includes('"175"'));
-  assert(!project.includes('src-tauri'));
-});
-test('iOS acceptance cannot succeed solely on a nonblank loading screenshot', async () => {
-  const script = await readFile(new URL('./smoke-ios-simulator.sh', import.meta.url), 'utf8');
-  assert(script.includes('xcodebuild test')); assert(script.includes('s.passedTests>=1')); assert(script.includes("preferences['requestTimeoutSecs'] == 175"));
-  assert(!script.includes('rendered=true')); assert(script.indexOf('xcodebuild test') < script.indexOf('verify-native-screenshot.mjs'));
-});
-
 test('artifact extraction rejects traversal, links, duplicate paths and Windows aliases', async () => {
   const root = await mkdtemp(join(tmpdir(), 'xy-native-zip-'));
   const cli = fileURLToPath(new URL('./native-acceptance/extract-artifact.mjs', import.meta.url));
@@ -106,4 +80,15 @@ test('Windows diagnostics retain the original failure and await detached NSIS re
   assert(script.includes('if (-not $primaryFailure) { $primaryFailure = $_ }'));
   assert(script.includes('$attempt -lt 30 -and (Test-Path -LiteralPath $exe)'));
   assert(script.indexOf('windows-diagnostics.ps1') < script.indexOf("Invoke-Installer (Join-Path $install 'uninstall.exe')"));
+});
+
+test('WebView debug policy is per-app, disposable and restored even after failure', async () => {
+  const script = await readFile(new URL('./native-acceptance/windows.ps1', import.meta.url), 'utf8');
+  assert(script.includes("@($config.identifier, 'xy-switch.exe')"));
+  assert(script.includes('$debugPolicyBackups.Add($backup)'));
+  assert(script.includes('$key.SetValue($backup.name, $backup.value, $backup.kind)'));
+  assert(script.includes('Remove-ItemProperty -LiteralPath $debugPolicyPath -Name $backup.name'));
+  assert(script.includes('$report.debugPolicyRestored = $true'));
+  assert(script.includes('$report.passed -and $report.uninstalled -and $report.debugPolicyRestored'));
+  assert(script.indexOf('requires a disposable GitHub-hosted Windows runner') < script.indexOf('New-Item -Path $debugPolicyPath'));
 });

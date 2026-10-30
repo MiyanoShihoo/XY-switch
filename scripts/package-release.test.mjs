@@ -23,7 +23,7 @@ test("parses paths with spaces without invoking a shell", () => {
     platform: "windows", toolsDir: "E:\\AI tools", outDir: "release folder", bundles: "nsis", dryRun: true,
   });
 });
-for (const args of [[], ["ios"], ["linux", "--tools-dir"], ["linux", "--bad"], ["linux", "--out-dir", "--dry-run"], ["linux", "--bundles", "deb", "--bundles", "appimage"]]) {
+for (const args of [[], ["ios"], ["android"], ["linux", "--tools-dir"], ["linux", "--bad"], ["linux", "--out-dir", "--dry-run"], ["linux", "--bundles", "deb", "--bundles", "appimage"]]) {
   test(`rejects invalid arguments ${JSON.stringify(args)}`, () => assert.throws(() => parseArgs(args)));
 }
 test("plans a native locked Linux build with isolated tool cache", () => {
@@ -126,8 +126,8 @@ test("Linux config explicitly exposes the dynamic tray dependency to the bundler
   assert.ok(config.bundle.linux.deb.recommends.includes("fonts-noto-cjk"));
 });
 
-test("desktop-only bundler features are not enabled by the shared or iOS config", async () => {
-  for (const file of ["tauri.conf.json", "tauri.ios.conf.json"]) {
+test("shared config does not implicitly enable Linux bundler features", async () => {
+  for (const file of ["tauri.conf.json"]) {
     const config = JSON.parse(await fs.readFile(new URL("../src-tauri/" + file, import.meta.url), "utf8"));
     assert.ok(!(config.build?.features || []).some(feature => ["tauri/tray-icon", "linux-tray"].includes(feature)));
   }
@@ -167,11 +167,8 @@ test("macOS app freshness uses the generated plist and hashes the actual archive
   await assert.rejects(collectBundles(plan, Date.now()), /freshly built/);
 });
 
-test("Android/macOS configuration preserves platform boundaries", async () => {
-  const android = JSON.parse(await fs.readFile(new URL("../src-tauri/tauri.android.conf.json", import.meta.url), "utf8"));
+test("macOS configuration preserves its deployment target", async () => {
   const macos = JSON.parse(await fs.readFile(new URL("../src-tauri/tauri.macos.conf.json", import.meta.url), "utf8"));
-  assert.equal(android.bundle.android.minSdkVersion, 24);
-  assert.ok(!(android.build?.features || []).includes("linux-tray"));
   assert.equal(macos.bundle.macOS.minimumSystemVersion, "11.0");
 });
 

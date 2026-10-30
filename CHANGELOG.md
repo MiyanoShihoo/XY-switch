@@ -1,5 +1,11 @@
 # Changelog / 更新日志
 
+## Unreleased / 未发布 — 2026-10-30
+
+- Limit current build, CI, documentation, and website distribution entries to **Windows, macOS, and Linux**. Remove iOS/Android packaging and simulator workflows, including signed iOS device builds.
+- 当前仅保留 Windows、macOS、Linux；停止移动端原生验收。已发布的版本、安装包与历史验证记录不追溯修改。
+- Keep Windows encrypted-sync native acceptance isolated from daily user data and from the published 1.2.0 packages. [Current native acceptance scope](docs/native-acceptance-20261030.md).
+
 ## 1.2.0 — 2026-10-29
 
 - Promote maintenance, local-session favorites, pricing, and the safety/acceptance workspace into a new release candidate; never relabel existing 1.1.0 binaries.

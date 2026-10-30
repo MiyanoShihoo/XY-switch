@@ -30,7 +30,7 @@ if (mode === 'source') {
   for (const key of ['version', 'dependencies', 'devDependencies']) assert.deepEqual(currentPackage[key], oldPackage[key], `Changed production package ${key}`);
   const artifacts = (await (await api(`/actions/runs/${id}/artifacts?per_page=100`)).json()).artifacts;
   const selected = {};
-  for (const [platform, name] of [['windows', 'xy-switch-windows-X64'], ['ios', 'xy-switch-ios-simulator-ARM64']]) {
+  for (const [platform, name] of [['windows', 'xy-switch-windows-X64']]) {
     const matches = artifacts.filter(artifact => artifact.name === name && !artifact.expired);
     assert.equal(matches.length, 1, `Missing ${name}`);
     const artifact = matches[0];

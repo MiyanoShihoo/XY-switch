@@ -10,11 +10,6 @@ on:
         description: 'Run focused native acceptance against verified existing feature artifacts (no release)'
         type: boolean
         default: false
-      native_target:
-        description: 'Native platform(s) to verify without repeating a completed platform'
-        type: choice
-        options: [all, windows, ios]
-        default: all
       native_source_run:
         description: 'Successful Build and verify run that produced the feature packages'
         type: string
@@ -116,47 +111,6 @@ jobs:
           path: release/*/${{ matrix.platform }}-*/
           if-no-files-found: error
           retention-days: 14
-  ios-simulator:
-    needs: frontend
-    runs-on: macos-latest
-    timeout-minutes: 90
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: pnpm
-      - name: Apple toolchain
-        run: |
-          xcodebuild -version
-          xcrun --sdk iphonesimulator --show-sdk-version
-          command -v pod || brew install cocoapods
-          rustup set profile minimal
-          rustup toolchain install 1.98.1 --profile minimal --no-self-update
-          rustup default 1.98.1
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            src-tauri/target/aarch64-apple-ios-sim
-            src-tauri/target/x86_64-apple-ios
-          key: ios-simulator-${{ runner.arch }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm build:ios:simulator
-      - name: Install and launch in an isolated simulator
-        run: bash scripts/smoke-ios-simulator.sh
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: xy-switch-ios-simulator-${{ runner.arch }}
-          path: release/*/ios-*-simulator/
-          if-no-files-found: error
-          retention-days: 14
-
   macos:
     needs: frontend
     runs-on: macos-latest
@@ -199,80 +153,6 @@ jobs:
           path: release/*/macos-universal/
           if-no-files-found: error
           retention-days: 14
-  android:
-    needs: frontend
-    runs-on: ubuntu-24.04
-    timeout-minutes: 150
-    steps:
-      - uses: actions/checkout@v4
-      - name: Isolate Android tool state
-        shell: bash
-        run: |
-          tools="$RUNNER_TEMP/xy-switch-android-tools"
-          mkdir -p "$tools/gradle" "$tools/android-user"
-          printf '%s\n' "XY_SWITCH_TOOLS_DIR=$tools" "GRADLE_USER_HOME=$tools/gradle" "ANDROID_USER_HOME=$tools/android-user" >> "$GITHUB_ENV"
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: pnpm
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-      - uses: android-actions/setup-android@v4
-        with:
-          cmdline-tools-version: '13114758'
-          packages: 'platform-tools'
-      - name: Android and Rust toolchains
-        run: |
-          sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;27.2.12479018'
-          echo "NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
-          rustup toolchain install 1.98.1 --profile minimal --target aarch64-linux-android --target x86_64-linux-android --no-self-update
-          rustup default 1.98.1
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            src-tauri/target
-            ${{ runner.temp }}/xy-switch-android-tools/gradle/caches
-            ${{ runner.temp }}/xy-switch-android-tools/gradle/wrapper
-          key: android-rust-1.98.1-ndk27-${{ hashFiles('src-tauri/Cargo.lock', 'scripts/package-android.mjs', 'src-tauri/plugins/**/build.gradle.kts') }}
-      - run: pnpm install --frozen-lockfile
-      - name: Build and independently verify universal release APK
-        run: pnpm build:android --instrumentation
-      - name: Enable KVM for the disposable emulator
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-      - name: Verify real release APK, Rust IPC and Android Keystore
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          target: google_apis
-          arch: x86_64
-          profile: pixel_6
-          cores: 4
-          ram-size: 4096M
-          heap-size: 512M
-          avd-name: xy-switch-ci-${{ github.run_id }}-${{ github.run_attempt }}
-          emulator-port: 5554
-          force-avd-creation: true
-          disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
-          script: node scripts/smoke-android-emulator.mjs --serial emulator-5554
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: xy-switch-android-universal
-          path: release/*/android-universal/
-          if-no-files-found: error
-          retention-days: 14
-
   native-source:
     if: ${{ inputs.native_acceptance_only }}
     runs-on: ubuntu-22.04
@@ -283,8 +163,6 @@ jobs:
     outputs:
       windows_id: ${{ steps.source.outputs.windows_id }}
       windows_digest: ${{ steps.source.outputs.windows_digest }}
-      ios_id: ${{ steps.source.outputs.ios_id }}
-      ios_digest: ${{ steps.source.outputs.ios_digest }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -292,10 +170,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Test native acceptance harness and validate shell syntax
-        run: |
-          node --test scripts/native-acceptance.test.mjs
-          bash -n scripts/smoke-ios-simulator.sh
+      - name: Test Windows native acceptance harness
+        run: node --test scripts/native-acceptance.test.mjs scripts/desktop-platforms.test.mjs
       - name: Bind source commit, production inputs and immutable artifact digests
         id: source
         run: node scripts/native-acceptance/artifact.mjs source artifacts/native-acceptance/source.json
@@ -311,7 +187,6 @@ jobs:
           retention-days: 14
 
   native-windows-sync:
-    if: ${{ inputs.native_target != 'ios' }}
     needs: native-source
     runs-on: windows-latest
     timeout-minutes: 20
@@ -348,45 +223,5 @@ jobs:
         with:
           name: native-acceptance-windows-sync
           path: artifacts/native-acceptance/windows/
-          if-no-files-found: error
-          retention-days: 14
-
-  native-ios-readiness:
-    if: ${{ inputs.native_target != 'windows' }}
-    needs: native-source
-    runs-on: macos-latest
-    timeout-minutes: 30
-    permissions:
-      contents: read
-      actions: read
-    env:
-      NATIVE_SOURCE_RUN: ${{ inputs.native_source_run }}
-      NATIVE_SOURCE_COMMIT: ${{ inputs.native_source_commit }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Download exact feature artifact and verify its GitHub SHA256
-        run: |
-          node scripts/native-acceptance/artifact.mjs download "$RUNNER_TEMP/source-ios.zip"
-          node scripts/native-acceptance/extract-artifact.mjs "$RUNNER_TEMP/source-ios.zip" "$RUNNER_TEMP/source-ios"
-        env:
-          GH_TOKEN: ${{ github.token }}
-          NATIVE_ARTIFACT_ID: ${{ needs.native-source.outputs.ios_id }}
-          NATIVE_ARTIFACT_DIGEST: ${{ needs.native-source.outputs.ios_digest }}
-      - name: Native iOS ready state, preference write/relaunch and mobile sync read-only UI
-        run: bash scripts/smoke-ios-simulator.sh
-        env:
-          XY_IOS_PACKAGE_ROOT: ${{ runner.temp }}/source-ios
-          XY_IOS_QA_OUTPUT: ${{ github.workspace }}/artifacts/native-acceptance/ios
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: native-acceptance-ios-readiness
-          path: artifacts/native-acceptance/ios/
           if-no-files-found: error
           retention-days: 14

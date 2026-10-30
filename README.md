@@ -15,10 +15,8 @@ Get packages, checksums, native screenshots, and the verification report from [G
 | Windows x64 | NSIS `.exe` / `.msi` | Windows Credential Manager | Unsigned installers; WebView2 required; no portable ZIP in this release |
 | Linux x64 | `.deb` / `.AppImage` | Secret Service | Built on Ubuntu 22.04; needs compatible libraries and an unlocked keyring; tray availability depends on the desktop |
 | macOS Intel + Apple Silicon | Universal `.app.zip` / `.dmg` | Apple Keychain | Ad-hoc signed, not Developer ID signed or notarized |
-| Android 7.0+ / API 24+ | ARM64 + x86_64 universal `.apk` | Android Keystore + private AES-GCM records | Development-signed distribution; manages only its own sandbox; background proxy lifetime is not guaranteed |
-| iOS | ARM64 simulator `.zip`; separate signed-device build entry | Apple Keychain | **The simulator ZIP is not an iPhone IPA.** Device distribution requires Apple signing and a matching provisioning profile |
 
-The Android CI runs an isolated x86_64 emulator; static ARM64 package checks do not establish real-device testing. Minimum build targets are not a claim that every OS/device combination has been tested. Development certificates can differ between Android builds, so in-place upgrades are not guaranteed. See [packaging and native verification](docs/packaging-en.md) for exact commands and signing limits.
+Current development supports **Windows, macOS, and Linux only** (since 2026-10-30). iOS and Android packaging, simulator acceptance, and signing workflows have been removed. Mobile assets in earlier Releases are historical, not current support. Minimum build targets do not establish testing on every OS/architecture. See [desktop packaging and native verification](docs/packaging-en.md) for commands and signing limits.
 
 ## What is implemented
 
@@ -26,7 +24,7 @@ The Android CI runs an isolated x86_64 emulator; static ARM64 package checks do 
 | --- | --- | --- |
 | Providers and models | Endpoint/credential management, active-provider selection, discovery, mapping, header/body overrides | Saving, activating, connection testing, and successful upstream requests are different states |
 | Protocol routing | Local proxy adapters for OpenAI Chat Completions, Responses, Anthropic Messages, and Gemini | Protocol/tool compatibility and declared model names are not proof of model-weight identity |
-| Desktop client takeover | Explicit configuration takeover and restoration for **Claude Code, Codex, and Gemini CLI** | Other displayed client groups do not imply takeover support; mobile cannot edit other apps’ CLI configuration |
+| Desktop client takeover | Explicit configuration takeover and restoration for **Claude Code, Codex, and Gemini CLI** | Other displayed client groups do not imply takeover support |
 | MCP | Server management and supported client import/synchronization workflows | Platform permissions and client support still apply |
 | Prompts | Local create/edit/delete and enable/disable; explicit mounts in unreleased source | **Never automatically** writes `CLAUDE.md`, `AGENTS.md`, or `GEMINI.md`; each write needs a diff preview, confirmation, and backup |
 | Skills | Opt-in desktop source scanning and manual references | Sources start disabled; removing a manual reference does not delete its source files; plugin caches are excluded |
@@ -35,10 +33,10 @@ The Android CI runs an isolated x86_64 emulator; static ARM64 package checks do 
 | Model pricing (unreleased) | Persistent custom rates, public models.dev reference sync, immutable recorded costs and v2 configuration backups | Exact full model IDs; estimates are not provider bills; browser preview cannot write native data |
 | Safety and acceptance (unreleased) | Local tokens/scopes, shared rate/concurrency limits, cost/token reservation admission, six synthetic checks, scheduled monitoring, and audit | Authentication and budgets are opt-in; reservations do not guarantee upstream invoices; HTTP 200 still needs content assertions |
 | Config and explicit mounts (unreleased) | Manual snapshots, diffs, transactional rollback; preview/backup/rollback for prompt and Skill rule-file mounts | No automatic rule-file writes or Skill script execution; snapshots are not encrypted sync packages |
-| Read-only monitoring (unreleased) | Local usage, provider status, receipts, and loopback-only `GET /xy/status` | Status always requires a local token; mobile shows its own data, without cross-device connectivity or a persistent-background guarantee |
+| Read-only monitoring (unreleased) | Local usage, provider status, receipts, and loopback-only `GET /xy/status` | Status always requires a local token; cross-device remote monitoring is not implemented |
 | Language and settings | English/Simplified Chinese, system-language mode, themes, configuration import/export, actual data paths | Ordinary exports are not full credential backups |
 
-**Unreleased source maintenance (2026-10-27):** the current checkout can browse Codex, Claude Code, and Gemini CLI session logs, display messages/tool results, copy resume commands, and delete explicitly selected logs. Deletion does not update a client’s database/index. Browser previews and mobile do not gain native session access. The same maintenance adds **Usage & audit → Model pricing**, custom-price backups (v2 export, v1 import compatibility), and protects historical recorded costs from later price changes. These changes are not in the published 1.1.0 packages; see the [maintenance report](docs/maintenance-20261027.md).
+**Unreleased source maintenance (2026-10-27):** the current checkout can browse Codex, Claude Code, and Gemini CLI session logs, display messages/tool results, copy resume commands, and delete explicitly selected logs. Deletion does not update a client’s database/index. Browser previews do not gain native session access. The same maintenance adds **Usage & audit → Model pricing**, custom-price backups (v2 export, v1 import compatibility), and protects historical recorded costs from later price changes. These changes are not in the published 1.1.0 packages; see the [maintenance report](docs/maintenance-20261027.md).
 
 **1.2.0 safety and acceptance (2026-10-29):** the sidebar adds **Safety & Acceptance** with access control, reservation budgets, bounded synthetic monitoring, configuration history, and explicit rule-file mounting. Real loopback-to-upstream checks passed **6/6 with Chat and 6/6 with Responses**, after fixing a nullable-error validation bug. See [live evidence](docs/governance-live-followup-20261029.md) and [1.2.0 release notes](docs/release-notes-1.2.0.md); actual package availability and native verification are established by Release assets, not this source README.
 
@@ -54,7 +52,7 @@ See the [English user guide](docs/user-guide-en.md) / [中文使用指南](docs/
 
 ## Data, credentials, and model verification
 
-Configuration is local. Provider API keys use native credential storage, not the ordinary configuration JSON. Android stores encrypted records in `noBackupFilesDir`; damaged records, missing keys, and unavailable keyrings fail rather than silently falling back to plaintext. Hardware-backed storage is not guaranteed on every device.
+Configuration is local. Provider API keys use Windows Credential Manager, Linux Secret Service, or macOS Keychain, not ordinary configuration JSON. Unavailable keyrings fail explicitly rather than silently falling back to plaintext.
 
 Inspect actual paths in **Settings → Data**. Exported configuration excludes provider keys and MCP secret values (field names may remain); re-enter credentials after migration. Takeover restoration affects the configuration managed by that operation, not all application data.
 
@@ -64,7 +62,7 @@ The new global **hard budget gate** is separate from that model-verification sof
 
 ## Run from source
 
-Use an existing compatible Node.js installation (22.12+ recommended), pnpm 10, Rust, and your platform’s SDK prerequisites. CI pins Rust **1.98.1** and Node **24**; use the lockfiles. Windows needs MSVC/Windows SDK/WebView2, Linux needs WebKitGTK 4.1/AppIndicator/D-Bus/Secret Service, and Apple/mobile builds need their corresponding SDKs.
+Use an existing compatible Node.js installation (22.12+ recommended), pnpm 10, Rust, and your platform’s SDK prerequisites. CI pins Rust **1.98.1** and Node **24**; use the lockfiles. Windows needs MSVC/Windows SDK/WebView2, Linux needs WebKitGTK 4.1/AppIndicator/D-Bus/Secret Service, and macOS needs Xcode Command Line Tools.
 
 ```bash
 pnpm install --frozen-lockfile
@@ -83,11 +81,9 @@ Interactive credential-store and external Codex CLI tests can be ignored by defa
 pnpm build:windows
 pnpm build:linux
 pnpm build:macos:universal
-pnpm build:android
-pnpm build:ios:simulator    # macOS with Xcode and Simulator runtime
 ```
 
-Outputs go to `release/<version>/<platform>-<architecture>/`. `--tools-dir` or `XY_SWITCH_TOOLS_DIR` selects the packaging-tools cache, not the Node/Rust/system SDK installation. Signed iOS device builds use a separate workflow and are not substitutes for simulator archives.
+Outputs go to `release/<version>/<platform>-<architecture>/`. `--tools-dir` or `XY_SWITCH_TOOLS_DIR` selects the packaging-tools cache, not the Node/Rust/system SDK installation. Only the three desktop build targets are maintained.
 
 ## Repository map and documentation
 

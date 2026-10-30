@@ -2,7 +2,7 @@
 
 English | [简体中文](packaging.md) · [User guide](user-guide-en.md) · [1.1.0 notes](release-notes-1.1.0.md)
 
-Build each native target on its supported host. Windows installers are unsigned unless you supply signing; macOS defaults to ad-hoc signing without notarization; Android defaults to development signing; iOS simulator archives are **not physical-device IPAs**. A successful build alone is not native acceptance.
+Current development builds and maintains **Windows, macOS, and Linux only**. iOS and Android packaging, native acceptance, and signing entry points were removed on 2026-10-30; historical release assets remain unchanged. Windows installers are unsigned unless you supply signing; macOS defaults to ad-hoc signing without notarization. A successful build alone is not native acceptance.
 
 ## Prepare the source
 
@@ -78,83 +78,9 @@ Without `APPLE_SIGNING_IDENTITY`, the build uses ad-hoc signing: integrity check
 
 Verification checks architectures, bundle ID/version, signatures, the program in both archives, and a rendered native window. Keychain tests create a temporary keychain and restore the default/search list. This app does not currently provide macOS autostart settings.
 
-## Android
-
-### Build the APK
-
-Use JDK 21, Android SDK Platform 36, Build Tools 36.0.0, NDK 27.2.12479018, Rust and Node.js. Set `JAVA_HOME`, `ANDROID_HOME` and `NDK_HOME` to the installed tools. On Windows, Rust host builds also need MSVC and Tauri needs permission to create file symlinks. The script checks symlink support; it does not enable Developer Mode or change OS policy.
-
-```bash
-sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;27.2.12479018'
-pnpm build:android
-pnpm build:android --dry-run
-```
-
-The default universal release APK contains ARM64 (`arm64-v8a`) and `x86_64`, targeting Android 7.0/API 24+. `--targets aarch64` builds only ARM64. The generated Android project is ignored by Git. Independent checks validate package ID/version, SDK levels, non-debuggable status, backup policy, signature, ZIP alignment and 16 KB ELF page alignment of all native libraries. Static alignment checks do not prove every 16 KB device was tested.
-
-### Keep signing material separate
-
-Default development keys/passwords live under the chosen tools directory's `signing/`; filenames explicitly say `development-signed`. This is not a Google Play production release. Disposable CI certificates can differ between builds, so in-place upgrades are not guaranteed. Uninstalling removes sandbox/Keystore data; preserve ordinary configuration and prepare source credentials before changing installations.
-
-For your own signing, provide all four environment variables with the keystore outside the source workspace:
-
-| Variable | Value |
-| --- | --- |
-| `XY_ANDROID_KEYSTORE_PATH` | Absolute path to external keystore |
-| `XY_ANDROID_STORE_PASSWORD` | Keystore password |
-| `XY_ANDROID_KEY_ALIAS` | Signing alias |
-| `XY_ANDROID_KEY_PASSWORD` | Private-key password |
-
-Do not place passwords in command arguments, source, Gradle files or release assets. The manifest records hashes/certificate fingerprints, not private keys or passwords.
-
-### Exercise the actual Keystore
-
-Use a **dedicated disposable emulator** whose AVD name starts with `xy-switch-ci-`:
-
-```bash
-pnpm build:android --instrumentation
-node scripts/smoke-android-emulator.mjs --serial emulator-5554
-```
-
-The smoke script checks the emulator serial, QEMU marker and dedicated AVD name; it rejects real phones and personal emulators. It runs four native encrypted-storage tests plus one final-release-APK WebView → Rust → Keystore integration test, including reconstruction, tampering, missing keys and rejection of the private JS bridge. A loopback fixture verifies credential use without paid model requests. PID, focused nonblank screenshot, test output and device page size are recorded. The automated runtime target is x86_64; ARM64 package checks are not ARM64 real-device tests.
-
-Credentials use AndroidKeyStore AES-256-GCM keys with scope-bound private `noBackupFilesDir` records. Hardware backing is not claimed on every device. Mobile manages only its own sandbox, cannot read other apps' CLI/Skills/session directories, and cannot guarantee a persistent background proxy. Explicitly configured local/LAN HTTP endpoints do not gain transport encryption from encrypted credential storage.
-
-## iOS simulator
-
-Use macOS, Xcode, an installed iOS Simulator runtime, and CocoaPods:
-
-```bash
-pnpm build:ios:simulator
-bash scripts/smoke-ios-simulator.sh
-```
-
-The script generates the ignored `src-tauri/gen/apple/` project, selects the Rust simulator target for the Mac's architecture and archives into `release/<version>/ios-<architecture>-simulator/`. The smoke test creates its own simulator, installs/launches the app, checks the process and rendered content, saves a screenshot, and cleans up.
-
-The rendered-content gate waits up to two minutes for WebKit, excluding status-bar and bottom system regions when checking contrast; a screenshot with only system chrome must fail. This does not replace visual review, full interaction testing or real-device testing. **A simulator ZIP cannot be installed on an iPhone/iPad or renamed into an IPA.** Mobile has no desktop takeover, system tray or autostart.
-
-## Signed iOS device packages
-
-The separate **Build signed iOS device package** workflow is manual, not part of ordinary push builds. Configure repository secrets:
-
-| Secret | Value |
-| --- | --- |
-| `APPLE_DEVELOPMENT_TEAM` | Apple development team ID |
-| `IOS_CERTIFICATE` | Base64 `.p12` signing certificate |
-| `IOS_CERTIFICATE_PASSWORD` | Certificate password |
-| `IOS_MOBILE_PROVISION` | Base64 matching provisioning profile |
-
-The provisioning profile must match `com.xyswitch.desktop` and the export method. A Mac with signing already configured can run:
-
-```bash
-pnpm build:ios
-```
-
-`IOS_EXPORT_METHOD` supports `app-store-connect` (default), `release-testing`, and `debugging`. App Store/TestFlight exports use Apple distribution; development/testing device eligibility comes from the provisioning profile. The script verifies the IPA's profile and signature and does not use `--no-sign` or fabricate an installable IPA when credentials are missing.
-
 ## Release gates
 
-1. Require all six jobs—frontend, Windows, Linux, macOS, Android and iOS simulator—to pass in **one run for one source commit**, including separately invoked credential tests.
+1. Require all four checks—frontend, Windows, Linux and macOS—to pass in **one run for one source commit**, including separately invoked credential tests.
 2. Check package versions, architectures, identities, manifests and hashes; review native screenshots.
 3. Publish the source through Git and packages through Releases, not binary blobs in source history.
 4. Preserve actual signing/device limitations in release notes and ensure no keys, databases, personal configuration, logs or profiles enter the publication snapshot.
@@ -162,4 +88,4 @@ pnpm build:ios
 
 Browser UI suites are synthetic and separate from native gates. With the renderer served on `http://127.0.0.1:1431` and a dedicated local Chrome CDP endpoint on port 9231, run `pnpm test:ui` and `pnpm test:ui:i18n`. `APP_URL`, `CDP_ENDPOINT`, `QA_OUTPUT` and `I18N_QA_OUTPUT` override the defaults. Do not attach these fixture-injecting suites to your personal browser or real application data.
 
-Official references: [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/), [Android signing](https://v2.tauri.app/distribute/sign/android/), [iOS signing](https://v2.tauri.app/distribute/sign/ios/), [App Store distribution](https://v2.tauri.app/distribute/app-store/).
+Official references: [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/), [Windows installers](https://v2.tauri.app/distribute/windows-installer/), [Debian packages](https://v2.tauri.app/distribute/debian/).

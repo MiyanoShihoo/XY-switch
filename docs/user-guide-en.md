@@ -2,11 +2,11 @@
 
 English | [简体中文](user-guide-zh.md) · [README](../README.md) · [Build and package](packaging-en.md)
 
-This guide describes **1.1.0**. Native and browser-preview capabilities are different. Windows installers are unsigned; macOS packages are ad-hoc signed without notarization; the Android APK is development-signed; the published iOS ZIP is for an ARM64 simulator, **not an iPhone IPA**. See the release's verification report for the platforms actually tested.
+This guide describes **1.2.0** desktop features; unreleased source updates are labeled separately. Current support is **Windows, macOS, and Linux only**. Native and browser-preview capabilities differ. Windows installers are unsigned; macOS packages are ad-hoc signed without notarization. Earlier mobile assets remain historical and no longer have a current build entry point. See the matching release verification report for actual test coverage.
 
 ## Install and choose a language
 
-Download your platform's package and `SHA256SUMS.txt` from [Releases](https://github.com/MiyanoShihoo/XY-switch/releases). Compare the downloaded file's SHA-256 before installing. Windows offers NSIS EXE/MSI, Linux DEB/AppImage, macOS Universal App ZIP/DMG, Android an APK, and iOS a simulator ZIP. There is no Windows portable ZIP in this release.
+Download your platform's package and `SHA256SUMS.txt` from [Releases](https://github.com/MiyanoShihoo/XY-switch/releases). Compare the downloaded file's SHA-256 before installing. Windows offers NSIS EXE/MSI, Linux DEB/AppImage, macOS Universal App ZIP/DMG. There is no Windows portable ZIP in this release.
 
 Open **Settings → General → Interface language** and choose **System**, **简体中文**, or **English**. System mode uses the first preferred system/browser language: a `zh` prefix selects Chinese; anything else selects English. Native preferences are stored in the local database and refresh the desktop tray. Browser previews use local storage. A failed native save keeps the previous language; retry after resolving the displayed error. Changing language does not discard the current page's unsaved form values.
 
@@ -32,7 +32,7 @@ Protocol conversion, accepted tool calls, and a matching model name establish co
 
 ## Manage MCP, prompts, and Skills
 
-**MCP:** create or edit server definitions, choose supported target clients, and use the explicit import/synchronization actions. Desktop client synchronization writes client configuration; it is unavailable on mobile. A server definition being saved does not establish that its executable, transport, or external service is available.
+**MCP:** create or edit server definitions, choose supported target clients, and use the explicit import/synchronization actions. Desktop client synchronization writes client configuration. A server definition being saved does not establish that its executable, transport, or external service is available.
 
 **Prompts:** create, edit, delete, and enable/disable local Markdown prompts. Version 1.1.0 does not synchronize rule files; 1.2.0 adds the explicit-mount workflow below. Saving or enabling a prompt still **never automatically** writes `CLAUDE.md`, `AGENTS.md`, or `GEMINI.md`.
 
@@ -48,7 +48,7 @@ This section describes current desktop source, not the published 1.1.0 installer
 4. **Config versions:** Create snapshots manually. To restore, stop the proxy, restore takeovers, preview the diff, acknowledge it, and type `ROLLBACK`. The transaction backs up the current configuration first; stale previews are rejected. Snapshots exclude the credential vault, MCP, favorites, external files, and security policies; they are not complete backups.
 5. **Explicit mounts:** Grant a project through the native folder picker, choose saved prompts/authorized local Skills and one of the three root rule files, then preview without writing. Review the diff and type `WRITE FILE`. Previews expire in five minutes and are single-use; complete original content is backed up before atomic replacement. Intervening file changes block stale writes or restores. Only `SKILL.md` text is mounted; scripts and dependencies are not copied, executed, or installed.
 
-Mobile shows only local overview, receipts, and audit, without a remote-device connection. Browser preview never simulates successful privileged writes. Session recovery still only copies commands. See the [governance and acceptance record](governance-acceptance-20261029.md), including the live HTTP failure and remaining limits.
+Remote-device connections are not implemented. Browser preview never simulates successful privileged writes. Session recovery still only copies commands. See the [governance and acceptance record](governance-acceptance-20261029.md), including the live HTTP failure and remaining limits.
 
 ## Browse local sessions (1.2.0)
 
@@ -58,7 +58,7 @@ The current desktop source supports Codex, Claude Code, and Gemini CLI transcrip
 - Search by title, ID, or working directory and filter by client. Message details include supported text and tool calls/results, not images or hidden reasoning. Codex `session_index.jsonl` can supply renamed titles for already-discovered logs, never new file paths. The index is limited to 4 MiB / 20,000 rows; malformed indexes produce warnings without blocking valid log reading.
 - A resume command is copied, never executed. First switch to the recorded working directory, then run it yourself. The matching client must still be installed and its own session state must be intact.
 - Deletion permanently removes only the selected log file. Stop the session first. The original client’s SQLite/database/index is not rewritten, so it may retain a stale entry. Ambiguous IDs, unsafe paths, corrupt logs, or incomplete scans prevent deletion.
-- A file is limited to 32 MiB, a catalog scan to 64 MiB of reads, and a detail view to 4 MiB / 5,000 messages. Partial or damaged content is reported instead of shown as an empty success. Browser previews and mobile explicitly reject native session operations.
+- A file is limited to 32 MiB, a catalog scan to 64 MiB of reads, and a detail view to 4 MiB / 5,000 messages. Partial or damaged content is reported instead of shown as an empty success. Browser previews explicitly reject native session operations.
 
 Local usage import below is a separate feature.
 
@@ -94,14 +94,12 @@ In **Settings → Data**, inspect paths returned by the running native process. 
 
 Version 1.2.0 exports v2 configuration with custom prices and still accepts v1 backups; v1 cannot contain nonempty `modelPricing`. Public reference catalogs, historical usage and cost snapshots are excluded. Imports/exports are limited to 8 MiB, with 1,000 providers/prompts/MCP servers per kind and a 30,000-row pricing catalog limit. All supported sections are validated before mutation; provider, prompt and custom-price rows commit together in one SQLite transaction. MCP synchronization and proxy/listener changes are external operations, not an all-resource transaction. An I/O error reports partial progress and refreshes the displayed state. Imported MCP secret values are ignored; existing local environment/header credentials are preserved for matching server IDs. New devices require credentials to be entered again.
 
-Normal configuration export is **not a complete credential backup**. Credentials use Windows Credential Manager, Linux Secret Service, Apple Keychain, or Android Keystore with private AES-GCM records. Keep source credentials available for re-entry when moving devices or replacing an Android build signed by a different certificate. Removing an app's data or uninstalling it can remove stored settings and credentials.
+Normal configuration export is **not a complete credential backup**. Credentials use Windows Credential Manager, Linux Secret Service, or macOS Keychain. Keep source credentials available for re-entry when moving devices. Removing an app's data or uninstalling it can remove stored settings and credentials.
 
 ## Platform limits and troubleshooting
 
 - **Browser preview:** UI review only. It does not replace native keyring, filesystem, listener, or takeover operations.
 - **Linux:** requires compatible system libraries and an unlocked Secret Service keyring. Tray support depends on the desktop environment.
-- **Mobile:** manages its own sandbox; cannot take over another app's CLI configuration or read its Skills/session directories. Background proxy availability is not guaranteed.
-- **Android upgrade refused:** independently generated development certificates may differ. Do not assume one release can install over another; preserve ordinary configuration and prepare credentials before changing installations.
 - **iPhone installation:** the simulator ZIP cannot be installed on a physical phone. A device build needs Apple signing and matching provisioning; see [packaging](packaging-en.md).
 - **Language save failed:** the old language is intentionally retained. Retry instead of assuming the tray and persisted preference changed.
 - **Upstream failure:** distinguish saved configuration, active provider, listener state, authentication, protocol support, and actual response. Preserve relevant diagnostics without publishing credentials or private request content.

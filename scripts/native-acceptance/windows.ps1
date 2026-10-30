@@ -24,6 +24,9 @@ New-Item -ItemType Directory -Path $temporary | Out-Null
 $install = Join-Path $temporary 'application'
 $exe = Join-Path $install 'xy-switch.exe'
 $app = $null; $installed = $false; $primaryFailure = $null
+$debugPolicyPath = 'HKCU:\Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments'
+$debugPolicyExisted = Test-Path -LiteralPath $debugPolicyPath
+$debugPolicyBackups = [Collections.Generic.List[object]]::new()
 $report = [ordered]@{passed=$false;sourceCommit=$env:NATIVE_SOURCE_COMMIT;harnessCommit=$env:GITHUB_SHA;sourceRun=$env:NATIVE_SOURCE_RUN;installed=$false;uninstalled=$false;scope='Packaged Windows NSIS payload, actual WebView DOM, native picker and production Rust IPC; no mock IPC or picker bypass'}
 function Invoke-Installer([string]$File, [string[]]$Arguments) {
     $process = Start-Process -FilePath $File -ArgumentList $Arguments -WindowStyle Hidden -PassThru
@@ -44,8 +47,26 @@ try {
     $start = [Diagnostics.ProcessStartInfo]::new()
     $start.FileName = $exe; $start.WorkingDirectory = $install
     $start.UseShellExecute = $false; $start.WindowStyle = [Diagnostics.ProcessWindowStyle]::Hidden
-    # Only this disposable child receives CDP. Neither the package nor user-wide settings change.
-    $start.Environment['WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS'] = "--remote-debugging-port=$port --remote-debugging-address=127.0.0.1"
+    # The observed runner WebView ignored environment-only arguments. Use Microsoft's
+    # app-scoped override in this disposable account, preserving and restoring every value.
+    $debugArguments = "--remote-debugging-port=$port --remote-debugging-address=127.0.0.1"
+    New-Item -Path $debugPolicyPath -Force | Out-Null
+    foreach ($name in @($config.identifier, 'xy-switch.exe')) {
+        $key = Get-Item -LiteralPath $debugPolicyPath
+        try {
+            $exists = $key.GetValueNames() -contains $name
+            $backup = @{name=$name;existed=$exists}
+            if ($exists) {
+                $backup.value = $key.GetValue($name, $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+                $backup.kind = $key.GetValueKind($name)
+            }
+            $debugPolicyBackups.Add($backup)
+        } finally { $key.Dispose() }
+        New-ItemProperty -LiteralPath $debugPolicyPath -Name $name -Value $debugArguments -PropertyType String -Force | Out-Null
+    }
+    $report.debugPolicyScope = @($debugPolicyBackups | ForEach-Object { @{name=$_.name;preExisting=$_.existed} })
+    # Never apply a wildcard policy or change the executable/package.
+    $start.Environment['WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS'] = $debugArguments
     $start.Environment['WEBVIEW2_USER_DATA_FOLDER'] = Join-Path $temporary 'webview'
     $report.testWebViewArguments = $start.Environment['WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS']
     $app = [Diagnostics.Process]::Start($start)
@@ -89,7 +110,26 @@ try {
         $report.cleanupError = $_.ToString()
         if (-not $primaryFailure) { $primaryFailure = $_ }
     } finally {
-        $report.passed = $report.passed -and $report.uninstalled
+        try {
+            foreach ($backup in $debugPolicyBackups) {
+                if ($backup.existed) {
+                    $key = Get-Item -LiteralPath $debugPolicyPath
+                    try { $key.SetValue($backup.name, $backup.value, $backup.kind) } finally { $key.Dispose() }
+                } else {
+                    Remove-ItemProperty -LiteralPath $debugPolicyPath -Name $backup.name -ErrorAction Stop
+                }
+            }
+            if (-not $debugPolicyExisted -and (Test-Path -LiteralPath $debugPolicyPath)) {
+                $key = Get-Item -LiteralPath $debugPolicyPath
+                try { $empty = $key.ValueCount -eq 0 -and $key.SubKeyCount -eq 0 } finally { $key.Dispose() }
+                if ($empty) { Remove-Item -LiteralPath $debugPolicyPath -ErrorAction Stop }
+            }
+            $report.debugPolicyRestored = $true
+        } catch {
+            $report.debugPolicyCleanupError = $_.ToString()
+            if (-not $primaryFailure) { $primaryFailure = $_ }
+        }
+        $report.passed = $report.passed -and $report.uninstalled -and $report.debugPolicyRestored
         $report | ConvertTo-Json -Depth 7 | Set-Content -LiteralPath (Join-Path $OutputDirectory 'native-installation.json') -Encoding utf8
     }
 }
