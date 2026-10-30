@@ -1,9 +1,9 @@
 /* Shared page structure. Feature pages choose their own rows, editors and inspectors. */
-.workspace-page { display: flex; flex-direction: column; gap: var(--xy-ds-space-4); min-width: 0; padding: var(--xy-ds-space-6); }
+.workspace-page { display: flex; flex-direction: column; gap: var(--xy-ds-space-4); min-width: 0; padding: var(--xy-ds-space-8); }
 .page-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--xy-ds-space-4); }
 .page-heading__copy { display: grid; gap: var(--xy-ds-space-1); }
 .page-description, .muted { color: var(--xy-ds-text-muted); }
-.page-description { font-size: 12px; }
+.page-description { font-size: 14px; }
 .page-actions, .toolbar, .inline-actions { display: flex; align-items: center; gap: var(--xy-ds-space-2); flex-wrap: wrap; }
 .toolbar { justify-content: space-between; }
 .toolbar__search { width: min(300px, 100%); }
@@ -47,3 +47,10 @@
 .fatal-error { width: min(600px, 100%); min-height: 100%; margin: auto; padding: var(--xy-ds-space-6); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--xy-ds-space-4); }
 .fatal-error > svg { color: var(--xy-ds-danger); }
 .fatal-error > p { color: var(--xy-ds-text-muted); }
+
+.page-eyebrow { color: var(--xy-ds-text-muted); font-size: 12px; font-weight: 550; }
+.page-heading { align-items: flex-start; }
+.page-heading__copy { gap: 8px; min-width: 0; }
+.page-description { max-width: 80ch; line-height: 1.65; }
+.page-actions { flex-shrink: 0; }
+@media (max-width: 600px) { .workspace-page { padding: 16px; } .page-actions { width: 100%; } }

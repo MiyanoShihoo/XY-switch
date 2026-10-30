@@ -3,6 +3,8 @@ import { resolve, join } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { en } from "../src/i18n/en";
+import { navigation, navigationSections } from "../src/shell/SideNav";
+import { diagnosticTabs } from "../src/features/providers/ProviderDiagnosticsPage";
 
 describe("translation catalog coverage", () => {
   it("has nonempty English messages with matching named placeholders", () => {
@@ -12,6 +14,12 @@ describe("translation catalog coverage", () => {
       expect(target.trim(), source).not.toBe("");
       expect(slots(target), source).toEqual(slots(source));
       if (source !== "简体中文") expect(target, source).not.toMatch(/[\u3400-\u9fff]/u);
+    }
+  });
+  it("covers dynamic navigation sections and diagnostic tabs", () => {
+    const labels = [...navigationSections, ...navigation.flatMap(item => [item.label, item.section]), ...diagnosticTabs.map(item => item.label)];
+    for (const label of labels) {
+      if (/[\u3400-\u9fff]/u.test(label)) expect(en[label], label).toBeTypeOf("string");
     }
   });
   it("covers every literal application translation call", () => {

@@ -6,6 +6,10 @@ on:
   pull_request:
   workflow_dispatch:
     inputs:
+      renderer_acceptance_only:
+        description: 'Run isolated renderer UI acceptance only (no native packages or release)'
+        type: boolean
+        default: false
       native_acceptance_only:
         description: 'Run focused native acceptance against verified existing feature artifacts (no release)'
         type: boolean
@@ -25,7 +29,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   frontend:
-    if: ${{ !inputs.native_acceptance_only }}
+    if: ${{ !inputs.native_acceptance_only && !inputs.renderer_acceptance_only }}
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     steps:
@@ -45,6 +49,7 @@ jobs:
       - name: Validate shell scripts
         run: for script in scripts/*.sh; do bash -n "$script"; done
   website:
+    if: ${{ !inputs.renderer_acceptance_only }}
     runs-on: ubuntu-22.04
     timeout-minutes: 6
     steps:
@@ -63,6 +68,39 @@ jobs:
         with:
           name: desktop-website-ui
           path: artifacts/website-ui-qa/
+          if-no-files-found: error
+          retention-days: 14
+  renderer-ui:
+    if: ${{ !inputs.native_acceptance_only }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm test
+      - run: pnpm test:ui:network
+      - run: pnpm build:renderer
+      - name: Install CJK fonts for real Chinese renderer acceptance
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-cjk
+      - name: Verify isolated renderer navigation and feature regressions
+        run: pnpm test:ui:headless
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: workspace-renderer-ui
+          path: |
+            artifacts/workspace-headless-qa/
+            !artifacts/workspace-headless-qa/browser-profile-*/**
           if-no-files-found: error
           retention-days: 14
   desktop:
@@ -175,7 +213,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
   native-source:
-    if: ${{ inputs.native_acceptance_only }}
+    if: ${{ inputs.native_acceptance_only && !inputs.renderer_acceptance_only }}
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     permissions:

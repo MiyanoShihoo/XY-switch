@@ -15,9 +15,9 @@ button, a, input, select, textarea, [tabindex] { -webkit-tap-highlight-color: tr
 :focus-visible { outline: 2px solid var(--xy-ds-focus-ring); outline-offset: 2px; }
 button:focus:not(:focus-visible) { outline: none; }
 h1, h2, h3, p { margin: 0; }
-h1 { font-size: 18px; line-height: 1.35; font-weight: 650; }
-h2 { font-size: 16px; font-weight: 650; }
-h3 { font-size: 14px; font-weight: 650; }
+h1 { font-size: 26px; line-height: 1.35; font-weight: 650; }
+h2 { font-size: 18px; font-weight: 650; }
+h3 { font-size: 16px; font-weight: 650; }
 a { color: var(--xy-ds-accent); }
 code, pre, .mono { font-family: var(--xy-ds-font-mono); }
 pre { white-space: pre-wrap; overflow-wrap: anywhere; }

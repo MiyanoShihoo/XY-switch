@@ -10,7 +10,7 @@
     verification: {settings:{enabled:false,activeProbeEnabled:false,maxRequestsPerDay:1,softTokenBudgetPerDay:100,maxOutputTokens:8,timeoutSeconds:15,cooldownHours:24,rollingWindowSize:10,repeatedAnomalyThreshold:2,storeDiagnosticIds:false,aliases:[]},recent:[],observedResponses:0,probeRequestsToday:0,probeTokensToday:0,budgetUsedToday:0,capabilityConfirmed:false,droppedObservations:0,storageError:false},
     calls: [], fail: {}, hold: [], pending: [], callbacks: {}, listeners: [], nextCallback: 1, nextListener: 1,
     providers: ['Orion', 'Relay', 'Claude Lab'].map((name,i) => ({ id: 'qa-p'+(i+1), name, appGroup: i === 2 ? 'Claude' : 'Codex', providerType: 'custom', endpoint: 'https://qa.invalid/v1', model: 'qa-alpha', enabled: true, sortOrder: i, advanced: advanced() })),
-    current: 'qa-p1', keys: { 'qa-p1': true },
+    current: 'qa-p1', keys: { 'qa-p1': true }, healthOverrides: {},
     proxy: { settings: { enabled: false, showInHome: true, host: '127.0.0.1', port: 15721, routeTargets: ['claude','codex','gemini'] }, running: false, address: 'http://127.0.0.1:15721', lastError: null },
     preferences: { minimizeToTray: true, requestTimeoutSecs: 180, logLevel: 'info' }, autostart: false, autostartMismatch: false,
     prompts: [{ id: 'qa-prompt', name: '代码审查', description: '验收提示词', content: '# Review\n\n检查边界与错误。', enabled: true }],
@@ -24,7 +24,7 @@
     release(command) { const entries = this.pending.filter(item => !command || item.command === command); this.pending = this.pending.filter(item => !entries.includes(item)); this.hold = this.hold.filter(item => item !== command); for (const item of entries) item.resolve(); },
     emit(event, payload) { for (const listener of this.listeners.filter(item => item.event === event)) this.callbacks[listener.handler]?.({ event, id: listener.id, payload }); },
   };
-  const health = id => ({ providerId: id, status: 'healthy', latencyMs: 42, successRate: 98.5, consecutiveFailures: 0, circuitOpenUntil: null, lastError: null, lastCheckedAt: 1792195260000 });
+  const health = id => ({ providerId: id, status: 'healthy', latencyMs: 42, successRate: 98.5, consecutiveFailures: 0, circuitOpenUntil: null, lastError: null, lastCheckedAt: 1792195260000, ...qa.healthOverrides[id] });
   const takeovers = ['claude','codex','gemini'].map(app => ({ app, label: app === 'claude' ? 'Claude Code' : app === 'gemini' ? 'Gemini CLI' : 'Codex', configPaths: ['QA:/'+app+'/config'], installed: true, active: false, lastError: null }));
   async function invoke(command,args = {}) {
     qa.calls.push({ command, args: clone(args) });

@@ -26,7 +26,7 @@ try {
   ({identifier:fixtureId}=await c.call('Page.addScriptToEvaluateOnNewDocument',{source:'localStorage.setItem("xy-qa:native-language","zh-CN");localStorage.setItem("xy-switch:language","zh-CN");\n'+await readFile(new URL('./workspace-qa/fixture.js',import.meta.url),'utf8')}));
   await run('layout',async()=>{
     await reset();
-    const pages=['供应商','MCP 服务器','提示词','Skills','会话','用量与审计','设置'];
+    const pages=['供应商','MCP 服务器','提示词','Skills','连接诊断','会话','用量与审计','安全与验收','设置'];
     for(const [width,height] of [[1180,760],[820,600]]) {
       await c.viewport(width,height);
       for(const theme of ['light','dark']) {
@@ -71,10 +71,13 @@ try {
     await fixture('q.release("delete_provider");');await c.waitFor('document.body.innerText.includes("QA delete denied")');
     assert.equal(await c.evaluate('Boolean(document.querySelector("[role=alertdialog]"))'),true);
     assert.equal(await c.evaluate('window.__XY_QA__.providers.length'),3);
-    await c.button('取消');await c.viewport(820,600);await c.waitFor('document.querySelector(".provider-workspace")?.dataset.compact === "true"');await c.button('查看 Orion 详情');
-    assert.equal(await c.evaluate('Boolean(document.querySelector("[role=dialog]"))'),true,'compact inspector drawer');
-    await noOverflow();await c.screenshot(join(output,'provider-drawer.png'));await c.key('Escape');
-    assert.equal(await c.evaluate('document.activeElement.getAttribute("aria-label")'),'查看 Orion 详情');
+    await c.button('取消');await c.button('返回供应商');await c.viewport(820,600);await c.button('查看 Orion 详情');
+    await c.waitFor('Boolean(document.querySelector(".provider-configuration-page"))');
+    assert.equal(await c.evaluate('Boolean(document.querySelector("[role=dialog]"))'),false,'compact configuration is a page, not a drawer');
+    assert.equal(await c.evaluate('document.activeElement.id'),'workspace-content','navigation focuses the main page');
+    await noOverflow();await c.screenshot(join(output,'provider-configuration-compact.png'));await c.button('返回供应商');
+    await c.waitFor('Boolean(document.querySelector(".providers-page"))');
+    assert.equal(await c.evaluate('document.activeElement.id'),'workspace-content');
   });
   await run('prompts',async()=>{
     await reset();await nav('提示词');await c.waitFor('document.body.innerText.includes("代码审查")');

@@ -1,10 +1,13 @@
 import { useLanguage, t } from "./i18n/language";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { AppShell, type AppView } from "./shell/AppShell";
+import { AppShell } from "./shell/AppShell";
+import { useWorkspaceNavigation } from "./lib/workspace-navigation";
 import { Badge, InlineError } from "./ui";
 import { useProviders } from "./features/providers/useProviders";
 import { ProvidersPage } from "./features/providers/ProvidersPage";
+import { ProviderConfigurationPage } from "./features/providers/ProviderConfigurationPage";
+import { ProviderDiagnosticsPage } from "./features/providers/ProviderDiagnosticsPage";
 import { McpPage } from "./features/mcp/McpPage";
 import { PromptsPage } from "./features/prompts/PromptsPage";
 import { SkillsPage } from "./features/skills/SkillsPage";
@@ -22,7 +25,9 @@ export default function App() {
   useLanguage();
   const client = useQueryClient();
   const platform = usePlatformCapabilities();
-  const [activeView, setActiveView] = useState<AppView>("providers");
+  const { route, navigate } = useWorkspaceNavigation();
+  const activeView = route.view;
+  const previousView = useRef(activeView);
   const [themePreference, setThemePreference] = useState<ThemePreference>(() => readThemePreference(localStorage.getItem("xy-switch:theme")));
   const [systemDark, setSystemDark] = useState(() => window.matchMedia("(prefers-color-scheme: dark)").matches);
   const theme = resolveTheme(themePreference, systemDark);
@@ -50,7 +55,7 @@ export default function App() {
     const update = () => setSystemDark(media.matches); update(); media.addEventListener("change", update);
     return () => media.removeEventListener("change", update);
   }, []);
-  useEffect(() => { mainRef.current?.scrollTo({ top: 0 }); }, [activeView]);
+  useEffect(() => { if (previousView.current === activeView) return; previousView.current = activeView; mainRef.current?.scrollTo({ top: 0 }); mainRef.current?.focus({ preventScroll: true }); }, [activeView]);
   const mutateProxy = useCallback(async (work: () => Promise<ProxyStatus>): Promise<ProxyStatus> => {
     if (proxyLock.current) throw new Error(t("另一项路由操作正在进行，请稍候。"));
     proxyLock.current = true; runtimeGeneration.current += 1; setProxyBusy(true); setRuntimeError("");
@@ -73,10 +78,12 @@ export default function App() {
     if (!refreshed) throw new Error(t("供应商状态无法刷新，请在供应商页重试。"));
   };
   const currentName = providers.loading ? t("读取中") : providers.error ? t("状态未知") : providers.providers.find(provider => provider.id === providers.currentId)?.name;
-  return <AppShell activeView={activeView} onNavigate={setActiveView} providerCount={providers.providers.length} currentProviderName={currentName} proxyStatus={proxyStatus} proxyBusy={proxyBusy} onToggleProxy={() => void toggleProxy()} theme={theme} onToggleTheme={() => setThemePreference(nextExplicitTheme(theme))} mainRef={mainRef}>
+  return <AppShell activeView={activeView} onNavigate={view => navigate(view)} providerCount={providers.providers.length} currentProviderName={currentName} proxyStatus={proxyStatus} proxyBusy={proxyBusy} onToggleProxy={() => void toggleProxy()} theme={theme} onToggleTheme={() => setThemePreference(nextExplicitTheme(theme))} mainRef={mainRef}>
     {platform.data?.mobile && <p className="workspace-route-notice">{platform.data.os === "android" ? "Android" : "iOS"} {t("移动端：凭据保存在")} {platform.data.credentialStore}{t("；不能接管其他应用的 CLI，也不能保证后台持续运行本地代理。")}</p>}
     {runtimeError && <div className="workspace-runtime-error"><InlineError message={runtimeError} onRetry={() => { void refreshRuntime().catch(cause => setRuntimeError(errorText(cause))); }} /></div>}
-    {activeView === "providers" && <>{proxyStatus?.settings.showInHome && <div className="workspace-route-notice"><Badge dot tone={proxyStatus.lastError ? "danger" : proxyStatus.running ? "success" : "neutral"}>{proxyStatus.lastError ? t("路由异常") : proxyStatus.running ? t("本地路由运行中") : t("本地路由已停止")}</Badge><code>{proxyStatus.address}</code></div>}<ProvidersPage controller={providers} onRuntimeChanged={refreshRuntime} /></>}
+    {activeView === "providers" && <>{proxyStatus?.settings.showInHome && <div className="workspace-route-notice"><Badge dot tone={proxyStatus.lastError ? "danger" : proxyStatus.running ? "success" : "neutral"}>{proxyStatus.lastError ? t("路由异常") : proxyStatus.running ? t("本地路由运行中") : t("本地路由已停止")}</Badge><code>{proxyStatus.address}</code></div>}<ProvidersPage controller={providers} onRuntimeChanged={refreshRuntime} onConfigure={id => navigate("provider-detail", id)} onDiagnostics={id => navigate("diagnostics", id)} /></>}
+    {activeView === "provider-detail" && <ProviderConfigurationPage key={route.providerId} controller={providers} providerId={route.providerId ?? ""} onBack={() => navigate("providers")} onDiagnostics={id => navigate("diagnostics", id)} onRuntimeChanged={refreshRuntime} />}
+    {activeView === "diagnostics" && <ProviderDiagnosticsPage controller={providers} providerId={route.providerId} onSelect={id => navigate("diagnostics", id)} onConfigure={id => navigate("provider-detail", id)} onProviders={() => navigate("providers")} />}
     {activeView === "mcp" && <McpPage />}
     {activeView === "prompts" && <PromptsPage />}
     {activeView === "skills" && (platform.data?.mobile ? <p className="workspace-route-notice">{t("移动端不支持扫描桌面 Skills 目录，请在 Windows、macOS 或 Linux 端导入。")}</p> : <SkillsPage />)}
