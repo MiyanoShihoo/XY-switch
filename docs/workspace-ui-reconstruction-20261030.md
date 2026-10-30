@@ -2,7 +2,7 @@
 
 日期：2026-10-30。开发分支：`codex/e2ee-sync-20261029`。实现提交：`33bc9a9`。
 
-本轮目标是清除确定可再生的缓存，调用 UI/UX skill 重构桌面工作台，将供应商首页常驻右栏移到独立板块。核心实现及基础验证已完成；第四轮 Linux renderer run `41057246974` 已失败，不计为浏览器验收成功。本次续接定位该轮失败为 fragment 导航未重建文档、沿用了上一场景的合成状态；修复提交 `da1ed37` 及 55 项预检已在本地完成。推送自动审批连续两次超时，命令未执行，新修复尚未送交 CI。六组界面验收、成功截图审阅和最终推送仍待完成。没有发布新版本，旧 v1.2.0 安装包不包含本轮 UI。
+本轮目标是清除确定可再生的缓存，调用 UI/UX skill 重构桌面工作台，将供应商首页常驻右栏移到独立板块。核心实现及基础验证已完成。第四轮的 fragment 文档隔离修复已推送；第五轮 Linux renderer run `41063360331` 的前五个导航场景通过，随后因 CDP 就绪表达式返回 DOM 节点、无法按值序列化而失败。共享谓词修复 `82cfd50` 与 70 项预检已完成并推送，六组 renderer 验收已调度至第六轮 run `41066338656`。状态查询连续两次被审批服务的资源路由错误拦截，命令未执行，尚未取得该轮结果和截图。完整浏览器验收、成功截图审阅及最终文档推送仍待完成。没有发布新版本，旧 v1.2.0 安装包不包含本轮 UI。
 
 ## 使用新的工作台
 
@@ -41,9 +41,9 @@
 | TypeScript lint | 通过 | `artifacts/ui-reconstruction-20261030/lint.log` |
 | 全量单元测试 | 45 文件、515 项通过 | `artifacts/ui-reconstruction-20261030/unit-tests-final.log` |
 | renderer 构建 | 通过 | `artifacts/ui-reconstruction-20261030/renderer-build.log` |
-| renderer 验收预检 | 55 项通过（19 项来源、13 项就绪、6 组静态表达式、17 项文档隔离） | `artifacts/ui-reconstruction-20261030/document-isolation-tests.log` |
+| renderer 验收预检 | 70 项通过（19 项来源、13 项就绪、6 组静态表达式、17 项文档隔离、15 项异步布尔谓词） | `artifacts/ui-reconstruction-20261030/predicate-readiness-tests.log` |
 | 本机隔离浏览器 | 未通过，不计为验收成功 | `artifacts/ui-reconstruction-20261030/browser-local-navigation/headless-acceptance.json` |
-| Linux renderer 浏览器 | 第四轮失败；本地文档隔离修复等待推送和重新调度，未通过完整验收 | `artifacts/ui-reconstruction-20261030/ci-41057246974/ui/headless-acceptance.json`、`navigation/verification.log` |
+| Linux renderer 浏览器 | 第五轮前五个导航场景通过，键盘排序的 CDP 序列化等待失败；第六轮已调度，结果未取得，不计为完整验收成功 | `artifacts/ui-reconstruction-20261030/ci-41063360331/ui/headless-acceptance.json`、`navigation/results.json`、`renderer-ci-verification.json` |
 | 副本禁用回归 | 14 项相关测试、lint 与 renderer 构建通过 | `artifacts/ui-reconstruction-20261030/duplicate-provider-tests.log`、`duplicate-provider-lint.log`、`duplicate-provider-renderer-build.log` |
 | 打包原生应用 | 本轮未运行 | 本轮只验收 renderer；先前原生同步验收不替代本轮视觉验收 |
 
@@ -69,7 +69,21 @@ renderer 构建仍有既有的 Tauri core 动静态混用和大 chunk 警告；�
 
 以上修复为提交 `da1ed37880690c8081fc2575325e8efaf28f0265`。本次只修改验收代码及其预检入口，没有修改产品 TypeScript 源码，因此没有重复运行此前已经通过的应用 lint、全量单测或 renderer 构建。共享来源策略、启动就绪、静态表达式和新文档隔离共 55 项在本地通过；仍需真实隔离浏览器验证新 fixture 的完整行为。
 
-本次推送 helper 的两次审批检查均超时，进程没有创建，没有推送或调度新的 run。剩余工作是：批准并推送本地提交；执行 renderer-only Linux CI；下载并核对本轮 artifact；实际检查成功的中英／亮暗／480px 截图、焦点和对比度；按真实结果更新本页与汇总回执。当前没有新增的成功截图或新的原生应用验收结果。
+此前两次推送审批超时的命令均未执行；用户再次批准后，提交 `da1ed37` 与文档提交 `97b4b20` 已成功推送，并调度第五轮 renderer-only CI。第五轮下载的 artifact SHA-256 与 GitHub digest 一致；完整日志下载中断后进行了有界重试，复用已核对的 artifact，没有重复下载安装包或运行原生应用。
+
+## 第五轮失败与共享谓词修复
+
+第五轮的首页信息架构、历史／焦点、配置管理、诊断标签默认关闭、诊断连接显式测试均通过。键盘排序场景在按 Enter 后的就绪等待报告 `Object reference chain is too long`；失败快照显示拖动手柄已具有 `aria-pressed="true"`，没有 renderer exception。等待表达式返回 `document.querySelector(...)` 的 DOM 节点，原共享 helper 使用 `Runtime.evaluate(returnByValue: true)`，把 React 所属节点的循环对象关系送入了 CDP 序列化边界。这是就绪检查错误，不能据此判断键盘排序实现失败。
+
+提交 `82cfd508ffca78f60cfbf2f6ef9eac5e9fe3ea9e` 新增 `scripts/workspace-qa/runtime-predicate.mjs`，在浏览器内等待谓词结果后转换为布尔值，避免跨 CDP 传递 DOM 对象。15 项新增回归覆盖循环节点、缺失节点轮询、falsey 值、异步 false／节点、Promise 拒绝、CDP 错误及有界超时；六组静态表达式预检也按实际谓词包装后编译。来源策略、文档隔离、自动请求断言保持不变；没有手动清空 fixture 调用历史，没有修改产品 TypeScript 源码。
+
+本地 `pnpm run test:ui:network` 共 70 项通过，日志 SHA-256 为 `d78bf7678a5c3e2c9fb848720f8787254123f1f3b3b2c41d5888b49f0e2283b9`。第五轮 CI 自身的 lint、45 文件／515 项单测、55 项当时预检及 renderer 构建也通过；本地没有重复运行不受本修复影响的应用检查。
+
+开发分支远端已验证为 `82cfd508ffca78f60cfbf2f6ef9eac5e9fe3ea9e`，第六轮 run `41066338656` 使用该提交，以 `renderer_acceptance_only=true`、`native_acceptance_only=false` 调度。调度时状态为 queued；后续有界查询和一次仅状态重试均被自动审批服务的 Azure 资源路由错误拦截，操作没有执行。因此目前没有第六轮的成功截图、六组通过结论或新的原生验收结果。本页更新仅在本地，最终文档仍待推送。
+
+已实际查看第五轮已通过场景的 1440px 中文亮色供应商首页和诊断模型默认关闭截图：首页为单一全宽列表，没有常驻右侧 inspector；诊断页为独立页面，标签焦点可见，模型验证开关关闭。这两张局部证据不替代完整 1440／820／480 × 中英 × 亮暗截图矩阵、对比度及六组回归验收。
+
+第五轮 artifact SHA-256：`956ed9a80a139ca728caa145ce27ce37ca3264078d75d9878d6a64e5f68c75b1`。完整 CI 日志 ZIP SHA-256：`fdeec2af62dc8ea2118afb8f9dd874eab987e14c0f2b9aea164e756d36caefb4`。详细状态、场景结果和后续待办保存在 `artifacts/ui-reconstruction-20261030/continuation-receipt.json`。
 
 ## 重现 renderer 验收
 
