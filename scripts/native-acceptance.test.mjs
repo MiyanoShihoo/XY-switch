@@ -135,3 +135,16 @@ test('native dialog waits for its PID-bound controls and retains failure evidenc
   assert(script.includes('$report.error = $_.Exception.Message'));
   assert(!/SendKeys|SendInput|SetCursorPos/.test(script));
 });
+
+test('native dialog handles UIA Pane proxies through exact Win32 control identities', async () => {
+  const script = await readFile(new URL('./native-acceptance/windows-dialog.ps1', import.meta.url), 'utf8');
+  const native = await readFile(new URL('./native-acceptance/windows-dialog-native.cs', import.meta.url), 'utf8');
+  assert(script.includes("$_.Current.ClassName -eq 'Edit' -and $_.Current.AutomationId -eq '1001'"));
+  assert(script.includes("$_.Current.ClassName -eq 'Button' -and $_.Current.AutomationId -eq $buttonId"));
+  assert(!script.includes('$_.Current.ControlType -eq'));
+  for (const required of ['ProcessId(dialog) == processId', 'ClassName(dialog) == "#32770"', 'IsChild(dialog, control)', 'ProcessId(control) == processId', 'ClassName(control) == className', 'GetDlgCtrlID(control) == controlId', 'IsWindowVisible(control)', 'IsWindowEnabled(control)', 'SendMessageTimeoutW', '5000', 'controlId != 1 && controlId != 2']) assert(native.includes(required), required);
+  assert(script.includes('::ReadFileName($dialogHandle, $editHandle, $AppProcessId) -cne $SelectedPath'));
+  assert(script.includes('$report.fileNameVerified = $true'));
+  assert(script.includes("$report.actionMethod = 'win32-bm-click'"));
+  assert(!/SendKeys|SendInput|SetCursorPos/.test(native));
+});

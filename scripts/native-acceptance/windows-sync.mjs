@@ -64,6 +64,9 @@ async function dialog(operation, name, clickLabel) {
   finally { if (worker.exitCode === null) worker.kill(); }
   const evidence = JSON.parse((await readFile(join(output, name + '.json'), 'utf8')).replace(/^\uFEFF/, ''));
   assert.equal(evidence.processId, Number(args.pid)); assert.equal(evidence.class, '#32770'); assert.equal(evidence.completed, true);
+  assert.equal(evidence.screenshotCaptured, true); assert(evidence.dialogHandle && evidence.buttonHandle);
+  assert(['uia-invoke-pattern', 'win32-bm-click'].includes(evidence.actionMethod));
+  if (operation !== 'cancel') { assert.equal(evidence.fileNameVerified, true); assert(evidence.editHandle); }
 }
 const sourceProviders = [0, 1].map(index => ({
   id: randomUUID(), name: `Native source ${index}`, providerType: 'custom', appGroup: 'Codex',
