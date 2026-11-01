@@ -3,10 +3,11 @@ import test from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { dispatchElementClick } from './pointer-click.mjs';
 
-function harness({ disabled = false, missing = false, obscured = false, outside = false } = {}) {
+function harness({ disabled = false, missing = false, obscured = false, outside = false, hidden = false, activationError = null } = {}) {
   let frameCount = 0;
   let left = 600;
-  const events = [];
+  const events = [], commands = [];
+  let foreground = !hidden;
   const descendant = {};
   const element = {
     disabled, isConnected: true,
@@ -17,6 +18,7 @@ function harness({ disabled = false, missing = false, obscured = false, outside 
   const globals = {
     innerWidth: 390, innerHeight: 844,
     requestAnimationFrame: callback => {
+      if (!foreground) return;
       frameCount++;
       if (frameCount === 1) left = 710;
       callback();
@@ -27,10 +29,16 @@ function harness({ disabled = false, missing = false, obscured = false, outside 
     },
   };
   return {
-    events,
+    events, commands,
     frameCount: () => frameCount,
     evaluate: async expression => JSON.parse(JSON.stringify(await runInNewContext(expression, globals))),
-    call: async (method, params) => { events.push({ method, ...params }); },
+    call: async (method, params) => {
+      commands.push(method);
+      if (method === 'Page.bringToFront') {
+        if (activationError) throw activationError;
+        foreground = true;
+      } else { events.push({ method, ...params }); }
+    },
   };
 }
 
@@ -68,3 +76,19 @@ for (const [name, options, error] of [
     assert.deepEqual(browser.events, []);
   });
 }
+
+test('a background page is activated before awaiting its otherwise suspended animation frames', { timeout: 1000 }, async () => {
+  const browser = harness({ hidden: true });
+  await dispatchElementClick(browser, target);
+  assert(browser.frameCount() >= 2);
+  assert.equal(browser.commands[0], 'Page.bringToFront');
+  assert.equal(browser.events.length, 2);
+});
+
+test('page activation failures preserve the error and send no pointer input', async () => {
+  const activationError = new Error('Target closed before activation');
+  const browser = harness({ hidden: true, activationError });
+  await assert.rejects(dispatchElementClick(browser, target), error => error === activationError);
+  assert.equal(browser.frameCount(), 0);
+  assert.deepEqual(browser.events, []);
+});

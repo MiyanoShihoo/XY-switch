@@ -1,4 +1,5 @@
 export async function dispatchElementClick({ evaluate, call }, expression) {
+  await call('Page.bringToFront');
   const point = await evaluate(`(async () => {
     await new Promise(resolve => requestAnimationFrame(resolve));
     const element = (${expression});
