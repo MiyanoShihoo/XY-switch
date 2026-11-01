@@ -7,6 +7,7 @@ import { errorText } from "../../lib/error";
 import { formatSessionTime, sessionKey, sessionTitle } from "../../lib/session-format";
 import { filterSessions } from "../../lib/session-filter";
 import { useSessionFavorites } from "./useSessionFavorites";
+import { SessionTranscript } from "./SessionTranscript";
 import type { SessionMeta } from "../../types/session";
 import { ConfirmActionDialog } from "../../components/ConfirmActionDialog";
 import { Badge, Button, Drawer, EmptyState, IconButton, InlineError, Input, LoadingState, Select, Toast } from "../../ui";
@@ -20,7 +21,7 @@ function ReadWarnings({ warnings }: { warnings?: string[] }) {
   if (!warnings?.length) return null;
   return <div className="session-read-warnings" role="status">
     <strong>{t("部分会话内容未能读取")}</strong>
-    <ul>{warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>
+    <ul>{warnings.map((warning, index) => <li key={index}>{t(warning)}</li>)}</ul>
   </div>;
 }
 
@@ -129,10 +130,7 @@ export function SessionsPage() {
       <ReadWarnings warnings={messages.data?.warnings} />
       {messages.isPending ? <LoadingState label={t("读取会话消息…")} /> : messages.isError ? null : !messages.data?.messages.length
         ? <EmptyState title={t("没有可读取的消息")} description={t("源会话可能仅保留元数据，或客户端未记录消息正文。")} />
-        : messages.data.messages.map((message, index) => <article className="session-message" data-role={message.role} key={index}>
-          <div className="session-message__meta"><strong>{message.role}</strong><time>{formatSessionTime(message.ts)}</time></div>
-          <pre>{message.content}</pre>
-        </article>)}
+        : <SessionTranscript messages={messages.data.messages} />}
     </div>
   </section> : <EmptyState title={t("选择一个会话")} description={t("查看消息、工作目录与恢复命令。")} />;
 

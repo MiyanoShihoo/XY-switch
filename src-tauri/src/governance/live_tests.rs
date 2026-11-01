@@ -226,6 +226,9 @@ impl ApiKeyProvider for LiveKey {
 struct Server(tokio::task::JoinHandle<()>);
 impl Drop for Server { fn drop(&mut self) { self.0.abort(); } }
 
+#[path = "live_client_tests.rs"]
+mod live_client_tests;
+
 #[tokio::test]
 #[ignore = "Live HTTPS calls require a one-shot credential pipe and explicit paid confirmation"]
 async fn governance_live_acceptance_from_one_shot_pipe() -> Result<(), String> {

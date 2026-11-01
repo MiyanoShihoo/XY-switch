@@ -25,6 +25,7 @@ export interface UsageSummary {
 
 export interface UsageLogEntry {
   audit?: AuditRecord | null;
+  diagnostics?: RequestDiagnostics | null;
   requestId: string;
   source?: string;
   totalTokens?: number | null;
@@ -48,6 +49,14 @@ export interface UsageLogEntry {
   success?: boolean;
   errorMessage?: string;
   createdAt: number;
+}
+
+export interface RequestDiagnostics {
+  failureStage: string | null;
+  failureReason: string | null;
+  sendAttempts: number;
+  upstreamResponseReceived: boolean;
+  attempts: { statusCode: number | null; errorKind: string | null }[];
 }
 
 export interface UsageTrendPoint {

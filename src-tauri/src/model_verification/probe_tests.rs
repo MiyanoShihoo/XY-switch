@@ -26,6 +26,7 @@ fn gated_anomaly(
             status_code: Some(200),
             success: true,
             affects_health: false,
+            diagnostics: None,
             latency_ms: 1,
             retry_count: 0,
             error_kind: None,

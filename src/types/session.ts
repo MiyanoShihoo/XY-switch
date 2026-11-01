@@ -14,6 +14,15 @@ export interface SessionMessage {
   role: string;
   content: string;
   ts?: number | null;
+  tool?: SessionToolEvent | null;
+}
+
+export interface SessionToolEvent {
+  callId: string | null;
+  approvalRequestId?: string | null;
+  name: string | null;
+  eventKind: "search" | "call" | "approval" | "result";
+  status: "unknown" | "requested" | "running" | "pending_approval" | "approved" | "denied" | "result_received" | "completed" | "succeeded" | "failed" | "cancelled";
 }
 
 export interface SessionIdPair {

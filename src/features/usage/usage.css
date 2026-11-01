@@ -18,6 +18,12 @@
 .usage-pagination { display: flex; align-items: center; justify-content: space-between; gap: var(--xy-ds-space-3); flex-wrap: wrap; font-size: 12px; }
 .usage-pagination input { width: 60px; min-height: 32px; height: 32px; }
 .usage-footnote { color: var(--xy-ds-text-muted); font-size: 11px; }
+.request-diagnostics { border-top: 1px solid var(--xy-ds-border); padding-top: var(--xy-ds-space-3); }
+.request-diagnostics h3 { margin: 0 0 var(--xy-ds-space-3); font-size: 14px; }
+.request-diagnostics dd { overflow-wrap: anywhere; }
+.request-diagnostics details { margin-top: var(--xy-ds-space-3); }
+.request-diagnostics summary { cursor: pointer; }
+.request-diagnostics li { margin-bottom: var(--xy-ds-space-2); }
 @media (max-width: 950px) { .usage-page .metric-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); } .usage-page .metric-strip__item:nth-child(2) { border-right: 0; } .usage-page .metric-strip__item:nth-child(-n+2) { border-bottom: 1px solid var(--xy-ds-border); } }
 @media (max-width: 700px) { .usage-filter { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 

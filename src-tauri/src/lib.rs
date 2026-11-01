@@ -19,6 +19,7 @@ mod platform;
 mod proxy;
 mod proxy_manager;
 mod proxy_request_guard;
+mod request_diagnostics;
 mod sessions;
 mod session_usage_codex;
 mod session_usage_harness;
@@ -172,7 +173,6 @@ pub fn run() {
             };
             #[cfg(not(debug_assertions))]
             let home_dir = app.path().home_dir().map_err(|error| error.to_string())?;
-            let mcp_manager = mcp::McpManager::new(database.clone(), home_dir.clone());
             let codex_home_override = std::env::var_os("CODEX_HOME").filter(|value| !value.is_empty());
             #[cfg(debug_assertions)]
             let codex_home_override = if debug_path_override("XY_SWITCH_TEST_HOME_DIR").is_some() {
@@ -181,6 +181,8 @@ pub fn run() {
                 codex_home_override
             };
             let codex_home = takeover::resolve_codex_home(&home_dir, codex_home_override)?;
+            let mcp_manager = mcp::McpManager::new(database.clone(), home_dir.clone())
+                .with_codex_home(codex_home.clone());
             let takeover_manager = takeover::AppTakeoverManager::new(
                 database.clone(),
                 proxy_manager.clone(),

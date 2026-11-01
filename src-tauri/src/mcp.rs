@@ -21,6 +21,12 @@ const MCP_APPS: [McpApp; 4] = [
 ];
 type FileSnapshot = (PathBuf, Option<Vec<u8>>);
 
+enum McpEntryChange<'a> {
+    Mount(&'a McpServer),
+    Unmount,
+    Remove,
+}
+
 trait McpCredentialStore: Send + Sync {
     fn get(&self, id: &str) -> Result<Option<String>, String>;
     fn set(&self, id: &str, value: &str) -> Result<(), String>;
@@ -150,18 +156,26 @@ struct McpSecrets {
 pub struct McpManager {
     database: Database,
     home_dir: PathBuf,
+    codex_dir: PathBuf,
     operation_lock: Arc<Mutex<()>>,
     credentials: Arc<dyn McpCredentialStore>,
 }
 
 impl McpManager {
     pub fn new(database: Database, home_dir: PathBuf) -> Self {
+        let codex_dir = home_dir.join(".codex");
         Self {
             database,
             home_dir,
+            codex_dir,
             operation_lock: Arc::new(Mutex::new(())),
             credentials: Arc::new(WindowsMcpCredentialStore),
         }
+    }
+
+    pub fn with_codex_home(mut self, directory: PathBuf) -> Self {
+        self.codex_dir = directory;
+        self
     }
 
     #[cfg(test)]
@@ -170,9 +184,11 @@ impl McpManager {
         home_dir: PathBuf,
         credentials: Arc<dyn McpCredentialStore>,
     ) -> Self {
+        let codex_dir = home_dir.join(".codex");
         Self {
             database,
             home_dir,
+            codex_dir,
             operation_lock: Arc::new(Mutex::new(())),
             credentials,
         }
@@ -378,7 +394,8 @@ impl McpManager {
         let server = self.server_from_record(record.clone(), true)?;
         let path = self.config_path(app);
         let original = read_optional(&path)?;
-        self.write_app_entry(app, server_id, enabled.then_some(&server))?;
+        let change = if enabled { McpEntryChange::Mount(&server) } else { McpEntryChange::Unmount };
+        self.write_app_entry(app, server_id, change)?;
         if let Err(error) = self
             .database
             .set_mcp_app_enabled(server_id, app.id(), enabled)
@@ -403,12 +420,13 @@ impl McpManager {
             match self.read_app_entries(app) {
                 Ok(entries) => {
                     for (id, mut server) in entries {
+                        let enabled = server.apps.get(app.id()).copied().unwrap_or(true);
                         match self.database.get_mcp_record(&id) {
                             Ok(Some(_)) => match self.database.mcp_app_states(&id) {
-                                Ok(states) if states.get(app.id()).copied().unwrap_or(false) => {}
+                                Ok(states) if states.get(app.id()).copied() == Some(enabled) => {}
                                 Ok(_) => {
                                     if let Err(error) =
-                                        self.database.set_mcp_app_enabled(&id, app.id(), true)
+                                        self.database.set_mcp_app_enabled(&id, app.id(), enabled)
                                     {
                                         errors.push(format!("{} / {id}：{error}", app.label()));
                                     } else {
@@ -420,7 +438,7 @@ impl McpManager {
                                 }
                             },
                             Ok(None) => {
-                                server.apps.insert(app.id().to_string(), true);
+                                server.apps.insert(app.id().to_string(), enabled);
                                 match self.save_imported_server(&server, app) {
                                     Ok(()) => imported += 1,
                                     Err(error) => {
@@ -469,7 +487,7 @@ impl McpManager {
         }
         if let Err(error) = self
             .database
-            .set_mcp_app_enabled(&server.id, app.id(), true)
+            .set_mcp_app_enabled(&server.id, app.id(), server.apps.get(app.id()).copied().unwrap_or(true))
         {
             let _ = self.database.delete_mcp_record(&server.id);
             if !secrets.env.is_empty() || !secrets.headers.is_empty() {
@@ -564,7 +582,8 @@ impl McpManager {
         for (app, (_, original)) in affected.iter().zip(&snapshots) {
             let enabled = server.apps.get(app.id()).copied().unwrap_or(false);
             if !enabled && original.is_none() { continue; }
-            if let Err(error) = self.write_app_entry(*app, &server.id, enabled.then_some(server)) {
+            let change = if enabled { McpEntryChange::Mount(server) } else { McpEntryChange::Unmount };
+            if let Err(error) = self.write_app_entry(*app, &server.id, change) {
                 return Err(with_file_rollback(error, &snapshots));
             }
         }
@@ -581,13 +600,17 @@ impl McpManager {
         replacement: Option<&McpServer>,
     ) -> Result<Vec<FileSnapshot>, String> {
         let mut snapshots = Vec::new();
+        let stored_states = self.database.mcp_app_states(&server.id)?;
         for app in MCP_APPS {
-            if !server.apps.get(app.id()).copied().unwrap_or(false) {
+            if !server.apps.get(app.id()).copied().unwrap_or(false)
+                && (app != McpApp::Codex || !stored_states.contains_key(app.id()))
+            {
                 continue;
             }
             let path = self.config_path(app);
             let original = read_optional(&path)?;
-            if let Err(error) = self.write_app_entry(app, &server.id, replacement) {
+            let change = replacement.map(McpEntryChange::Mount).unwrap_or(McpEntryChange::Remove);
+            if let Err(error) = self.write_app_entry(app, &server.id, change) {
                 return Err(with_file_rollback(error, &snapshots));
             }
             snapshots.push((path, original));
@@ -598,7 +621,7 @@ impl McpManager {
     fn config_path(&self, app: McpApp) -> PathBuf {
         match app {
             McpApp::Claude => self.home_dir.join(".claude.json"),
-            McpApp::Codex => self.home_dir.join(".codex/config.toml"),
+            McpApp::Codex => self.codex_dir.join("config.toml"),
             McpApp::Gemini => self.home_dir.join(".gemini/settings.json"),
             McpApp::OpenCode => self.home_dir.join(".config/opencode/opencode.json"),
         }
@@ -617,15 +640,19 @@ impl McpManager {
         &self,
         app: McpApp,
         id: &str,
-        server: Option<&McpServer>,
+        change: McpEntryChange<'_>,
     ) -> Result<(), String> {
         let path = self.config_path(app);
-        if server.is_some() && !self.is_installed(app) {
+        if matches!(change, McpEntryChange::Mount(_)) && !self.is_installed(app) {
             return Err(format!("未检测到 {}", app.label()));
         }
         match app {
-            McpApp::Codex => write_codex_entry(&path, id, server),
+            McpApp::Codex => write_codex_entry(&path, id, change),
             McpApp::Claude | McpApp::Gemini | McpApp::OpenCode => {
+                let server = match change {
+                    McpEntryChange::Mount(server) => Some(server),
+                    McpEntryChange::Unmount | McpEntryChange::Remove => None,
+                };
                 write_json_entry(&path, app, id, server)
             }
         }
@@ -901,8 +928,8 @@ fn string_map(value: Option<&Value>) -> BTreeMap<String, String> {
         .collect()
 }
 
-fn write_codex_entry(path: &Path, id: &str, server: Option<&McpServer>) -> Result<(), String> {
-    if server.is_none() && !path.exists() {
+fn write_codex_entry(path: &Path, id: &str, change: McpEntryChange<'_>) -> Result<(), String> {
+    if !matches!(change, McpEntryChange::Mount(_)) && !path.exists() {
         return Ok(());
     }
     let text = match fs::read_to_string(path) {
@@ -917,14 +944,29 @@ fn write_codex_entry(path: &Path, id: &str, server: Option<&McpServer>) -> Resul
             .map_err(|error| format!("解析 {} 失败：{error}", path.display()))?
     };
     if !document.as_table().contains_key("mcp_servers") {
+        if !matches!(change, McpEntryChange::Mount(_)) {
+            return Ok(());
+        }
         document["mcp_servers"] = Item::Table(Table::new());
+    }
+    if document["mcp_servers"].is_inline_table() {
+        document["mcp_servers"] = Item::Table(document["mcp_servers"].clone().into_table()
+            .map_err(|_| "Codex mcp_servers 必须是表".to_string())?);
     }
     let entries = document["mcp_servers"]
         .as_table_mut()
         .ok_or_else(|| "Codex mcp_servers 必须是表".to_string())?;
-    if let Some(server) = server {
-        let mut table = Table::new();
+    if let McpEntryChange::Mount(server) = change {
+        let mut table = entries.get(id).cloned().map(|item| item.into_table()
+            .map_err(|_| format!("Codex MCP {id} 必须是表"))).transpose()?.unwrap_or_else(Table::new);
+        for key in ["command", "args", "env", "url", "http_headers"] {
+            table.remove(key);
+        }
+        table["enabled"] = value(true);
         if server.transport == "stdio" {
+            for key in ["bearer_token", "bearer_token_env_var", "env_http_headers"] {
+                table.remove(key);
+            }
             let (command, normalized_args) = normalized_command(server);
             table["command"] = value(command);
             let mut args = Array::new();
@@ -940,6 +982,9 @@ fn write_codex_entry(path: &Path, id: &str, server: Option<&McpServer>) -> Resul
                 table["env"] = Item::Table(env);
             }
         } else {
+            for key in ["cwd", "env_vars"] {
+                table.remove(key);
+            }
             table["url"] = value(server.url.clone().unwrap_or_default());
             if !server.headers.is_empty() {
                 let mut headers = Table::new();
@@ -950,7 +995,13 @@ fn write_codex_entry(path: &Path, id: &str, server: Option<&McpServer>) -> Resul
             }
         }
         entries[id] = Item::Table(table);
+    } else if matches!(change, McpEntryChange::Unmount) {
+        let Some(entry) = entries.get(id).cloned() else { return Ok(()); };
+        let mut table = entry.into_table().map_err(|_| format!("Codex MCP {id} 必须是表"))?;
+        table["enabled"] = value(false);
+        entries[id] = Item::Table(table);
     } else {
+        if !entries.contains_key(id) { return Ok(()); }
         entries.remove(id);
     }
     atomic_write(path, document.to_string().as_bytes())
@@ -983,14 +1034,15 @@ fn read_codex_entries(path: &Path) -> Result<BTreeMap<String, McpServer>, String
     let document = text
         .parse::<DocumentMut>()
         .map_err(|error| format!("解析 {} 失败：{error}", path.display()))?;
-    let Some(entries) = document.get("mcp_servers").and_then(Item::as_table) else {
+    let Some(entries) = document.get("mcp_servers").and_then(Item::as_table_like) else {
         return Ok(BTreeMap::new());
     };
     entries
         .iter()
-        .filter_map(|(id, item)| item.as_table().map(|table| (id, table)))
+        .filter_map(|(id, item)| item.as_table_like().map(|table| (id, table)))
         .map(|(id, table)| {
             let mut server = empty_server(id);
+            server.apps.insert("codex".into(), table.get("enabled").and_then(Item::as_bool).unwrap_or(true));
             if let Some(command) = table.get("command").and_then(Item::as_str) {
                 server.transport = "stdio".to_string();
                 server.command = Some(command.to_string());
@@ -1015,9 +1067,9 @@ fn read_codex_entries(path: &Path) -> Result<BTreeMap<String, McpServer>, String
 }
 
 fn toml_string_table(item: Option<&Item>) -> BTreeMap<String, String> {
-    item.and_then(Item::as_table)
+    item.and_then(Item::as_table_like)
         .into_iter()
-        .flat_map(Table::iter)
+        .flat_map(|table| table.iter())
         .filter_map(|(key, value)| {
             value
                 .as_str()
@@ -1136,6 +1188,8 @@ mod tests {
             McpManager::with_credentials(database.clone(), root.to_path_buf(), credentials.clone());
         (manager, database, credentials)
     }
+
+    include!("mcp_regression_tests.rs");
 
     #[test]
     fn validates_stdio_and_http_servers() {

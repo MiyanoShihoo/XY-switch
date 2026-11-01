@@ -45,6 +45,7 @@ pub struct UsageSummary {
 #[serde(rename_all = "camelCase")]
 pub struct UsageLogEntry {
     pub audit: Option<crate::model_audit::AuditRecord>,
+    pub diagnostics: Option<crate::request_diagnostics::RequestDiagnostics>,
     pub request_id: String,
     pub source: String,
     pub total_tokens: Option<i64>,
@@ -264,7 +265,11 @@ pub async fn get_usage_summary(
         .lock()
         .map_err(|error| format!("数据库连接锁已损坏：{error}"))?;
 
-    let (where_clause, params) = build_filter_clause(&filter);
+    query_usage_summary(&conn, &filter)
+}
+
+fn query_usage_summary(conn: &rusqlite::Connection, filter: &UsageFilter) -> Result<UsageSummary, String> {
+    let (where_clause, params) = build_filter_clause(filter);
     let sql = format!(
         "SELECT 
             COUNT(*), 
@@ -276,7 +281,7 @@ pub async fn get_usage_summary(
             COALESCE(SUM(cache_creation_tokens), 0),
             SUM(cost),
             COUNT(*) - COUNT(cost)
-         FROM request_events {where_clause}"
+         FROM usage_request_events {where_clause}"
     );
 
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
@@ -333,7 +338,16 @@ pub async fn get_usage_logs(
         .lock()
         .map_err(|error| format!("数据库连接锁已损坏：{error}"))?;
 
-    let (where_clause, mut params) = build_filter_clause(&filter);
+    query_usage_logs(&conn, &filter, limit, offset)
+}
+
+pub(crate) fn query_usage_logs(
+    conn: &rusqlite::Connection,
+    filter: &UsageFilter,
+    limit: u32,
+    offset: u32,
+) -> Result<Vec<UsageLogEntry>, String> {
+    let (where_clause, mut params) = build_filter_clause(filter);
     let sql = format!(
         "SELECT 
             id, 
@@ -357,8 +371,9 @@ pub async fn get_usage_logs(
             price.input_cost,
             price.output_cost,
             price.cache_read_cost,
-            price.cache_creation_cost
-         FROM request_events LEFT JOIN request_price_snapshots AS price ON price.event_id=request_events.id {where_clause} 
+            price.cache_creation_cost,
+            diagnostics_json
+         FROM usage_request_events LEFT JOIN request_price_snapshots AS price ON price.event_id=usage_request_events.id {where_clause}
          ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?"
     );
 
@@ -392,6 +407,8 @@ pub async fn get_usage_logs(
                 .unwrap_or_else(|| "proxy".into());
             let total_tokens: Option<i64> = row.get(15)?;
             let reasoning_tokens: Option<i64> = row.get(16)?;
+            let diagnostics = row.get::<_, Option<String>>(22)?
+                .and_then(|json| serde_json::from_str(&json).ok());
             let is_streaming = audit
                 .as_ref()
                 .is_some_and(|value| value.observation.stream.is_some());
@@ -414,7 +431,8 @@ pub async fn get_usage_logs(
 
             Ok(UsageLogEntry {
                 audit,
-                request_id: id.to_string(),
+                diagnostics,
+                request_id: if id < 0 { format!("unassigned:{}", id.unsigned_abs()) } else { id.to_string() },
                 success: row.get::<_, i64>(17)? != 0,
                 source,
                 total_tokens,
@@ -426,10 +444,10 @@ pub async fn get_usage_logs(
                 cache_read_tokens,
                 cache_creation_tokens,
                 total_cost_usd: format_cost(cost),
-                input_cost_usd: format_cost(row.get::<_, Option<f64>>(18)?),
-                output_cost_usd: format_cost(row.get::<_, Option<f64>>(19)?),
-                cache_read_cost_usd: format_cost(row.get::<_, Option<f64>>(20)?),
-                cache_creation_cost_usd: format_cost(row.get::<_, Option<f64>>(21)?),
+                input_cost_usd: format_cost(if id < 0 { Some(0.0) } else { row.get::<_, Option<f64>>(18)? }),
+                output_cost_usd: format_cost(if id < 0 { Some(0.0) } else { row.get::<_, Option<f64>>(19)? }),
+                cache_read_cost_usd: format_cost(if id < 0 { Some(0.0) } else { row.get::<_, Option<f64>>(20)? }),
+                cache_creation_cost_usd: format_cost(if id < 0 { Some(0.0) } else { row.get::<_, Option<f64>>(21)? }),
                 model,
                 cost_multiplier: if cost.is_some() {
                     "1.0".into()
@@ -497,7 +515,7 @@ fn query_usage_trends(
                         datetime(created_at / 1000, 'unixepoch', 'localtime')
                     ) AS INTEGER) - (created_at / 1000)
                 ) * 1000 AS local_offset
-            FROM request_events {where_clause}
+            FROM usage_request_events {where_clause}
         ),
         bucketed AS (
             SELECT
@@ -569,7 +587,11 @@ pub async fn get_provider_stats(
         .lock()
         .map_err(|error| format!("数据库连接锁已损坏：{error}"))?;
 
-    let (where_clause, params) = build_filter_clause(&filter);
+    query_provider_stats(&conn, &filter)
+}
+
+fn query_provider_stats(conn: &rusqlite::Connection, filter: &UsageFilter) -> Result<Vec<ProviderUsageStat>, String> {
+    let (where_clause, params) = build_filter_clause(filter);
     let sql = format!(
         "SELECT 
             provider_id,
@@ -579,7 +601,7 @@ pub async fn get_provider_stats(
             COALESCE(SUM(output_tokens), 0),
             SUM(cost),
             COALESCE(AVG(CASE WHEN price_source IN ('codex_session','harness_session') THEN NULL ELSE latency_ms END), 0.0)
-         FROM request_events {where_clause}
+         FROM usage_request_events {where_clause}
          GROUP BY provider_id
          ORDER BY COUNT(*) DESC"
     );
@@ -633,7 +655,11 @@ pub async fn get_model_stats(
         .lock()
         .map_err(|error| format!("数据库连接锁已损坏：{error}"))?;
 
-    let (where_clause, params) = build_filter_clause(&filter);
+    query_model_stats(&conn, &filter)
+}
+
+fn query_model_stats(conn: &rusqlite::Connection, filter: &UsageFilter) -> Result<Vec<ModelUsageStat>, String> {
+    let (where_clause, params) = build_filter_clause(filter);
     let sql = format!(
         "SELECT 
             COALESCE(model, 'unknown'),
@@ -642,7 +668,7 @@ pub async fn get_model_stats(
             COALESCE(SUM(input_tokens), 0),
             COALESCE(SUM(output_tokens), 0),
             SUM(cost)
-         FROM request_events {where_clause}
+         FROM usage_request_events {where_clause}
          GROUP BY COALESCE(model, 'unknown'), provider_id
          ORDER BY COUNT(*) DESC"
     );
@@ -800,13 +826,13 @@ mod tests {
     fn trend_query_preserves_unknown_cost_without_hiding_real_zero() {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         conn.execute_batch(
-            "CREATE TABLE request_events (
+            "CREATE TABLE usage_request_events (
                 created_at INTEGER, input_tokens INTEGER, output_tokens INTEGER,
                 cache_read_tokens INTEGER, cache_creation_tokens INTEGER, cost REAL
             );
-            INSERT INTO request_events VALUES (1700000000000, 2984, 25, 2816, 0, NULL);
-            INSERT INTO request_events VALUES (1700086400000, 12, 3, 0, 0, 0.0);
-            INSERT INTO request_events VALUES (1700172800000, 24, 6, 0, 0, 0.25);",
+            INSERT INTO usage_request_events VALUES (1700000000000, 2984, 25, 2816, 0, NULL);
+            INSERT INTO usage_request_events VALUES (1700086400000, 12, 3, 0, 0, 0.0);
+            INSERT INTO usage_request_events VALUES (1700172800000, 24, 6, 0, 0, 0.25);",
         )
         .unwrap();
         let points = query_usage_trends(&conn, &UsageFilter::default()).unwrap();
@@ -834,6 +860,44 @@ mod tests {
         assert_eq!(format_cost(None), "");
         assert_eq!(format_cost(Some(0.0)), "0.0000");
         assert_eq!(format_cost(Some(f64::NAN)), "");
+    }
+
+    #[test]
+    fn all_usage_queries_include_unassigned_failures_and_preserve_legacy_unknowns() {
+        let database = database::Database::open(std::path::Path::new(":memory:")).unwrap();
+        database.conn().lock().unwrap().execute(
+            "INSERT INTO request_events(provider_id,route,status_code,success,latency_ms,retry_count,created_at)
+             VALUES('openai','/v1/responses',200,1,123,0,1700000000000)", [],
+        ).unwrap();
+        let mut diagnostic = crate::request_diagnostics::RequestDiagnostics::default();
+        diagnostic.fail("provider_selection", "provider_not_selected");
+        database.record_unassigned_request("/v1/responses", 503, 2, "provider_not_selected", &diagnostic, 1700000000001).unwrap();
+        let connection = database.conn();
+        let connection = connection.lock().unwrap();
+        let filter = UsageFilter::default();
+        let logs = query_usage_logs(&connection, &filter, 20, 0).unwrap();
+        assert_eq!(logs.len(), 2);
+        assert!(logs[0].request_id.starts_with("unassigned:"));
+        assert_eq!(logs[0].diagnostics.as_ref(), Some(&diagnostic));
+        assert_eq!(logs[0].source, "local_rejection");
+        assert_eq!(logs[0].provider_id, "");
+        assert_eq!(logs[0].total_cost_usd, "0.0000");
+        assert_eq!(logs[0].input_cost_usd, "0.0000");
+        assert_eq!(logs[0].total_tokens, Some(0));
+        assert!(logs[1].diagnostics.is_none());
+        assert_eq!(logs[1].total_cost_usd, "");
+        let summary = query_usage_summary(&connection, &filter).unwrap();
+        assert_eq!((summary.total_requests, summary.success_count, summary.unknown_cost_requests), (2, 1, 1));
+        assert_eq!(summary.total_cost_usd, "0.0000");
+        assert_eq!(query_usage_trends(&connection, &filter).unwrap().iter().map(|point| point.requests).sum::<i64>(), 2);
+        let providers = query_provider_stats(&connection, &filter).unwrap();
+        assert_eq!(providers.iter().map(|stat| stat.total_requests).sum::<i64>(), 2);
+        assert!(providers.iter().any(|stat| stat.provider_id.is_empty() && stat.success_rate == 0.0));
+        assert_eq!(query_model_stats(&connection, &filter).unwrap().iter().map(|stat| stat.total_requests).sum::<i64>(), 2);
+        let failure_filter = UsageFilter { status: Some("error".into()), ..Default::default() };
+        assert_eq!(query_usage_logs(&connection, &failure_filter, 20, 0).unwrap().len(), 1);
+        let provider_filter = UsageFilter { provider_id: Some("openai".into()), ..Default::default() };
+        assert_eq!(query_usage_summary(&connection, &provider_filter).unwrap().total_requests, 1);
     }
 
 }

@@ -12,6 +12,9 @@ use std::{
 
 fn setup(enabled: bool, active: bool) -> (Database, Provider) {
     let db = Database::open(Path::new(":memory:")).unwrap();
+    for provider in db.list_providers().unwrap() {
+        db.delete_provider(&provider.id).unwrap();
+    }
     let p:Provider=serde_json::from_value(json!({"id":"verify-test","name":"Test","endpoint":"http://127.0.0.1:1","model":"expected","enabled":true,"advanced":{"upstreamFormat":"openai_chat"}})).unwrap();
     db.save_provider(&p).unwrap();
     if enabled || active {
@@ -32,6 +35,7 @@ fn event(db: &Database, p: &Provider, at: i64) -> i64 {
         status_code: Some(200),
         success: true,
         affects_health: false,
+        diagnostics: None,
         latency_ms: 1,
         retry_count: 0,
         error_kind: None,

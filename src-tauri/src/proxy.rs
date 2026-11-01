@@ -2,6 +2,7 @@ use crate::{
     adapters, credential_store,
     database::{Database, Provider, RequestRecordResult, RequestUsage},
     preferences,
+    request_diagnostics::{RequestAttempt, RequestDiagnostics},
     streaming::{self, ClientFormat, UpstreamFormat},
     xai_responses,
 };
@@ -146,6 +147,7 @@ struct ProxyError {
     status: StatusCode,
     code: &'static str,
     message: String,
+    stage: Option<&'static str>,
 }
 
 impl ProxyError {
@@ -154,7 +156,13 @@ impl ProxyError {
             status,
             code,
             message: message.into(),
+            stage: None,
         }
+    }
+
+    fn at_stage(mut self, stage: &'static str) -> Self {
+        self.stage = Some(stage);
+        self
     }
 }
 
@@ -828,10 +836,7 @@ fn transform_response(transform: ResponseTransform, body: Value, model: &str) ->
 
 fn stream_formats(transform: ResponseTransform) -> Option<(UpstreamFormat, ClientFormat)> {
     match transform {
-        ResponseTransform::None => None,
-        ResponseTransform::ResponsesToResponses => {
-            Some((UpstreamFormat::Responses, ClientFormat::Responses))
-        }
+        ResponseTransform::None | ResponseTransform::ResponsesToResponses => None,
         ResponseTransform::ChatToResponses => {
             Some((UpstreamFormat::OpenAi, ClientFormat::Responses))
         }
@@ -890,40 +895,118 @@ fn should_failover(status: StatusCode) -> bool {
 }
 
 struct RequestRecord<'a> {
-    provider_id: &'a str,
+    provider_id: Option<&'a str>,
     protocol: ClientProtocol,
     status: Option<StatusCode>,
     latency_ms: i64,
     retry_count: usize,
     error_kind: Option<&'a str>,
     affects_health: bool,
+    diagnostics: Option<&'a RequestDiagnostics>,
 }
 
 fn record_request(database: &Database, record: RequestRecord<'_>) -> Option<RequestRecordResult> {
+    let Some(provider_id) = record.provider_id else {
+        let diagnostic = record.diagnostics.cloned().unwrap_or_default();
+        return database.record_unassigned_request(
+            route_name(record.protocol),
+            record.status.map_or(503, |status| status.as_u16()),
+            record.latency_ms,
+            record.error_kind.unwrap_or("provider_not_selected"),
+            &diagnostic,
+            now_millis(),
+        ).map_err(|error| tracing::warn!(%error, "failed to record unassigned proxy request")).ok();
+    };
+    let local_rejection = record.diagnostics.is_some_and(|diagnostic| diagnostic.send_attempts == 0);
     let event = crate::database::RequestEvent {
-        provider_id: record.provider_id.to_string(),
+        provider_id: provider_id.to_string(),
         route: route_name(record.protocol).to_string(),
         status_code: record.status.map(|status| status.as_u16()),
         success: record.status.is_some_and(|status| status.is_success()),
         affects_health: record.affects_health,
+        diagnostics: record.diagnostics.cloned(),
         latency_ms: record.latency_ms,
         retry_count: record.retry_count as i64,
         error_kind: record.error_kind.map(str::to_string),
         model: None,
-        input_tokens: None,
-        output_tokens: None,
-        cache_creation_tokens: None,
-        cache_read_tokens: None,
-        cost: None,
-        price_source: None,
+        input_tokens: local_rejection.then_some(0),
+        output_tokens: local_rejection.then_some(0),
+        cache_creation_tokens: local_rejection.then_some(0),
+        cache_read_tokens: local_rejection.then_some(0),
+        cost: local_rejection.then_some(0.0),
+        price_source: local_rejection.then(|| "local_rejection".to_owned()),
         price_version: None,
         created_at: now_millis(),
     };
     match database.record_request(&event) {
         Ok(result) => Some(result),
         Err(error) => {
-            tracing::warn!(%error, provider_id = record.provider_id, "failed to record proxy request");
+            tracing::warn!(%error, provider_id, "failed to record proxy request");
             None
+        }
+    }
+}
+
+struct ForwardProgress {
+    provider_id: Option<String>,
+    diagnostics: RequestDiagnostics,
+    stage: &'static str,
+    event_id: Option<i64>,
+    recorded: bool,
+    started: Instant,
+}
+
+impl ForwardProgress {
+    fn new() -> Self {
+        Self {
+            provider_id: None,
+            diagnostics: RequestDiagnostics::default(),
+            stage: "provider_selection",
+            event_id: None,
+            recorded: false,
+            started: Instant::now(),
+        }
+    }
+
+    fn begin_provider(&mut self, provider_id: &str) {
+        self.provider_id = Some(provider_id.to_owned());
+        self.diagnostics = RequestDiagnostics::default();
+        self.stage = "provider_configuration";
+        self.event_id = None;
+        self.recorded = false;
+    }
+
+    fn record(
+        &mut self,
+        database: &Database,
+        protocol: ClientProtocol,
+        status: Option<StatusCode>,
+        latency_ms: i64,
+        retry_count: usize,
+        error_kind: Option<&str>,
+        affects_health: bool,
+    ) -> Option<RequestRecordResult> {
+        if let Some(code) = error_kind { self.diagnostics.fail(self.stage, code); }
+        let result = record_request(database, RequestRecord {
+            provider_id: self.provider_id.as_deref(), protocol, status, latency_ms, retry_count,
+            error_kind, affects_health, diagnostics: Some(&self.diagnostics),
+        });
+        self.recorded = result.is_some();
+        self.event_id = result.map(|record| record.event_id);
+        result
+    }
+
+    fn record_error(&mut self, database: &Database, protocol: ClientProtocol, error: &ProxyError) {
+        let stage = error.stage.unwrap_or(self.stage);
+        if !self.recorded {
+            self.stage = stage;
+            self.record(database, protocol, Some(error.status), self.started.elapsed().as_millis() as i64,
+                self.diagnostics.send_attempts.saturating_sub(1) as usize, Some(error.code), false);
+        } else if matches!(stage, "response_read" | "response_conversion")
+            && let Some(event_id) = self.event_id
+            && let Err(failure) = database.mark_request_failed(event_id, stage, error.code, stage == "response_read" || error.code == "invalid_upstream_response")
+        {
+            tracing::warn!(%failure, event_id, "failed to record response failure");
         }
     }
 }
@@ -1160,7 +1243,7 @@ async fn finalize_upstream(
                     let mut body = transform_response(transform, upstream_body, &model);
                     tool_bridge
                         .restore_response(&mut body)
-                        .map_err(adapter_error)?;
+                        .map_err(|error| ProxyError::new(StatusCode::BAD_GATEWAY, "response_conversion", error).at_stage("response_conversion"))?;
                     let mut response = Json(body).into_response();
                     *response.status_mut() = status;
                     if let Some(request_id) = request_id {
@@ -1183,7 +1266,7 @@ async fn finalize_upstream(
                     StatusCode::BAD_GATEWAY,
                     "invalid_upstream_response",
                     "The provider returned invalid JSON.",
-                ));
+                ).at_stage("response_conversion"));
             }
             Err(_) => {
                 persist_non_stream_usage(
@@ -1195,6 +1278,16 @@ async fn finalize_upstream(
                     observation,
                     shadow,
                 );
+                if let Some(event_id) = event_id
+                    && let Err(error) = database.mark_request_failed(
+                        event_id,
+                        "response_read",
+                        "invalid_upstream_response",
+                        true,
+                    )
+                {
+                    tracing::warn!(%error, event_id, "failed to record invalid upstream response");
+                }
             }
         }
         let mut response = Response::builder().status(status);
@@ -1237,7 +1330,21 @@ async fn forward(
     protocol: ClientProtocol,
     headers: axum::http::HeaderMap,
     body: Bytes,
-    requested_model: Option<String>,
+    operation: Option<String>,
+) -> Result<Response, ProxyError> {
+    let mut progress = ForwardProgress::new();
+    let result = forward_inner(&state, protocol, headers, body, operation, &mut progress).await;
+    if let Err(error) = &result { progress.record_error(&state.database, protocol, error); }
+    result
+}
+
+async fn forward_inner(
+    state: &ProxyState,
+    protocol: ClientProtocol,
+    headers: axum::http::HeaderMap,
+    body: Bytes,
+    operation: Option<String>,
+    progress: &mut ForwardProgress,
 ) -> Result<Response, ProxyError> {
     if headers.contains_key("x-xy-switch-loopback") {
         return Err(ProxyError::new(
@@ -1259,6 +1366,7 @@ async fn forward(
                 "No provider is selected.",
             )
         })?;
+    progress.provider_id = Some(selected.id.clone());
     if !selected.enabled {
         return Err(ProxyError::new(
             StatusCode::SERVICE_UNAVAILABLE,
@@ -1267,6 +1375,23 @@ async fn forward(
         ));
     }
 
+    progress.stage = "request_conversion";
+    let (body, requested_model) = if let Some(operation) = operation {
+        let (model, stream) = gemini_operation(&operation)?;
+        let mut payload: Value = serde_json::from_slice(&body).map_err(|_| {
+            ProxyError::new(StatusCode::BAD_REQUEST, "invalid_json", "Request body must be a JSON object.")
+        })?;
+        let object = payload.as_object_mut().ok_or_else(|| {
+            ProxyError::new(StatusCode::BAD_REQUEST, "invalid_json", "Request body must be a JSON object.")
+        })?;
+        object.insert("stream".to_owned(), Value::Bool(stream));
+        let bytes = serde_json::to_vec(&payload).map_err(|error| {
+            ProxyError::new(StatusCode::BAD_REQUEST, "invalid_json", error.to_string())
+        })?;
+        (Bytes::from(bytes), Some(model.to_owned()))
+    } else { (body, None) };
+
+    progress.stage = "provider_selection";
     let mut candidates: Vec<Provider> = state
         .database
         .list_providers()
@@ -1280,13 +1405,17 @@ async fn forward(
 
     let mut last_failure = None;
     let mut last_error = None;
-    let mut found_key = false;
-    let mut circuits_open = 0;
+    let mut first_local_error = None;
     for (provider_index, provider) in candidates.into_iter().enumerate() {
+        progress.begin_provider(&provider.id);
         if let (Some(local), Ok(endpoint_url)) =
             (state.local_addr, reqwest::Url::parse(&provider.endpoint))
         {
-            let host = endpoint_url.host_str().unwrap_or("");
+            let host = endpoint_url
+                .host_str()
+                .unwrap_or("")
+                .trim_start_matches('[')
+                .trim_end_matches(']');
             let port = endpoint_url
                 .port()
                 .unwrap_or_else(|| match endpoint_url.scheme() {
@@ -1301,11 +1430,15 @@ async fn forward(
 
             if is_local_host && port == local.port() {
                 tracing::warn!(provider=%provider.id, "Proxy loopback detected, skipping provider");
-                last_error = Some("配置错误：供应商端点指向了本地代理自身，构成死循环".to_string());
+                let error = ProxyError::new(StatusCode::LOOP_DETECTED, "loop_detected",
+                    "The provider endpoint points back to the local proxy.");
+                progress.record_error(&state.database, protocol, &error);
+                first_local_error.get_or_insert(error);
                 continue;
             }
         }
 
+        progress.stage = "provider_selection";
         if state
             .database
             .provider_health(&provider.id)
@@ -1315,23 +1448,31 @@ async fn forward(
             .and_then(|health| health.circuit_open_until)
             .is_some_and(|until| until > now_millis())
         {
-            circuits_open += 1;
+            let error = ProxyError::new(StatusCode::SERVICE_UNAVAILABLE, "circuit_open",
+                "The provider circuit is temporarily open.");
+            progress.record_error(&state.database, protocol, &error);
+            first_local_error.get_or_insert(error);
             continue;
         }
+        progress.stage = "credentials";
         let Some(api_key) = state.api_keys.get(&provider.id).map_err(|error| {
             ProxyError::new(StatusCode::INTERNAL_SERVER_ERROR, "credential_error", error)
         })?
         else {
+            let error = ProxyError::new(StatusCode::UNAUTHORIZED, "api_key_missing",
+                "The provider has no API key configured.");
+            progress.record_error(&state.database, protocol, &error);
+            first_local_error.get_or_insert(error);
             continue;
         };
         let api_key = zeroize::Zeroizing::new(api_key);
-        found_key = true;
         let client_shadow =
             state
                 .database
                 .shadow
                 .begin_capture(&provider.id, protocol.shadow_protocol(), &body);
         let mut route_provider = provider.clone();
+        progress.stage = "request_conversion";
         if diagnostic.is_some() {
             let source: Value = serde_json::from_slice(&body).map_err(|_| adapter_error("Invalid diagnostic JSON".into()))?;
             let model = requested_model.as_deref().or_else(|| source.get("model").and_then(Value::as_str)).filter(|s| !s.trim().is_empty() && s.len() <= 256 && !s.chars().any(char::is_control))
@@ -1367,8 +1508,14 @@ async fn forward(
                 )
             })
         });
+        progress.stage = "tool_bridge";
         let tool_bridge = if protocol == ClientProtocol::Responses
-            && prepared.transform != ResponseTransform::None
+            && matches!(
+                prepared.transform,
+                ResponseTransform::ChatToResponses
+                    | ResponseTransform::AnthropicToResponses
+                    | ResponseTransform::GeminiToResponses
+            )
         {
             crate::tool_bridge::ToolBridge::from_request(
                 &serde_json::from_slice::<Value>(&body)
@@ -1380,6 +1527,7 @@ async fn forward(
         };
         let mut retry_count = 0usize;
         loop {
+            progress.stage = "budget";
             crate::governance::budget::reserve(&state.database, &provider, &mut prepared.payload, prepared.upstream.shadow_protocol(), if diagnostic.is_some() { "synthetic" } else { "proxy" })
                 .map_err(|e| ProxyError::new(StatusCode::PAYMENT_REQUIRED, "budget_rejected", e))?;
             // Audit the cap actually dispatched, including any budget clamp.
@@ -1389,7 +1537,8 @@ async fn forward(
                     .or_else(|| prepared.payload.pointer("/generationConfig/maxOutputTokens")).and_then(Value::as_u64)
             };
             let started = Instant::now();
-            let result = request_builder(
+            progress.stage = "provider_configuration";
+            let request = request_builder(
                 &state.client,
                 &provider,
                 &api_key,
@@ -1397,8 +1546,10 @@ async fn forward(
                 &prepared.payload,
                 prepared.upstream,
             )
-            .send()
-            .await;
+            .build().map_err(|error| ProxyError::new(StatusCode::BAD_REQUEST, "request_build", error.to_string()))?;
+            progress.stage = "upstream_send";
+            progress.diagnostics.send_attempts += 1;
+            let result = state.client.execute(request).await;
             let latency_ms = started.elapsed().as_millis() as i64;
             if (provider_index > 0 || retry_count > 0)
                 && let Some(capture) = shadow.as_mut()
@@ -1408,6 +1559,8 @@ async fn forward(
             match result {
                 Ok(upstream) => {
                     let status = upstream.status();
+                    progress.diagnostics.upstream_response_received = true;
+                    progress.diagnostics.attempts.push(RequestAttempt { status_code: Some(status.as_u16()), error_kind: (!status.is_success()).then(|| "upstream_status".to_owned()) });
                     if is_retryable(status) && retry_count < 2 && diagnostic.is_none() {
                         retry_count += 1;
                         tokio::time::sleep(Duration::from_millis(
@@ -1417,18 +1570,9 @@ async fn forward(
                         continue;
                     }
                     let affects_health = status.is_success() || should_failover(status);
-                    let record_result = record_request(
-                        &state.database,
-                        RequestRecord {
-                            provider_id: &provider.id,
-                            protocol,
-                            status: Some(status),
-                            latency_ms,
-                            retry_count,
-                            error_kind: (!status.is_success()).then_some("upstream_status"),
-                            affects_health,
-                        },
-                    );
+                    progress.stage = "upstream_http";
+                    let record_result = progress.record(&state.database, protocol, Some(status), latency_ms,
+                        retry_count, (!status.is_success()).then_some("upstream_status"), affects_health);
                     if !status.is_success() {
                         persist_non_stream_usage(
                             &state.database,
@@ -1442,6 +1586,7 @@ async fn forward(
                     }
                     if status.is_success() {
                         let _ = state.database.set_circuit_open_until(&provider.id, None);
+                        progress.stage = "response_read";
                         return finalize_upstream(
                             state.database.clone(),
                             record_result.map(|result| result.event_id),
@@ -1466,6 +1611,7 @@ async fn forward(
                             .set_circuit_open_until(&provider.id, Some(now_millis() + 60_000));
                     }
                     if !should_failover(status) {
+                        progress.stage = "response_read";
                         return finalize_upstream(
                             state.database.clone(),
                             record_result.map(|result| result.event_id),
@@ -1481,10 +1627,14 @@ async fn forward(
                         )
                         .await;
                     }
+                    progress.stage = "response_read";
                     last_failure = Some(buffered_failure(upstream).await?);
+                    progress.stage = "upstream_http";
                     break;
                 }
                 Err(error) => {
+                    let error_kind = if error.is_timeout() { "timeout" } else if error.is_connect() { "connect" } else { "request" };
+                    progress.diagnostics.attempts.push(RequestAttempt { status_code: None, error_kind: Some(error_kind.to_owned()) });
                     if retry_count < 2 && diagnostic.is_none() {
                         retry_count += 1;
                         tokio::time::sleep(Duration::from_millis(
@@ -1493,25 +1643,8 @@ async fn forward(
                         .await;
                         continue;
                     }
-                    let error_kind = if error.is_timeout() {
-                        "timeout"
-                    } else if error.is_connect() {
-                        "connect"
-                    } else {
-                        "request"
-                    };
-                    let failures = record_request(
-                        &state.database,
-                        RequestRecord {
-                            provider_id: &provider.id,
-                            protocol,
-                            status: None,
-                            latency_ms,
-                            retry_count,
-                            error_kind: Some(error_kind),
-                            affects_health: true,
-                        },
-                    );
+                    let failures = progress.record(&state.database, protocol, None, latency_ms,
+                        retry_count, Some(error_kind), true);
                     persist_non_stream_usage(
                         &state.database,
                         failures.map(|result| result.event_id),
@@ -1539,21 +1672,16 @@ async fn forward(
     if let Some(response) = last_failure {
         return Ok(response);
     }
-    if !found_key && circuits_open == 0 {
-        return Err(ProxyError::new(
-            StatusCode::UNAUTHORIZED,
-            "api_key_missing",
-            "No enabled provider has an API key configured.",
-        ));
+    if let Some(error) = last_error {
+        return Err(ProxyError::new(StatusCode::SERVICE_UNAVAILABLE, "upstream_unavailable", error));
+    }
+    if let Some(error) = first_local_error {
+        return Err(error);
     }
     Err(ProxyError::new(
         StatusCode::SERVICE_UNAVAILABLE,
-        if circuits_open > 0 {
-            "circuit_open"
-        } else {
-            "upstream_unavailable"
-        },
-        last_error.unwrap_or_else(|| "No provider is currently available.".to_string()),
+        "upstream_unavailable",
+        "No provider is currently available.",
     ))
 }
 
@@ -1595,36 +1723,12 @@ async fn gemini_generate(
     headers: axum::http::HeaderMap,
     body: Bytes,
 ) -> Result<Response, ProxyError> {
-    let (requested_model, stream) = gemini_operation(&operation)?;
-    let requested_model = Some(requested_model.to_owned());
-    let mut payload: Value = serde_json::from_slice(&body).map_err(|_| {
-        ProxyError::new(
-            StatusCode::BAD_REQUEST,
-            "invalid_json",
-            "Request body must be a JSON object.",
-        )
-    })?;
-    let object = payload.as_object_mut().ok_or_else(|| {
-        ProxyError::new(
-            StatusCode::BAD_REQUEST,
-            "invalid_json",
-            "Request body must be a JSON object.",
-        )
-    })?;
-    object.insert(
-        "stream".to_string(),
-        Value::Bool(stream),
-    );
-    let bytes = serde_json::to_vec(&payload).map_err(|error| {
-        ProxyError::new(StatusCode::BAD_REQUEST, "invalid_json", error.to_string())
-    })?;
-
     forward(
         state,
         ClientProtocol::Gemini,
         headers,
-        Bytes::from(bytes),
-        requested_model,
+        body,
+        Some(operation),
     )
     .await
 }
@@ -1753,16 +1857,19 @@ mod tests {
         (Database::open(&path).unwrap(), path)
     }
 
-    /// routeTargets 以前只存不用，设置页勾选框是摆设。这里锁住裁剪行为。
-    #[tokio::test]
-    async fn route_targets_gate_the_exposed_protocol_endpoints() {
+    fn local_test_database() -> (Database, std::path::PathBuf) {
         let (database, path) = test_database();
-        // Database::open seeds live endpoints. This routing-only test must not
-        // make requests to those endpoints with its placeholder credentials.
         for provider in database.list_providers().unwrap() {
             database.delete_provider(&provider.id).unwrap();
         }
         assert!(database.list_providers().unwrap().is_empty());
+        (database, path)
+    }
+
+    /// routeTargets 以前只存不用，设置页勾选框是摆设。这里锁住裁剪行为。
+    #[tokio::test]
+    async fn route_targets_gate_the_exposed_protocol_endpoints() {
+        let (database, path) = local_test_database();
         let state = ProxyState {
             database: database.clone(),
             client: crate::network::test_client(),
@@ -2380,7 +2487,7 @@ mod tests {
             .await
         });
 
-        let (database, path) = test_database();
+        let (database, path) = local_test_database();
         database
             .save_provider(&crate::database::Provider {
                 id: "mock".to_string(),
@@ -2534,7 +2641,7 @@ mod tests {
             .await
         });
 
-        let (database, path) = test_database();
+        let (database, path) = local_test_database();
         for (id, provider_type, model, app_group) in [
             ("anthropic-codex-mock", "anthropic", "claude-mock", "Codex"),
             (
@@ -2703,7 +2810,7 @@ mod tests {
             .await
         });
 
-        let (database, path) = test_database();
+        let (database, path) = local_test_database();
         for (id, endpoint, sort_order) in [
             ("primary", format!("http://{primary_address}"), 1),
             ("backup", format!("http://{backup_address}"), 2),
@@ -2758,7 +2865,21 @@ mod tests {
         assert_eq!(primary_health.status, "circuit_open");
         assert_eq!(primary_health.consecutive_failures, 3);
         assert!(primary_health.circuit_open_until.is_some());
-        assert_eq!(database.request_summary().unwrap().total_requests, 7);
+        assert_eq!(database.request_summary().unwrap().total_requests, 8);
+        let logs = crate::usage::query_usage_logs(
+            &database.conn().lock().unwrap(),
+            &crate::usage::UsageFilter::default(),
+            100,
+            0,
+        ).unwrap();
+        let local_rejections = logs.iter().filter(|log| {
+            log.diagnostics.as_ref().unwrap().send_attempts == 0
+        }).collect::<Vec<_>>();
+        assert_eq!(local_rejections.len(), 1);
+        assert_eq!(local_rejections[0].error_message.as_deref(), Some("circuit_open"));
+        assert_eq!(local_rejections[0].total_tokens, Some(0));
+        assert_eq!(local_rejections[0].total_cost_usd, "0.0000");
+        assert_eq!(logs.iter().map(|log| log.diagnostics.as_ref().unwrap().send_attempts).sum::<u32>(), 13);
 
         proxy_task.abort();
         primary_task.abort();
@@ -2805,6 +2926,7 @@ mod tests {
         std::fs::remove_file(path).unwrap();
     }
     include!("proxy_regression_tests.rs");
+    include!("proxy_diagnostics_tests.rs");
     include!("model_verification/proxy_tests.rs");
     include!("codex_client_regression_tests.rs");
     #[test]

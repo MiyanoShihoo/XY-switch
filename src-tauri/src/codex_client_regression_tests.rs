@@ -1,3 +1,142 @@
+#[tokio::test]
+async fn production_native_responses_preserves_hosted_and_deferred_tools() {
+    use std::sync::Mutex;
+
+    fn native_frames(response: &Value) -> String {
+        let mut frames = vec![json!({"type":"response.created","response":{
+            "id":response["id"],"model":response["model"],"status":"in_progress","output":[]
+        }})];
+        for (index, item) in response["output"].as_array().unwrap().iter().enumerate() {
+            let mut added = item.clone();
+            added["status"] = json!("in_progress");
+            if item["type"] == "custom_tool_call" {
+                added["input"] = json!("");
+            }
+            frames.push(json!({"type":"response.output_item.added","output_index":index,"item":added}));
+            if item["type"] == "custom_tool_call" {
+                for delta in ["line\n", "中文"] {
+                    frames.push(json!({"type":"response.custom_tool_call_input.delta",
+                        "output_index":index,"item_id":item["id"],"delta":delta}));
+                }
+            }
+            frames.push(json!({"type":"response.output_item.done","output_index":index,"item":item}));
+        }
+        frames.push(json!({"type":"response.provider_extension","metadata":{"opaque":"保留"}}));
+        frames.push(json!({"type":"response.completed","response":response}));
+        let mut wire = ": native fixture\r\nretry: 1000\r\n\r\n".to_owned();
+        for (sequence, mut event) in frames.into_iter().enumerate() {
+            event["sequence_number"] = json!(sequence);
+            wire.push_str(&format!("id: native-{sequence}\r\nevent: {}\r\ndata: {event}\r\n\r\n",
+                event["type"].as_str().unwrap()));
+        }
+        wire
+    }
+
+    let output = json!([
+        {"type":"custom_tool_call","id":"ct_native_passthrough","status":"completed",
+            "call_id":"call_native_passthrough","namespace":"files","name":"patch","input":"line\n中文"},
+        {"type":"tool_search_call","id":"ts_native_passthrough","status":"completed","arguments":{"query":"receipt"}},
+        {"type":"reasoning","id":"rs_native_passthrough","summary":[],"encrypted_content":"fixture-encrypted-output"}
+    ]);
+    let seen = Arc::new(Mutex::new(Vec::<Value>::new()));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let upstream_address = listener.local_addr().unwrap();
+    let upstream_seen = seen.clone();
+    let upstream_output = output.clone();
+    let upstream_task = tokio::spawn(async move {
+        axum::serve(listener, Router::new().route("/v1/responses", post(move |Json(body): Json<Value>| {
+            let seen = upstream_seen.clone();
+            let output = upstream_output.clone();
+            async move {
+                seen.lock().unwrap().push(body.clone());
+                let response = json!({"id":"resp_native_passthrough","status":"completed","model":body["model"],
+                    "output":output,"metadata":{"opaque":"保留"},
+                    "usage":{"input_tokens":20,"input_tokens_details":{"cached_tokens":3},"output_tokens":8,"total_tokens":28}});
+                if body["stream"] == true {
+                    let wire = native_frames(&response);
+                    let chunks = wire.as_bytes().chunks(7)
+                        .map(|chunk| Ok::<_, std::io::Error>(Bytes::copy_from_slice(chunk)))
+                        .collect::<Vec<_>>();
+                    Response::builder().header(header::CONTENT_TYPE,"text/event-stream")
+                        .header("x-request-id","req-native-passthrough")
+                        .body(Body::from_stream(futures_util::stream::iter(chunks))).unwrap()
+                } else {
+                    Json(response).into_response()
+                }
+            }
+        }))).await.unwrap();
+    });
+    let database = crate::governance::test_support::database();
+    let mut provider =
+        crate::governance::test_support::provider(&format!("http://{upstream_address}"));
+    provider.advanced.upstream_format = "openai_responses".into();
+    database.save_provider(&provider).unwrap();
+    database.set_current_provider(&provider.id).unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let proxy_address = listener.local_addr().unwrap();
+    let state = ProxyState {
+        database: database.clone(),
+        client: crate::network::test_client(),
+        api_keys: Arc::new(FakeApiKeyProvider),
+        local_addr: Some(proxy_address),
+    };
+    let proxy_task = tokio::spawn(async move {
+        axum::serve(listener, router_with_targets(state, &["codex".into()]))
+            .await
+            .unwrap();
+    });
+    for stream in [false, true] {
+        let payload = json!({"model":provider.model,"stream":stream,
+            "input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"receipt"}]},
+                {"type":"additional_tools","role":"developer","tools":[{"type":"namespace","name":"joint_probe",
+                    "tools":[{"type":"function","name":"receipt","parameters":{"type":"object"},"defer_loading":true}]}]},
+                {"type":"reasoning","id":"rs_native_passthrough","summary":[],"encrypted_content":"fixture-encrypted-content"}],
+            "tools":[{"type":"tool_search"},{"type":"custom","name":"patch","format":{"type":"text"}},
+                {"type":"namespace","name":"files","tools":[{"type":"function","name":"read","parameters":{"type":"object"}}]}],
+            "client_metadata":{"fixture":"native-passthrough"}});
+        let response = crate::network::test_client()
+            .post(format!("http://{proxy_address}/v1/responses"))
+            .json(&payload)
+            .send()
+            .await
+            .unwrap();
+        let status = response.status();
+        if stream {
+            assert_eq!(response.headers()["x-request-id"], "req-native-passthrough");
+            assert_eq!(response.headers()[header::CONTENT_TYPE], "text/event-stream");
+        }
+        let body = response.text().await.unwrap();
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(seen.lock().unwrap().last(), Some(&payload));
+        let expected = json!({"id":"resp_native_passthrough","status":"completed","model":provider.model,
+            "output":output,"metadata":{"opaque":"保留"},
+            "usage":{"input_tokens":20,"input_tokens_details":{"cached_tokens":3},"output_tokens":8,"total_tokens":28}});
+        let returned = if stream {
+            assert_eq!(body, native_frames(&expected));
+            body.lines()
+                .filter_map(|line| line.strip_prefix("data: "))
+                .filter_map(|data| serde_json::from_str::<Value>(data).ok())
+                .find(|event| event["type"] == "response.completed")
+                .unwrap()["response"]
+                .clone()
+        } else {
+            serde_json::from_str::<Value>(&body).unwrap()
+        };
+        assert_eq!(returned, expected);
+    }
+    assert_eq!(seen.lock().unwrap().len(), 2);
+    let connection = database.conn();
+    let connection = connection.lock().unwrap();
+    let mut statement = connection.prepare(
+        "SELECT input_tokens,output_tokens,cache_read_tokens FROM request_events ORDER BY id"
+    ).unwrap();
+    let usage = statement.query_map([], |row| Ok((row.get::<_,i64>(0)?,row.get::<_,i64>(1)?,row.get::<_,i64>(2)?)))
+        .unwrap().collect::<Result<Vec<_>,_>>().unwrap();
+    assert_eq!(usage, vec![(20,8,3),(20,8,3)]);
+    proxy_task.abort();
+    upstream_task.abort();
+}
+
 // Opt-in client compatibility test. All model replies are deterministic loopback fixtures.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires an installed Codex CLI; uses isolated CODEX_HOME and no cloud API"]
@@ -117,9 +256,8 @@ async fn run_codex_fixture_session(native: bool) {
     std::fs::create_dir_all(&codex_home).unwrap();
     std::fs::create_dir_all(&work).unwrap();
     let database = Database::open(&root.join("test.db")).unwrap();
-    for mut seeded in database.list_providers().unwrap() {
-        seeded.enabled = false;
-        database.save_provider(&seeded).unwrap();
+    for seeded in database.list_providers().unwrap() {
+        database.delete_provider(&seeded.id).unwrap();
     }
     let seen = Arc::new(Mutex::new(Vec::new()));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();

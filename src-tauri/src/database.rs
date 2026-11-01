@@ -353,6 +353,7 @@ pub struct RequestEvent {
     pub status_code: Option<u16>,
     pub success: bool,
     pub affects_health: bool,
+    pub diagnostics: Option<crate::request_diagnostics::RequestDiagnostics>,
     pub latency_ms: i64,
     pub retry_count: i64,
     pub error_kind: Option<String>,
@@ -541,6 +542,8 @@ impl Database {
             ("text_delta_count", "INTEGER"),
             ("audit_flags", "TEXT"),
             ("audit_json", "TEXT"),
+            ("diagnostics_json", "TEXT"),
+            ("affects_health", "INTEGER NOT NULL DEFAULT 1"),
         ] {
             if !request_event_columns
                 .iter()
@@ -555,6 +558,7 @@ impl Database {
             }
         }
 
+        crate::request_diagnostics::migrate(&connection)?;
         connection.execute_batch(
             "CREATE TABLE IF NOT EXISTS shadow_audit_samples (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -818,16 +822,20 @@ impl Database {
         let transaction = connection
             .transaction()
             .map_err(|error| error.to_string())?;
+        let diagnostic_json = event.diagnostics.as_ref().map(serde_json::to_string)
+            .transpose().map_err(|error| error.to_string())?;
+        let total_tokens = event.diagnostics.as_ref()
+            .and_then(|diagnostic| (diagnostic.send_attempts == 0).then_some(0i64));
         transaction
             .execute(
-                "INSERT INTO request_events(provider_id,route,status_code,success,latency_ms,retry_count,error_kind,model,input_tokens,output_tokens,cache_creation_tokens,cache_read_tokens,cost,price_source,price_version,created_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)",
-                params![event.provider_id,event.route,event.status_code,event.success as i64,event.latency_ms,event.retry_count,event.error_kind,event.model,event.input_tokens,event.output_tokens,event.cache_creation_tokens,event.cache_read_tokens,event.cost,event.price_source,event.price_version,event.created_at],
+                "INSERT INTO request_events(provider_id,route,status_code,success,latency_ms,retry_count,error_kind,model,input_tokens,output_tokens,cache_creation_tokens,cache_read_tokens,cost,price_source,price_version,created_at,diagnostics_json,affects_health,total_tokens) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19)",
+                params![event.provider_id,event.route,event.status_code,event.success as i64,event.latency_ms,event.retry_count,event.error_kind,event.model,event.input_tokens,event.output_tokens,event.cache_creation_tokens,event.cache_read_tokens,event.cost,event.price_source,event.price_version,event.created_at,diagnostic_json,event.affects_health,total_tokens],
             )
             .map_err(|error| error.to_string())?;
         let event_id = transaction.last_insert_rowid();
         // Diagnostic probes are independent observations, not health checks.
         // In particular they must not change health timestamps, latency or circuits.
-        if event.route.starts_with("model_probe/") {
+        if !event.affects_health || event.route.starts_with("model_probe/") {
             let failures = transaction
                 .query_row(
                     "SELECT consecutive_failures FROM provider_health WHERE provider_id=?1",
@@ -841,25 +849,7 @@ impl Database {
                 consecutive_failures: failures,
             });
         }
-        transaction
-            .execute(
-                "INSERT INTO provider_health(provider_id,status,latency_ms,success_rate,consecutive_failures,last_error,last_checked_at) VALUES(?1,?2,?3,0,?4,?5,?6) ON CONFLICT(provider_id) DO UPDATE SET status=CASE WHEN ?7=0 THEN provider_health.status ELSE excluded.status END,latency_ms=excluded.latency_ms,consecutive_failures=CASE WHEN ?7=0 THEN provider_health.consecutive_failures WHEN excluded.status='healthy' THEN 0 ELSE provider_health.consecutive_failures+1 END,last_error=CASE WHEN ?7=0 THEN provider_health.last_error ELSE excluded.last_error END,last_checked_at=excluded.last_checked_at",
-                params![event.provider_id,if event.success { "healthy" } else if event.affects_health { "unhealthy" } else { "unknown" },event.latency_ms,if event.success || !event.affects_health { 0 } else { 1 },event.error_kind,event.created_at,event.affects_health as i64],
-            )
-            .map_err(|error| error.to_string())?;
-        transaction
-            .execute(
-                "UPDATE provider_health SET success_rate=COALESCE((SELECT AVG(success)*100.0 FROM (SELECT success FROM request_events WHERE provider_id=?1 ORDER BY id DESC LIMIT 100)),0) WHERE provider_id=?1",
-                [&event.provider_id],
-            )
-            .map_err(|error| error.to_string())?;
-        let failures = transaction
-            .query_row(
-                "SELECT consecutive_failures FROM provider_health WHERE provider_id=?1",
-                [&event.provider_id],
-                |row| row.get(0),
-            )
-            .map_err(|error| error.to_string())?;
+        let failures = crate::request_diagnostics::refresh_provider_health(&transaction, &event.provider_id)?;
         transaction.commit().map_err(|error| error.to_string())?;
         Ok(RequestRecordResult {
             event_id,
@@ -957,7 +947,7 @@ impl Database {
             .lock()
             .map_err(|_| "database lock poisoned".to_string())?;
         connection.query_row(
-            "SELECT COUNT(*),COALESCE(SUM(success),0),COALESCE(AVG(latency_ms),0) FROM request_events WHERE route <> 'health_check'",
+            "SELECT COUNT(*),COALESCE(SUM(success),0),COALESCE(AVG(latency_ms),0) FROM usage_request_events WHERE route <> 'health_check'",
             [],
             |row| Ok(RequestSummary { total_requests: row.get(0)?, successful_requests: row.get(1)?, average_latency_ms: row.get(2)? }),
         ).map_err(|error| error.to_string())
@@ -1165,6 +1155,7 @@ mod tests {
                     status_code: Some(if success { 200 } else { 500 }),
                     success,
                     affects_health: true,
+                    diagnostics: None,
                     latency_ms: 100,
                     retry_count: 0,
                     error_kind: (!success).then(|| "upstream_status".to_string()),

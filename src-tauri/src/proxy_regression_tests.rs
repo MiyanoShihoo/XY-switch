@@ -81,7 +81,7 @@ async fn grok_and_kimi_chat_bridge_support_full_tool_sessions_over_http() {
         )
         .await
     });
-    let (db, path) = test_database();
+    let (db, path) = local_test_database();
     let state = ProxyState {
         database: db.clone(),
         client: crate::network::test_client(),
@@ -275,7 +275,7 @@ async fn shadow_audit_real_http_pairs_background_usage_without_persisting_bodies
         )
         .await
     });
-    let (db, path) = test_database();
+    let (db, path) = local_test_database();
     let mut provider: Provider = serde_json::from_value(
         json!({"id":"shadow","name":"Shadow fixture","appGroup":"Codex",
         "endpoint":format!("http://{upstream_addr}"),"model":"shadow-native","enabled":true}),
@@ -477,7 +477,7 @@ async fn shadow_audit_responses_to_chat_http_uses_client_prefix_and_actual_reply
         )
         .await
     });
-    let (db, path) = test_database();
+    let (db, path) = local_test_database();
     let mut provider:Provider=serde_json::from_value(json!({"id":"shadow","name":"Shadow","appGroup":"Codex","endpoint":format!("http://{upstream_addr}"),"model":"shadow-native","enabled":true})).unwrap();
     provider.advanced.upstream_format = "openai_chat".into();
     db.save_provider(&provider).unwrap();
@@ -635,7 +635,7 @@ async fn model_audit_real_http_preserves_native_bytes_and_distinguishes_faults_a
         )
         .await
     });
-    let (db, path) = test_database();
+    let (db, path) = local_test_database();
     db.verification.set_settings(crate::model_verification::VerificationSettings{enabled:true,..Default::default()}).unwrap();
     let mut provider: Provider = serde_json::from_value(
         json!({"id":"audit","name":"Audit fixture","appGroup":"Codex",
@@ -822,7 +822,7 @@ fn model_audit_collects_native_protocol_accounting_and_all_choices() {
 #[tokio::test]
 async fn model_audit_cancellation_persists_partial_observation() {
     use futures_util::{StreamExt, stream};
-    let (db, path) = test_database();
+    let (db, path) = local_test_database();
     db.verification.set_settings(crate::model_verification::VerificationSettings{enabled:true,..Default::default()}).unwrap();
     let provider: Provider = serde_json::from_value(
         json!({"id":"audit-cancel","name":"Audit","appGroup":"Codex",
@@ -833,13 +833,14 @@ async fn model_audit_cancellation_persists_partial_observation() {
     let event_id = record_request(
         &db,
         RequestRecord {
-            provider_id: &provider.id,
+            provider_id: Some(&provider.id),
             protocol: ClientProtocol::Chat,
             status: Some(StatusCode::OK),
             latency_ms: 0,
             retry_count: 0,
             error_kind: None,
             affects_health: true,
+            diagnostics: None,
         },
     )
     .unwrap()

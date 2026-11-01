@@ -248,6 +248,7 @@ async fn perform_probe(
         status_code: http_status,
         success,
         affects_health: false,
+        diagnostics: None,
         latency_ms,
         retry_count: 0,
         error_kind: error_message.clone(),
@@ -310,6 +311,9 @@ mod tests {
     }
     fn database(p: &Provider) -> Database {
         let db = Database::open(Path::new(":memory:")).unwrap();
+        for provider in db.list_providers().unwrap() {
+            db.delete_provider(&provider.id).unwrap();
+        }
         db.save_provider(p).unwrap();
         db.verification.set_settings(crate::model_verification::VerificationSettings { enabled:true, ..Default::default() }).unwrap();
         db

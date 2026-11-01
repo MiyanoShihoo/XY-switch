@@ -1,4 +1,5 @@
 mod parsers;
+mod tools;
 #[cfg(test)]
 mod tests;
 
@@ -44,6 +45,44 @@ pub struct SessionMessage {
     pub role: String,
     pub content: String,
     pub ts: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool: Option<SessionToolEvent>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionToolEvent {
+    pub call_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approval_request_id: Option<String>,
+    pub name: Option<String>,
+    pub event_kind: SessionToolKind,
+    pub status: SessionToolStatus,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionToolKind {
+    Search,
+    Call,
+    Approval,
+    Result,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionToolStatus {
+    Unknown,
+    Requested,
+    Running,
+    PendingApproval,
+    Approved,
+    Denied,
+    ResultReceived,
+    Completed,
+    Succeeded,
+    Failed,
+    Cancelled,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

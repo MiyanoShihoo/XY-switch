@@ -70,6 +70,347 @@ fn response(role: &str, content: &str) -> Value {
     json!({"type":"response_item","timestamp":"2026-10-26T16:00:01Z","payload":{"type":"message","role":role,"content":[{"type":"output_text","text":content}]}})
 }
 
+fn tool_response(payload: Value) -> Value {
+    json!({"type":"response_item","payload":payload})
+}
+
+fn tool_event(payload: Value) -> Value {
+    json!({"type":"event_msg","payload":payload})
+}
+
+#[test]
+fn codex_tool_search_keeps_native_definitions_and_json_results_without_inventing_success() {
+    let fixture = Fixture::new();
+    let definitions = json!([{"type":"namespace","name":"receipt","tools":[{"type":"function","name":"record","parameters":{"type":"object"}}]}]);
+    let output = " {\n  \"ok\": true, \"receipt\": \"工具结果\"\n} ";
+    fixture.codex("search-tools", vec![
+        tool_response(json!({"type":"tool_search_call","call_id":"search-a","status":"completed","execution":"client","arguments":{"query":"receipt"}})),
+        tool_response(json!({"type":"tool_search_output","call_id":"search-a","status":"completed","execution":"client","tools":definitions})),
+        tool_response(json!({"type":"function_call","name":"mcp__receipt__record","call_id":"call-a","arguments":"{}"})),
+        tool_response(json!({"type":"function_call_output","call_id":"call-a","output":output})),
+    ]);
+    let detail = fixture.store().detail("codex", "search-tools").unwrap();
+    assert_eq!(detail.messages.len(), 4);
+    let search = detail.messages[0].tool.as_ref().unwrap();
+    assert_eq!(search.event_kind, SessionToolKind::Search);
+    assert_eq!(search.status, SessionToolStatus::Completed);
+    assert_eq!(search.call_id.as_deref(), Some("search-a"));
+    assert!(detail.messages[0].content.contains("receipt"));
+    assert_eq!(serde_json::from_str::<Value>(&detail.messages[1].content).unwrap(), definitions);
+    assert_eq!(detail.messages[3].content, output);
+    for index in [2, 3] {
+        let tool = detail.messages[index].tool.as_ref().unwrap();
+        assert_eq!(tool.call_id.as_deref(), Some("call-a"));
+        assert_eq!(tool.name.as_deref(), Some("mcp__receipt__record"));
+        assert_eq!(tool.status, SessionToolStatus::ResultReceived);
+    }
+    let wire = serde_json::to_value(&detail.messages[3]).unwrap();
+    assert_eq!(wire["tool"]["callId"], "call-a");
+    assert_eq!(wire["tool"]["eventKind"], "result");
+    assert_eq!(wire["tool"]["status"], "result_received");
+    assert!(wire["tool"].get("call_id").is_none());
+}
+
+#[test]
+fn codex_approval_and_exit_status_enrich_primary_events_and_keep_exact_result_content() {
+    let fixture = Fixture::new();
+    let output = "{\"native\":\"result\"}";
+    fixture.codex("approved-tools", vec![
+        tool_response(json!({"type":"function_call","call_id":"exec-a","name":"functions.exec_command","arguments":"{\"cmd\":\"echo test\"}"})),
+        tool_event(json!({"type":"exec_approval_request","call_id":"exec-a","reason":"Local test approval"})),
+        tool_event(json!({"type":"exec_approval_response","call_id":"exec-a","decision":"approved"})),
+        tool_event(json!({"type":"exec_command_begin","call_id":"exec-a","command":["echo","test"]})),
+        tool_event(json!({"type":"exec_command_end","call_id":"exec-a","exit_code":0,"aggregated_output":"runtime representation"})),
+        tool_response(json!({"type":"function_call_output","call_id":"exec-a","output":output})),
+    ]);
+    let detail = fixture.store().detail("codex", "approved-tools").unwrap();
+    assert_eq!(detail.messages.len(), 4);
+    assert_eq!(detail.messages[1].tool.as_ref().unwrap().status, SessionToolStatus::PendingApproval);
+    assert_eq!(detail.messages[2].tool.as_ref().unwrap().status, SessionToolStatus::Approved);
+    assert_eq!(detail.messages[3].content, output);
+    for index in [0, 3] {
+        let tool = detail.messages[index].tool.as_ref().unwrap();
+        assert_eq!(tool.status, SessionToolStatus::Succeeded);
+        assert_eq!(tool.name.as_deref(), Some("functions.exec_command"));
+    }
+}
+
+#[test]
+fn denied_tools_and_empty_outputs_remain_visible_without_execution_success() {
+    let fixture = Fixture::new();
+    fixture.codex("denied-tools", vec![
+        tool_response(json!({"type":"custom_tool_call","call_id":"denied-a","name":"custom","input":"local task"})),
+        tool_event(json!({"type":"apply_patch_approval_request","call_id":"denied-a","reason":"Confirm change"})),
+        tool_event(json!({"type":"apply_patch_approval_response","call_id":"denied-a","decision":"denied"})),
+        tool_response(json!({"type":"custom_tool_call","call_id":"empty-a","name":"custom","input":"empty output"})),
+        tool_response(json!({"type":"custom_tool_call_output","call_id":"empty-a","output":""})),
+    ]);
+    let detail = fixture.store().detail("codex", "denied-tools").unwrap();
+    assert_eq!(detail.messages.len(), 5);
+    assert_eq!(detail.messages[0].tool.as_ref().unwrap().status, SessionToolStatus::Denied);
+    assert_eq!(detail.messages[4].content, "");
+    assert_eq!(detail.messages[4].tool.as_ref().unwrap().status, SessionToolStatus::ResultReceived);
+    assert!(!detail.messages.iter().any(|message| message.tool.as_ref().is_some_and(|tool| tool.status == SessionToolStatus::Succeeded)));
+}
+
+#[test]
+fn mcp_runtime_errors_are_evidence_but_arbitrary_result_json_is_not() {
+    let fixture = Fixture::new();
+    fixture.codex("mcp-tools", vec![
+        tool_response(json!({"type":"function_call","call_id":"mcp-a","name":"mcp__local__check","arguments":"{}"})),
+        tool_event(json!({"type":"mcp_tool_call_begin","call_id":"mcp-a","invocation":{"server":"local","tool":"check","arguments":{}}})),
+        tool_event(json!({"type":"mcp_tool_call_end","call_id":"mcp-a","invocation":{"server":"local","tool":"check"},"result":{"Ok":{"content":[{"type":"text","text":"failed"}],"isError":true}}})),
+        tool_response(json!({"type":"function_call_output","call_id":"mcp-a","output":"{\"ok\":true}"})),
+        tool_event(json!({"type":"mcp_tool_call_end","call_id":"mcp-b","result":{"Err":"transport failure"}})),
+        tool_event(json!({"type":"mcp_tool_call_end","call_id":"mcp-c","result":{"Ok":{"content":[{"type":"text","text":"done"}]}}})),
+    ]);
+    let detail = fixture.store().detail("codex", "mcp-tools").unwrap();
+    assert_eq!(detail.messages.len(), 4);
+    assert_eq!(detail.messages[1].content, "{\"ok\":true}");
+    for message in &detail.messages[..3] {
+        assert_eq!(message.tool.as_ref().unwrap().status, SessionToolStatus::Failed);
+    }
+    assert_eq!(detail.messages[3].tool.as_ref().unwrap().status, SessionToolStatus::ResultReceived);
+}
+
+#[test]
+fn identical_actual_tool_calls_survive_primary_and_runtime_occurrence_deduplication() {
+    let fixture = Fixture::new();
+    let mut events = Vec::new();
+    for id in ["repeat-a", "repeat-b", "repeat-a"] {
+        events.push(tool_response(json!({"type":"function_call","call_id":id,"name":"exec_command","arguments":"{}"})));
+        events.push(tool_event(json!({"type":"exec_command_begin","call_id":id,"command":[]})));
+        events.push(tool_event(json!({"type":"exec_command_end","call_id":id,"exit_code":1,"aggregated_output":"done"})));
+        events.push(tool_response(json!({"type":"function_call_output","call_id":id,"output":"done"})));
+    }
+    fixture.codex("repeat-tools", events);
+    let detail = fixture.store().detail("codex", "repeat-tools").unwrap();
+    assert_eq!(detail.messages.len(), 6);
+    assert_eq!(detail.messages.iter().filter(|message| message.tool.as_ref().unwrap().event_kind == SessionToolKind::Call).count(), 3);
+    assert_eq!(detail.messages.iter().filter(|message| message.tool.as_ref().unwrap().event_kind == SessionToolKind::Result).count(), 3);
+    assert!(detail.messages.iter().all(|message| message.tool.as_ref().unwrap().status == SessionToolStatus::Failed));
+}
+
+#[test]
+fn claude_mixed_text_calls_and_results_have_separate_ids_and_explicit_outcomes() {
+    let fixture = Fixture::new();
+    let records = [
+        json!({"type":"assistant","sessionId":"claude-trace","message":{"role":"assistant","content":[
+            {"type":"text","text":"Before"},{"type":"tool_use","id":"claude-a","name":"read_file","input":{"path":"local.txt"}},{"type":"text","text":"After"}
+        ]}}),
+        json!({"type":"user","sessionId":"claude-trace","message":{"role":"user","content":[
+            {"type":"tool_result","tool_use_id":"claude-a","content":"{\"value\":1}","is_error":false},{"type":"text","text":"Continue"}
+        ]}}),
+    ];
+    fixture.write(".claude/projects/qa/claude-trace.jsonl", records.iter().map(|record| record.to_string()+"\n").collect::<String>());
+    let detail = fixture.store().detail("claude", "claude-trace").unwrap();
+    assert_eq!(detail.messages.len(), 5);
+    assert_eq!(detail.messages[0].content, "Before");
+    assert!(detail.messages[0].tool.is_none());
+    assert_eq!(detail.messages[2].content, "After");
+    assert_eq!(detail.messages[3].content, "{\"value\":1}");
+    assert_eq!(detail.messages[3].role, "tool");
+    for index in [1, 3] {
+        let tool = detail.messages[index].tool.as_ref().unwrap();
+        assert_eq!(tool.call_id.as_deref(), Some("claude-a"));
+        assert_eq!(tool.name.as_deref(), Some("read_file"));
+        assert_eq!(tool.status, SessionToolStatus::Succeeded);
+    }
+    assert_eq!(fixture.store().catalog().unwrap().sessions[0].title.as_deref(), Some("Continue"));
+}
+
+#[test]
+fn reused_tool_ids_keep_each_name_outcome_and_partial_runtime_evidence_separate() {
+    let fixture = Fixture::new();
+    fixture.codex("reused-outcomes", vec![
+        tool_response(json!({"type":"function_call","call_id":"reused","name":"first","arguments":"{}"})),
+        tool_event(json!({"type":"exec_command_begin","call_id":"reused","command":[]})),
+        tool_event(json!({"type":"exec_command_end","call_id":"reused","exit_code":1,"aggregated_output":"runtime first"})),
+        tool_response(json!({"type":"function_call_output","call_id":"reused","output":"first result"})),
+        tool_response(json!({"type":"function_call","call_id":"reused","name":"second","arguments":"{}"})),
+        tool_response(json!({"type":"function_call_output","call_id":"reused","output":"second result"})),
+        tool_response(json!({"type":"function_call","call_id":"reused","name":"third","arguments":"{}"})),
+        tool_event(json!({"type":"exec_command_begin","call_id":"reused","command":[]})),
+        tool_response(json!({"type":"function_call_output","call_id":"reused","output":"third result"})),
+        tool_event(json!({"type":"exec_command_end","call_id":"reused","exit_code":0,"aggregated_output":"runtime third"})),
+    ]);
+    let detail = fixture.store().detail("codex", "reused-outcomes").unwrap();
+    assert_eq!(detail.messages.len(), 6);
+    for (pair, name, outcome) in [
+        (0, "first", SessionToolStatus::Failed),
+        (2, "second", SessionToolStatus::ResultReceived),
+        (4, "third", SessionToolStatus::Succeeded),
+    ] {
+        for message in &detail.messages[pair..pair + 2] {
+            let tool = message.tool.as_ref().unwrap();
+            assert_eq!(tool.name.as_deref(), Some(name));
+            assert_eq!(tool.status, outcome);
+        }
+        assert_eq!(detail.messages[pair + 1].content, format!("{name} result"));
+    }
+}
+
+#[test]
+fn multiple_results_share_a_call_without_sharing_unrelated_outcome_evidence() {
+    let fixture = Fixture::new();
+    fixture.codex("multiple-results", vec![
+        tool_response(json!({"type":"function_call","call_id":"multiple","name":"check","arguments":"{}"})),
+        tool_event(json!({"type":"exec_command_begin","call_id":"multiple","command":[]})),
+        tool_event(json!({"type":"exec_command_end","call_id":"multiple","exit_code":1,"aggregated_output":"runtime output"})),
+        tool_response(json!({"type":"function_call_output","call_id":"multiple","output":"first output"})),
+        tool_response(json!({"type":"function_call_output","call_id":"multiple","output":"{\"ok\":true}"})),
+    ]);
+    let detail = fixture.store().detail("codex", "multiple-results").unwrap();
+    assert_eq!(detail.messages.len(), 3);
+    assert_eq!(detail.messages[0].tool.as_ref().unwrap().status, SessionToolStatus::Failed);
+    assert_eq!(detail.messages[1].tool.as_ref().unwrap().status, SessionToolStatus::Failed);
+    assert_eq!(detail.messages[2].tool.as_ref().unwrap().status, SessionToolStatus::ResultReceived);
+    assert_eq!(detail.messages[2].content, "{\"ok\":true}");
+}
+
+#[test]
+fn hosted_mcp_discovery_approvals_and_explicit_errors_keep_distinct_identifiers() {
+    let fixture = Fixture::new();
+    fixture.codex("hosted-mcp", vec![
+        tool_response(json!({"type":"mcp_list_tools","id":"discovery","status":"completed","tools":[{"name":"lookup"}]})),
+        tool_response(json!({"type":"mcp_approval_request","id":"approval-a","name":"lookup","arguments":"{}"})),
+        tool_response(json!({"type":"mcp_approval_response","id":"response-a","approval_request_id":"approval-a","approve":true})),
+        tool_response(json!({"type":"mcp_call","id":"hosted-a","approval_request_id":"approval-a","name":"lookup","arguments":"{}","status":"completed","output":"exact hosted result"})),
+        tool_response(json!({"type":"mcp_call","id":"failed-a","name":"lookup","arguments":"{}","status":"completed","error":{"message":"recorded error"}})),
+        tool_response(json!({"type":"mcp_call","id":"failed-without-output","name":"lookup","status":"failed"})),
+        tool_response(json!({"type":"mcp_approval_request","id":"orphan","name":"lookup","arguments":"{}"})),
+        tool_response(json!({"type":"mcp_approval_response","approval_request_id":"orphan","approve":false})),
+    ]);
+    let detail = fixture.store().detail("codex", "hosted-mcp").unwrap();
+    assert_eq!(detail.messages.len(), 10);
+    assert_eq!(detail.messages[0].tool.as_ref().unwrap().status, SessionToolStatus::Completed);
+    for index in [1, 2, 3, 4] {
+        let tool = detail.messages[index].tool.as_ref().unwrap();
+        assert_eq!(tool.call_id.as_deref(), Some("hosted-a"));
+        assert_eq!(tool.approval_request_id.as_deref(), Some("approval-a"));
+        assert_eq!(tool.name.as_deref(), Some("lookup"));
+    }
+    assert_eq!(detail.messages[1].tool.as_ref().unwrap().status, SessionToolStatus::PendingApproval);
+    assert_eq!(detail.messages[2].tool.as_ref().unwrap().status, SessionToolStatus::Approved);
+    assert_eq!(detail.messages[4].content, "exact hosted result");
+    for message in &detail.messages[5..8] {
+        assert_eq!(message.tool.as_ref().unwrap().status, SessionToolStatus::Failed);
+    }
+    for message in &detail.messages[8..] {
+        let tool = message.tool.as_ref().unwrap();
+        assert_eq!(tool.call_id, None);
+        assert_eq!(tool.approval_request_id.as_deref(), Some("orphan"));
+    }
+    assert_eq!(detail.messages[9].tool.as_ref().unwrap().status, SessionToolStatus::Denied);
+}
+
+#[test]
+fn ambiguous_hosted_approval_references_do_not_invent_a_call_association() {
+    let fixture = Fixture::new();
+    fixture.codex("ambiguous-approval", vec![
+        tool_response(json!({"type":"mcp_approval_request","id":"shared","name":"lookup","arguments":"{}"})),
+        tool_response(json!({"type":"mcp_call","id":"first","approval_request_id":"shared","name":"lookup"})),
+        tool_response(json!({"type":"mcp_call","id":"second","approval_request_id":"shared","name":"lookup"})),
+        tool_event(json!({"type":"mcp_tool_call_end","call_id":"explicit-error","result":{"Ok":{"status":"completed","isError":true,"content":[{"type":"text","text":"recorded failure"}]}}})),
+    ]);
+    let detail = fixture.store().detail("codex", "ambiguous-approval").unwrap();
+    assert_eq!(detail.messages.len(), 4);
+    assert_eq!(detail.messages[0].tool.as_ref().unwrap().call_id, None);
+    assert_eq!(detail.messages[3].tool.as_ref().unwrap().status, SessionToolStatus::Failed);
+}
+
+#[test]
+fn gemini_tool_ids_use_recorded_status_and_keep_missing_outcome_unknown() {
+    let fixture = Fixture::new();
+    fixture.write(".gemini/tmp/qa/chats/session-trace.json", json!({"sessionId":"gemini-trace","messages":[
+        {"type":"gemini","toolCalls":[
+            {"id":"gemini-a","name":"check","args":{},"result":{"ok":true}},
+            {"id":"gemini-b","name":"check","args":{},"status":"error","result":"failed"}
+        ]}
+    ]}).to_string());
+    let detail = fixture.store().detail("gemini", "gemini-trace").unwrap();
+    assert_eq!(detail.messages.len(), 4);
+    assert_eq!(detail.messages[1].content, "{\"ok\":true}");
+    assert_eq!(detail.messages[0].tool.as_ref().unwrap().status, SessionToolStatus::ResultReceived);
+    assert_eq!(detail.messages[2].tool.as_ref().unwrap().status, SessionToolStatus::Failed);
+    assert_eq!(detail.messages[3].tool.as_ref().unwrap().call_id.as_deref(), Some("gemini-b"));
+}
+
+#[test]
+fn tool_metadata_limits_do_not_create_truncated_id_associations() {
+    let fixture = Fixture::new();
+    let excessive = "x".repeat(513);
+    fixture.codex("bounded-tool-ids", vec![
+        tool_response(json!({"type":"function_call","call_id":excessive,"name":"n".repeat(257),"arguments":"{}"})),
+        tool_response(json!({"type":"function_call_output","call_id":"x".repeat(513),"output":"ok"})),
+    ]);
+    let detail = fixture.store().detail("codex", "bounded-tool-ids").unwrap();
+    assert_eq!(detail.messages.len(), 2);
+    assert!(detail.messages.iter().all(|message| message.tool.as_ref().unwrap().call_id.is_none()));
+    assert!(detail.messages[0].tool.as_ref().unwrap().name.is_none());
+    assert_eq!(detail.messages[0].tool.as_ref().unwrap().status, SessionToolStatus::Requested);
+    assert!(!detail.warnings.is_empty());
+}
+
+#[test]
+fn tool_metadata_and_associated_names_count_toward_display_and_message_budgets() {
+    let first = tool_response(json!({"type":"function_call_output","call_id":"a".repeat(512),"name":"n".repeat(256),"output":"x".repeat(MAX_MESSAGE_BYTES / 2 - 100)}));
+    let second = tool_response(json!({"type":"function_call_output","call_id":"b".repeat(512),"name":"n".repeat(256),"output":"x".repeat(MAX_MESSAGE_BYTES / 2 - 100)}));
+    let raw = log("tool-byte-budget", vec![first, second]);
+    let detail = parsers::parse(Client::Codex, Path::new("rollout-date-tool-byte-budget.jsonl"), raw.as_bytes(), false, true).unwrap().detail;
+    assert_eq!(detail.messages.len(), 1);
+    assert!(!detail.warnings.is_empty());
+    let bytes = detail.messages.iter().map(|message| message.content.len() + serde_json::to_string(message.tool.as_ref().unwrap()).unwrap().len()).sum::<usize>();
+    assert!(bytes <= MAX_MESSAGE_BYTES);
+    let raw = log("tool-count-budget", (0..=MAX_MESSAGES).map(|index| tool_response(json!({"type":"function_call_output","call_id":format!("call-{index}"),"output":""}))).collect());
+    let detail = parsers::parse(Client::Codex, Path::new("rollout-date-tool-count-budget.jsonl"), raw.as_bytes(), false, true).unwrap().detail;
+    assert_eq!(detail.messages.len(), MAX_MESSAGES);
+    assert!(!detail.warnings.is_empty());
+    let legacy: SessionMessage = serde_json::from_value(json!({"role":"tool","content":"old result"})).unwrap();
+    assert!(legacy.tool.is_none());
+}
+
+#[test]
+#[ignore = "reads previously saved native acceptance logs; makes no network or model calls"]
+fn saved_native_acceptance_tool_history_reads_back_without_new_api_requests() {
+    let root = PathBuf::from(std::env::var("XY_SWITCH_SESSION_ACCEPTANCE_ROOT").expect("saved acceptance root is required"));
+    for mode in ["chat", "responses"] {
+        let home = root.join(mode).join("home").canonicalize().unwrap();
+        let store = SessionStore::new(&home, &home.join(".codex")).unwrap();
+        let catalog = store.catalog().unwrap();
+        assert_eq!(catalog.sessions.len(), 1);
+        let session = &catalog.sessions[0];
+        let detail = store.detail("codex", &session.session_id).unwrap();
+        assert!(detail.warnings.is_empty());
+        let transcript = fs::read_to_string(session.source_path.as_ref().unwrap()).unwrap();
+        let mut calls = 0;
+        let mut searches = 0;
+        let mut results = 0;
+        for line in transcript.lines() {
+            let value: Value = serde_json::from_str(line).unwrap();
+            if value["type"] != "response_item" { continue; }
+            let payload = &value["payload"];
+            if payload["type"] == "tool_search_call" { searches += 1; }
+            if payload["type"] == "function_call" { calls += 1; }
+            if payload["type"] != "function_call_output" { continue; }
+            results += 1;
+            let matching = detail.messages.iter().filter(|message| message.tool.as_ref().is_some_and(|tool| tool.event_kind == SessionToolKind::Result && tool.call_id.as_deref() == payload["call_id"].as_str())).collect::<Vec<_>>();
+            assert_eq!(matching.len(), 1);
+            let expected = match &payload["output"] {
+                Value::String(output) => output.clone(),
+                Value::Array(blocks) => blocks.iter().map(|block| block["text"].as_str().unwrap()).collect::<Vec<_>>().join("\n"),
+                _ => panic!("unexpected saved native result representation"),
+            };
+            assert!(matching[0].content == expected);
+            assert!(matching[0].tool.as_ref().unwrap().name.is_some());
+            assert!(matching[0].tool.as_ref().unwrap().status == SessionToolStatus::ResultReceived);
+        }
+        assert!(calls >= 2 && results == calls);
+        assert_eq!(detail.messages.iter().filter(|message| message.tool.as_ref().is_some_and(|tool| tool.event_kind == SessionToolKind::Search)).count(), searches);
+        eprintln!("saved native {mode}: searches={searches}, calls={calls}, exact results={results}");
+    }
+}
+
 #[test]
 fn empty_installation_is_empty_without_production_fallback() {
     let f = Fixture::new();

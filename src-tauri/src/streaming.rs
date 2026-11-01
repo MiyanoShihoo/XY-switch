@@ -734,6 +734,7 @@ pub(crate) mod audit_capture {
         model: String,
         persisted: bool,
         eof: bool,
+        transport_error: bool,
         shadow: Option<ShadowCapture>,
     }
 
@@ -743,12 +744,22 @@ pub(crate) mod audit_capture {
                 return;
             }
             self.persisted = true;
+            let client_cancelled = !self.eof && !self.transport_error && !self.collector.invalid;
+            self.collector.complete(true);
+            let terminal_complete = self.collector.observation.complete && self.buffer.is_empty();
             self.collector
-                .finish_stream(self.eof && self.buffer.is_empty());
+                .finish_stream((self.eof || terminal_complete) && self.buffer.is_empty());
             self.collector
                 .publish_shadow(&self.database, self.event_id, self.shadow.take());
             let usage = self.collector.request_usage(&self.model);
             if let Some(id) = self.event_id {
+                if !self.collector.observation.complete {
+                    let (stage, code) = if client_cancelled { ("client_response", "stream_cancelled") }
+                        else { ("response_stream", "stream_interrupted") };
+                    if let Err(error) = self.database.mark_request_failed(id, stage, code, !client_cancelled) {
+                        tracing::warn!(%error, event_id=id, "failed to record stream failure");
+                    }
+                }
                 if let Err(error) = self.database.update_request_usage(id, &usage) {
                     eprintln!("failed to persist stream audit for event {id}: {error}");
                 }
@@ -810,6 +821,7 @@ pub(crate) mod audit_capture {
             model,
             persisted: false,
             eof: false,
+            transport_error: false,
             shadow,
         };
         stream::unfold(state, |mut state| async move {
@@ -823,7 +835,11 @@ pub(crate) mod audit_capture {
                     Some((Ok(bytes), state))
                 }
                 Some(Err(error)) => {
-                    state.collector.invalid = true;
+                    state.transport_error = true;
+                    state.collector.complete(true);
+                    if !state.collector.observation.complete || !state.buffer.is_empty() {
+                        state.collector.invalid = true;
+                    }
                     state.persist();
                     Some((Err(error), state))
                 }

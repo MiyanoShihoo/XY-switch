@@ -10,6 +10,7 @@ import type { DateRange, UsageFilter, UsageLogEntry, UsageTrendPoint } from "../
 import { ModelPricingModal } from "./ModelPricingModal";
 import { ModelAuditCell } from "./ModelAuditCell";
 import { ResponseModelEvidence } from "./ResponseModelEvidence";
+import { forwardingStatusLabel, RequestDiagnosticsPanel } from "./RequestDiagnosticsPanel";
 import { formatTokens, formatUsd, lastUsagePage, normalizeUsageFilter } from "./usage-format";
 import "./usage.css";
 
@@ -19,7 +20,7 @@ const clients = [["claude", "Claude Code"], ["codex", "Codex"], ["deepseek_harne
 
 const isSessionRow = (row: UsageLogEntry) => row.source === "harness_session" || row.source === "codex_session" || row.providerId.startsWith("local:");
 const durationLabel = (value: number) => value > 0 ? Math.round(value).toLocaleString(localeTag()) + " ms" : "—";
-const statusLabel = (row: UsageLogEntry) => isSessionRow(row) ? (row.statusCode === 200 ? t("已完成") : t("中断 / 失败")) : (row.statusCode ? String(row.statusCode) + (row.success === false ? t(" · 未完成") : "") : t("未取得 HTTP"));
+const statusLabel = (row: UsageLogEntry) => isSessionRow(row) ? (row.statusCode === 200 ? t("已完成") : t("中断 / 失败")) : forwardingStatusLabel(row);
 
 export function UsagePage({ providers }: { providers: Provider[] }) {
   useLanguage();
@@ -51,7 +52,7 @@ export function UsagePage({ providers }: { providers: Provider[] }) {
   const lastPage = lastUsagePage(data?.summary.totalRequests ?? 0, PAGE_SIZE);
   useEffect(() => { if (data && page > lastPage) setPage(lastPage); }, [data, page, lastPage]);
   useEffect(() => { setPageInput(String(page + 1)); }, [page]);
-  const names = new Map<string, string>([["local:codex", t("Codex · 本地用量")], ["local:deepseek_harness", t("DeepSeek Harness · 本地用量")], ...providers.map(provider => [provider.id, provider.name] as [string, string])]);
+  const names = new Map<string, string>([["", t("未选择供应商")], ["local:codex", t("Codex · 本地用量")], ["local:deepseek_harness", t("DeepSeek Harness · 本地用量")], ...providers.map(provider => [provider.id, provider.name] as [string, string])]);
   const providerIds = [...new Set([...providers.map(p => p.id), ...(data?.providerStats.map(p => p.providerId) ?? []), draft.providerId].filter((id): id is string => Boolean(id)))];
   const models = useMemo(() => [...new Set([...(data?.modelStats.map(item => item.model) ?? []), ...(data?.logs.map(item => item.model) ?? [])])].sort(), [data]);
   const patch = (value: Partial<UsageFilter>) => setDraft(previous => ({ ...previous, ...value }));
@@ -115,8 +116,27 @@ export function UsagePage({ providers }: { providers: Provider[] }) {
     </div>
     <p className="usage-footnote">{t("数据来源包括本地路由，以及只读导入的 Codex、DeepSeek Harness 会话。Harness 支持 v4 JSONL / Zstandard 日志；输入 token 含缓存读取与写入，继承历史不重复计入。会话记录不包含真实 HTTP 状态、时延或账单，未提供的费用显示为未知。今天 / 昨天按系统本地日界线划分。")}</p>
     {pricingOpen && <ModelPricingModal onClose={() => setPricingOpen(false)} />}
-    {selected && <Modal open title={t("请求详情 · 真实响应模型探测")} description={selected.requestId} size="lg" onClose={() => setSelected(null)}><div className="form-stack"><dl className="key-values"><dt>{t("供应商 / 客户端")}</dt><dd>{names.get(selected.providerId) ?? selected.providerId} / {selected.appType}</dd><dt>{isSessionRow(selected) ? t("会话状态 / 耗时") : t("HTTP / 耗时")}</dt><dd>{statusLabel(selected)} / {isSessionRow(selected) ? t("未知") : durationLabel(selected.latencyMs)}</dd><dt>{t("总 token / 推理 token")}</dt><dd>{formatTokens(selected.totalTokens ?? selected.inputTokens + selected.outputTokens)} / {selected.reasoningTokens == null ? "—" : formatTokens(selected.reasoningTokens)}</dd><dt>{t("成本倍率")}</dt><dd>{selected.costMultiplier ? selected.costMultiplier + "×" : "—"}</dd><dt>{t("输入 / 输出费用")}</dt><dd>{formatUsd(selected.inputCostUsd)} / {formatUsd(selected.outputCostUsd)}</dd><dt>{t("缓存读取 / 写入费用")}</dt><dd>{formatUsd(selected.cacheReadCostUsd)} / {formatUsd(selected.cacheCreationCostUsd)}</dd><dt>{t("总费用")}</dt><dd>{formatUsd(selected.totalCostUsd)}</dd></dl>{selected.errorMessage && <InlineError message={selected.errorMessage} />}<ResponseModelEvidence key={"identity-" + selected.requestId} audit={selected.audit} local={isSessionRow(selected)} />{!isSessionRow(selected) && <ModelAuditCell key={selected.requestId} audit={selected.audit} legacyModel={selected.model} />}</div></Modal>}
+    {selected && <Modal open title={t("请求详情 · 真实响应模型探测")} description={selected.requestId} size="lg" onClose={() => setSelected(null)}><UsageRequestDetails row={selected} providerName={names.get(selected.providerId) ?? selected.providerId} /></Modal>}
   </section>;
+}
+
+export function UsageRequestDetails({ row, providerName }: { row: UsageLogEntry; providerName: string }) {
+  useLanguage();
+  return <div className="form-stack">
+    <dl className="key-values">
+      <dt>{t("供应商 / 客户端")}</dt><dd>{providerName} / {row.appType}</dd>
+      <dt>{isSessionRow(row) ? t("会话状态 / 耗时") : t("HTTP / 耗时")}</dt><dd>{statusLabel(row)} / {isSessionRow(row) ? t("未知") : durationLabel(row.latencyMs)}</dd>
+      <dt>{t("总 token / 推理 token")}</dt><dd>{formatTokens(row.totalTokens ?? row.inputTokens + row.outputTokens)} / {row.reasoningTokens == null ? "—" : formatTokens(row.reasoningTokens)}</dd>
+      <dt>{t("成本倍率")}</dt><dd>{row.costMultiplier ? row.costMultiplier + "×" : "—"}</dd>
+      <dt>{t("输入 / 输出费用")}</dt><dd>{formatUsd(row.inputCostUsd)} / {formatUsd(row.outputCostUsd)}</dd>
+      <dt>{t("缓存读取 / 写入费用")}</dt><dd>{formatUsd(row.cacheReadCostUsd)} / {formatUsd(row.cacheCreationCostUsd)}</dd>
+      <dt>{t("总费用")}</dt><dd>{formatUsd(row.totalCostUsd)}</dd>
+    </dl>
+    {row.errorMessage && !row.diagnostics && <InlineError message={row.errorMessage} />}
+    {!isSessionRow(row) && <RequestDiagnosticsPanel diagnostics={row.diagnostics} errorCode={row.errorMessage} />}
+    <ResponseModelEvidence key={"identity-" + row.requestId} audit={row.audit} local={isSessionRow(row)} />
+    {!isSessionRow(row) && <ModelAuditCell key={row.requestId} audit={row.audit} legacyModel={row.model} />}
+  </div>;
 }
 
 function UsageTrend({ points }: { points: UsageTrendPoint[] }) {
