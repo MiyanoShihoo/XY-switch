@@ -4,10 +4,10 @@
 .xy-shell-brand-mark { display: grid; place-items: center; width: 38px; height: 38px; border: 1px solid var(--xy-ds-nav-border); border-radius: 12px; color: var(--xy-ds-nav-accent); background: var(--xy-ds-nav-active); flex-shrink: 0; }
 .xy-shell-brand strong { display: block; font-size: 17px; letter-spacing: -.4px; font-weight: 650; white-space: nowrap; }
 .xy-shell-brand > div > span { display: block; margin-top: 2px; font-size: 12px; color: var(--xy-ds-nav-muted); }
-.xy-shell-nav { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 12px 16px; }
+.xy-shell-nav { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 12px 16px; scroll-padding: 6px; }
 .xy-shell-nav-group { margin-bottom: 24px; }
 .xy-shell-section-label { padding: 0 12px 8px; font-size: 12px; color: var(--xy-ds-nav-muted); }
-.xy-shell-nav-item { display: flex; align-items: center; gap: 12px; min-height: 44px; width: 100%; padding: 10px 12px; margin-bottom: 4px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--xy-ds-nav-muted); text-align: left; transition: background var(--xy-ds-duration-fast), color var(--xy-ds-duration-fast); }
+.xy-shell-nav-item { display: flex; align-items: center; gap: 12px; min-height: 44px; width: 100%; padding: 10px 12px; margin-bottom: 4px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--xy-ds-nav-muted); text-align: left; scroll-margin: 4px; transition: background var(--xy-ds-duration-fast), color var(--xy-ds-duration-fast); }
 .xy-shell-nav-item:hover { background: var(--xy-ds-nav-active); color: var(--xy-ds-nav-text); }
 .xy-shell-nav-item[data-active="true"] { background: var(--xy-ds-nav-active); color: var(--xy-ds-nav-accent); box-shadow: inset 3px 0 0 var(--xy-ds-nav-accent); }
 .xy-shell-nav-item:focus-visible { outline-color: var(--xy-ds-nav-accent); }

@@ -9,7 +9,7 @@ assert(['127.0.0.1', 'localhost', '[::1]'].includes(new URL(base).hostname), 'Us
 const output = resolve(process.env.QA_OUTPUT ?? 'artifacts/workspace-navigation-qa');
 await mkdir(output, { recursive: true });
 const c = await connect(undefined, { fresh: true });
-const reports = [], screenshots = [], contrasts = [], layouts = [];
+const reports = [], screenshots = [], contrasts = [], layouts = [], navigationVisibility = [];
 let fixtureId;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const fixture = script => c.evaluate('(()=>{const q=window.__XY_QA__;' + script + '})()');
@@ -31,6 +31,13 @@ function localNetwork() {
 async function noOverflow() {
   const metrics = await c.evaluate('({width:innerWidth,root:document.documentElement.scrollWidth,body:document.body.scrollWidth,main:document.querySelector(".xy-shell-main")?.scrollWidth,mainClient:document.querySelector(".xy-shell-main")?.clientWidth})');
   assert(metrics.root <= metrics.width && metrics.body <= metrics.width && metrics.main <= metrics.mainClient, JSON.stringify(metrics));
+}
+async function visibleNavigation(focused = false) {
+  const metrics = await c.evaluate('(()=>{const nav=document.querySelector(".xy-shell-nav"),item=' + (focused ? 'document.activeElement' : 'nav.querySelector("[aria-current=page]")') + ';if(!item||!nav.contains(item))throw new Error("Missing navigation target");const bounds=nav.getBoundingClientRect(),target=item.getBoundingClientRect(),style=getComputedStyle(item),ring=' + (focused ? 'parseFloat(style.outlineWidth)+Math.max(0,parseFloat(style.outlineOffset))' : '0') + ';return {viewport:innerWidth,language:document.documentElement.lang,theme:document.documentElement.dataset.theme,view:item.dataset.view,focused:' + JSON.stringify(focused) + ',outlineStyle:style.outlineStyle,ring,left:target.left-ring,right:target.right+ring,top:target.top-ring,bottom:target.bottom+ring,navLeft:bounds.left+nav.clientLeft,navRight:bounds.left+nav.clientLeft+nav.clientWidth,navTop:bounds.top+nav.clientTop,navBottom:bounds.top+nav.clientTop+nav.clientHeight};})()');
+  navigationVisibility.push(metrics);
+  assert(metrics.left >= metrics.navLeft - 1 && metrics.right <= metrics.navRight + 1 && metrics.top >= metrics.navTop - 1 && metrics.bottom <= metrics.navBottom + 1,
+    'Navigation target and focus ring must stay inside its scroll viewport: ' + JSON.stringify(metrics));
+  if (focused) assert(metrics.outlineStyle === 'solid' && metrics.ring >= 2, 'Keyboard focus must have a visible outline: ' + JSON.stringify(metrics));
 }
 async function fullWidthProviders() {
   const metrics = await c.evaluate('(()=>{const page=document.querySelector(".providers-page"),list=document.querySelector(".provider-workspace"),style=getComputedStyle(page),pageRect=page.getBoundingClientRect(),listRect=list.getBoundingClientRect();const left=pageRect.left+page.clientLeft+parseFloat(style.paddingLeft),width=page.clientWidth-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight);return {viewport:innerWidth,contentLeft:left,contentRight:left+width,contentWidth:width,listLeft:listRect.left,listRight:listRect.right,listWidth:listRect.width};})()');
@@ -192,7 +199,7 @@ try {
     for (const [width, height] of [[1440, 900], [820, 700], [480, 720]]) {
       for (const language of ['zh-CN', 'en']) for (const theme of ['light', 'dark']) {
         for (const [page, hash] of [['providers', ''], ['configuration', '#providers/qa-p2/configuration'], ['diagnostics', '#diagnostics/qa-p2']]) {
-          await reset({ width, height, language, theme, hash }); await noOverflow(); await noAutomaticRequests();
+          await reset({ width, height, language, theme, hash }); await noOverflow(); await noAutomaticRequests(); await visibleNavigation();
           if (page === 'providers') await fullWidthProviders();
           assert.equal(await c.evaluate('Boolean(document.querySelector(".provider-inspector,[role=separator],[role=dialog]"))'), false);
           if (language === 'en') {
@@ -208,9 +215,31 @@ try {
     assert.equal(await c.evaluate('getComputedStyle(document.querySelector(".xy-shell-nav-item")).transitionDuration'), '0s');
     await c.call('Emulation.setEmulatedMedia', { features: [] });
   });
+  await run('compact-navigation-focus', async () => {
+    const views = ['providers', 'mcp', 'prompts', 'skills', 'diagnostics', 'sessions', 'usage', 'governance', 'settings'];
+    for (const language of ['zh-CN', 'en']) for (const theme of ['light', 'dark']) {
+      await reset({ width: 480, height: 720, language, theme, hash: '#diagnostics/qa-p2' });
+      await visibleNavigation();
+      await c.viewport(820, 700); await pause(140); await visibleNavigation();
+      await c.viewport(480, 720); await pause(140); await visibleNavigation();
+      await c.evaluate('document.querySelector(".xy-shell-skip").focus()');
+      for (const view of views) {
+        await c.key('Tab');
+        assert.equal(await c.evaluate('document.activeElement.dataset.view'), view, 'Tab follows the complete navigation order');
+        await visibleNavigation(true);
+        if (view === 'diagnostics') await screenshot('navigation-focus-480-' + language + '-' + theme);
+      }
+      for (const view of views.slice(0, -1).reverse()) {
+        await c.key('Tab', 8);
+        assert.equal(await c.evaluate('document.activeElement.dataset.view'), view, 'Shift+Tab reverses the complete navigation order');
+        await visibleNavigation(true);
+      }
+      await noAutomaticRequests(); await noOverflow();
+    }
+  });
   localNetwork();
   await writeFile(join(output, 'acceptance.json'), JSON.stringify({ passed: true, scope: 'Isolated renderer with synthetic IPC; not packaged native acceptance', reports, screenshots,
-    contrasts, layouts, networkOrigins: [...new Set(c.networkRequests.map(value => new URL(value).origin))], exceptionCount: c.exceptions.length,
+    contrasts, layouts, navigationVisibility, networkOrigins: [...new Set(c.networkRequests.map(value => new URL(value).origin))], exceptionCount: c.exceptions.length,
     packagedApplicationExecuted: false, realProviderRequests: false }, null, 2));
   console.log(JSON.stringify({ passed: reports.length, output }));
 } finally {

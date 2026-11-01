@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { useLanguage, t } from "../i18n/language";
 import { Activity, BookOpen, Box, Cable, Network, Settings, ShieldCheck, Sparkles, WandSparkles } from "lucide-react";
 import type { AppView } from "./AppShell";
@@ -14,11 +15,18 @@ export const navigation = [
   { view: "settings", label: "设置", icon: Settings, section: "管理" },
 ] as const;
 export function SideNav({ activeView, onNavigate, providerCount }: { activeView: AppView; onNavigate: (view: AppView) => void; providerCount: number }) {
-  useLanguage();
+  const language = useLanguage();
+  const navigationRef = useRef<HTMLElement>(null);
   const selected = activeView === "provider-detail" ? "providers" : activeView;
+  useEffect(() => {
+    const revealCurrent = () => navigationRef.current?.querySelector<HTMLElement>('[aria-current="page"]')?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+    revealCurrent();
+    window.addEventListener("resize", revealCurrent);
+    return () => window.removeEventListener("resize", revealCurrent);
+  }, [selected, language]);
   return <aside className="xy-shell-sidebar" aria-label={t("主导航")}>
     <div className="xy-shell-brand"><span className="xy-shell-brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24"><path d="M4 7h14m-4-4 4 4-4 4M20 17H6m4-4-4 4 4 4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg></span><div><strong>XY Switch</strong><span>{t("本地 AI 工作台")}</span></div></div>
-    <nav className="xy-shell-nav">{navigationSections.map(section => <div className="xy-shell-nav-group" key={section}><p className="xy-shell-section-label">{t(section)}</p>{navigation.filter(item => item.section === section).map(item => <button key={item.view} type="button" className="xy-shell-nav-item" data-view={item.view} data-active={selected === item.view} aria-current={selected === item.view ? "page" : undefined} aria-label={t(item.label)} title={t(item.label)} onClick={() => onNavigate(item.view)}><item.icon size={18} strokeWidth={1.7} aria-hidden="true" /><span className="xy-shell-nav-label">{t(item.label)}</span>{item.view === "providers" && <span className="xy-shell-nav-count" aria-hidden="true">{providerCount}</span>}</button>)}</div>)}</nav>
+    <nav ref={navigationRef} className="xy-shell-nav">{navigationSections.map(section => <div className="xy-shell-nav-group" key={section}><p className="xy-shell-section-label">{t(section)}</p>{navigation.filter(item => item.section === section).map(item => <button key={item.view} type="button" className="xy-shell-nav-item" data-view={item.view} data-active={selected === item.view} aria-current={selected === item.view ? "page" : undefined} aria-label={t(item.label)} title={t(item.label)} onClick={() => onNavigate(item.view)}><item.icon size={18} strokeWidth={1.7} aria-hidden="true" /><span className="xy-shell-nav-label">{t(item.label)}</span>{item.view === "providers" && <span className="xy-shell-nav-count" aria-hidden="true">{providerCount}</span>}</button>)}</div>)}</nav>
     <div className="xy-shell-edition"><ShieldCheck size={16} aria-hidden="true" /><div>{t("本地优先")}<span>{t("配置由你掌控")}</span></div></div>
   </aside>;
 }

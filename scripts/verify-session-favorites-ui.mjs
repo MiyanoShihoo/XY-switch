@@ -148,7 +148,13 @@ try {
       assert.equal(await c.evaluate('document.activeElement.classList.contains("session-favorites-filter")'), true);
       await peer.evaluate('localStorage.clear()');
       await c.waitFor('document.querySelectorAll(".session-favorite[aria-pressed=true]").length === 0');
-      assert((await visibleText()).includes('还没有收藏的会话'));
+      const systemLanguage = await c.evaluate('(navigator.languages?.[0] ?? navigator.language).toLowerCase().startsWith("zh") ? "zh-CN" : "en"');
+      await c.waitFor('document.documentElement.lang === ' + JSON.stringify(systemLanguage));
+      const emptyMessage = systemLanguage === 'zh-CN' ? '还没有收藏的会话' : 'No favorite sessions yet';
+      await c.waitFor('document.body.innerText.includes(' + JSON.stringify(emptyMessage) + ')');
+      assert.equal(await c.evaluate(`localStorage.getItem(${JSON.stringify(key)})`), null);
+      assert.deepEqual(await keys(), []);
+      assert.equal(await c.evaluate(`document.querySelector('${favoritesFilter}').getAttribute('aria-pressed')`), 'true');
       assert.equal(peer.exceptions.length, 0);
     } finally { await peer.close(); }
   });
