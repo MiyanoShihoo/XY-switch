@@ -73,7 +73,7 @@
 
 已从 GitHub API 和有权限的任务日志确认：截图红色检查关联 **v1.0.0 标签**的运行 [39224490704](https://github.com/MiyanoShihoo/XY-switch/actions/runs/39224490704)，提交 1f0c8c197b9aab301bb3ac39683c1e5871e2045e。APK 构建和独立验证成功，失败发生在 Android 模拟器 instrumentation 验收，日志为 Android instrumentation did not pass exactly 1 tests。
 
-同一提交更早的 main 运行 [39218844168](https://github.com/MiyanoShihoo/XY-switch/actions/runs/39218844168) 的 6 项检查均成功。因此分支提交上传成功与某次构建检查失败是两件独立的事。当前 codex/e2ee-sync-20261029 的开发工作流执行桌面验收；本轮重新推送和当前版本构建结果将记录在推送验收报告中。
+同一提交更早的 main 运行 [39218844168](https://github.com/MiyanoShihoo/XY-switch/actions/runs/39218844168) 的 6 项检查均成功。因此分支提交上传成功与某次构建检查失败是两件独立的事。当前 codex/e2ee-sync-20261029 的开发工作流执行桌面验收；重新推送后的源码提交 edd2f4db0c37af3107ebf9c9fb6599147fd4592a 已由运行 41339294067 完成六项必要任务并全部成功，详见当前版本构建验收补充。
 
 旧任务日志保存为 artifacts/responses-budget-20261102/old-android-v1.0.0.log，任务元数据为 old-android-v1.0.0-job.json。该日志只给出 instrumentation 数量/结果未满足条件，不能据此断言业务代码、Keystore 或截图的具体错误。
 
@@ -83,10 +83,37 @@
 
 补齐工作流任务清单后，打包回归 76 项通过。验收工具现先等待浏览器处理待执行的布局帧，再滚动目标、等待后续布局并通过 elementFromPoint 确认坐标命中目标或其子元素；缺失、禁用、移除、遮挡及屏幕外目标不能收到指针事件。新增缩放时序及拒绝误点回归后，界面辅助检查共 79 项通过。保留原有真实指针输入和网络隔离要求。
 
-第二次完整运行 [41338197998](https://github.com/MiyanoShihoo/XY-switch/actions/runs/41338197998) 绑定 d8549e69373fe4e19caf96ac51e2a852bc26cc34，前端和网站检查成功，16 项多语言及响应式验收全部通过并保存 84 张截图。会话验收在 cross-window-selection 中等待后台页面的动画帧时超时；点击工具现先激活目标页面再等待布局，新增后台帧暂停和页面激活失败回归，界面辅助检查 81 项通过。修复后的完整验收继续以当前提交的独立运行结果为准。
+第二次完整运行 [41338197998](https://github.com/MiyanoShihoo/XY-switch/actions/runs/41338197998) 绑定 d8549e69373fe4e19caf96ac51e2a852bc26cc34，前端和网站检查成功，16 项多语言及响应式验收全部通过并保存 84 张截图。会话验收在 cross-window-selection 中等待后台页面的动画帧时超时；点击工具现先激活目标页面再等待布局，新增后台帧暂停和页面激活失败回归，界面辅助检查 81 项通过。修复后的源码提交 edd2f4db0c37af3107ebf9c9fb6599147fd4592a 已在第三次完整运行中完成验收，结果如下。
 
 本机已安装 Edge/Chrome 的隔离重放受到安全软件脚本注入，网络检查明确拒绝外部来源，未计为界面验收通过。当前提交的完整界面与桌面构建结果以 GitHub 隔离运行的任务、日志和摘要为准；最终推送及清理回执保存在 artifacts/responses-budget-20261102 中。
 
+### 修复后完整运行
+
+[运行 41339294067](https://github.com/MiyanoShihoo/XY-switch/actions/runs/41339294067) 的最终状态为 completed / success，源码提交为 **edd2f4db0c37af3107ebf9c9fb6599147fd4592a**。
+
+| 必要任务 | 结果 | 证据范围 |
+| --- | --- | --- |
+| renderer-ui | success | navigation 8、workspace 15、i18n 16、sessions 8、governance 11、sync 11 项，六组全部通过，报告绑定相同源码 |
+| website | success | 网站检查通过 |
+| frontend | success | 前端、类型和打包检查通过 |
+| Windows | success | Rust 427 项通过、7 项忽略；安装、启动及卸载步骤通过 |
+| Linux | success | Rust 425 项通过、5 项忽略；Debian 元数据、AppImage 依赖及两种隔离原生启动通过 |
+| macOS | success | Rust 425 项通过、5 项忽略；universal 构建通过 |
+
+native-source 和 native-windows-sync 在完整模式下按工作流条件跳过；六项必要任务均已终结成功。运行及任务终态、六项任务日志、artifact 元数据和 renderer 报告保存于 artifacts/responses-budget-20261102/ci-41339294067-attempt-1。renderer ZIP 的 GitHub artifact SHA256 为 cd3a89f1134f1309a1b885a73d150f05e99191eb56cdce0c4f27c4c6d3dea0f7，下载后核对一致。
+
+最终收尾提交仅更新本验收报告和开发计划，代码验收仍绑定上面的源码提交；纯文档收尾不重新派发完整 CI。安装包的完整升级、配置恢复和插件代表性业务按下一阶段计划分别验收。
+
+## 清理与暂停回执
+
+- 主清单 660 个目录全部删除，4.4293 GiB、41,084 个文件；复扫确认 pnpm 包缓存另有 0.1141 GiB、8,436 个文件，补清成功。
+- 合计 661 个可再生目录、**4.5435 GiB**、49,520 个文件。工作区逻辑大小从 **10.1807 GiB** 降至 **5.6378 GiB**；清理后复扫时间为 2026-11-02T03:35:46.6339589+08:00。
+- 主清理删除前后 55,498 个保留路径的存在状态、长度与摘要、Git 状态及 index 摘要全部一致，10 份对应原始安装包摘要通过。补清目录与这些保留文件没有路径交集，删除后 Git 状态再次一致。最终两份文档的有意更新发生在清理复核完成后。
+- 清理目标均在指定 workspace 内，删除实现遇链接只删除链接本身；共删除 523 个链接，没有跟随链接遍历目标。清理失败 0，清理后 workspace 读取错误 0，另有 2 个链接按扫描规则跳过。
+- 逻辑大小按普通文件长度累计，硬链接可能重复统计，不能解释为精确的磁盘分配或实际释放空间。清理回执、各目录占用和主要文件用途见 [清理报告](../artifacts/responses-budget-20261102/cleanup/cleanup-report.md)。
+
+清理执行日志和 manifest 保存在 artifacts/responses-budget-20261102/cleanup，原始安装包、版本历史、源码、用户暂存修改、截图、真实转发记录和本轮验收证据保留。按用户要求，今天收尾后暂停；明天继续单任务总尝试与费用控制。
+
 ## 下一阶段
 
-本轮完成硬预算协议兼容。后续顺序：单任务总尝试和费用控制；相同源码安装包与插件代表性业务验收。具体计划见 [开发计划](development-plan.md)。
+本轮硬预算协议兼容与交付收尾已完成，按用户要求暂停，明天继续。下一阶段优先单任务总尝试和费用控制，其后进行相同源码安装包与插件代表性业务验收。具体计划见 [开发计划](development-plan.md)。
