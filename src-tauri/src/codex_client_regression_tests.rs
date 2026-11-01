@@ -12,22 +12,27 @@ async fn production_native_responses_preserves_hosted_and_deferred_tools() {
             if item["type"] == "custom_tool_call" {
                 added["input"] = json!("");
             }
-            frames.push(json!({"type":"response.output_item.added","output_index":index,"item":added}));
+            frames.push(
+                json!({"type":"response.output_item.added","output_index":index,"item":added}),
+            );
             if item["type"] == "custom_tool_call" {
                 for delta in ["line\n", "中文"] {
                     frames.push(json!({"type":"response.custom_tool_call_input.delta",
                         "output_index":index,"item_id":item["id"],"delta":delta}));
                 }
             }
-            frames.push(json!({"type":"response.output_item.done","output_index":index,"item":item}));
+            frames
+                .push(json!({"type":"response.output_item.done","output_index":index,"item":item}));
         }
         frames.push(json!({"type":"response.provider_extension","metadata":{"opaque":"保留"}}));
         frames.push(json!({"type":"response.completed","response":response}));
         let mut wire = ": native fixture\r\nretry: 1000\r\n\r\n".to_owned();
         for (sequence, mut event) in frames.into_iter().enumerate() {
             event["sequence_number"] = json!(sequence);
-            wire.push_str(&format!("id: native-{sequence}\r\nevent: {}\r\ndata: {event}\r\n\r\n",
-                event["type"].as_str().unwrap()));
+            wire.push_str(&format!(
+                "id: native-{sequence}\r\nevent: {}\r\ndata: {event}\r\n\r\n",
+                event["type"].as_str().unwrap()
+            ));
         }
         wire
     }
@@ -103,7 +108,10 @@ async fn production_native_responses_preserves_hosted_and_deferred_tools() {
         let status = response.status();
         if stream {
             assert_eq!(response.headers()["x-request-id"], "req-native-passthrough");
-            assert_eq!(response.headers()[header::CONTENT_TYPE], "text/event-stream");
+            assert_eq!(
+                response.headers()[header::CONTENT_TYPE],
+                "text/event-stream"
+            );
         }
         let body = response.text().await.unwrap();
         assert_eq!(status, StatusCode::OK, "{body}");
@@ -127,12 +135,23 @@ async fn production_native_responses_preserves_hosted_and_deferred_tools() {
     assert_eq!(seen.lock().unwrap().len(), 2);
     let connection = database.conn();
     let connection = connection.lock().unwrap();
-    let mut statement = connection.prepare(
-        "SELECT input_tokens,output_tokens,cache_read_tokens FROM request_events ORDER BY id"
-    ).unwrap();
-    let usage = statement.query_map([], |row| Ok((row.get::<_,i64>(0)?,row.get::<_,i64>(1)?,row.get::<_,i64>(2)?)))
-        .unwrap().collect::<Result<Vec<_>,_>>().unwrap();
-    assert_eq!(usage, vec![(20,8,3),(20,8,3)]);
+    let mut statement = connection
+        .prepare(
+            "SELECT input_tokens,output_tokens,cache_read_tokens FROM request_events ORDER BY id",
+        )
+        .unwrap();
+    let usage = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, i64>(2)?,
+            ))
+        })
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(usage, vec![(20, 8, 3), (20, 8, 3)]);
     proxy_task.abort();
     upstream_task.abort();
 }
@@ -141,19 +160,39 @@ async fn production_native_responses_preserves_hosted_and_deferred_tools() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires an installed Codex CLI; uses isolated CODEX_HOME and no cloud API"]
 async fn codex_cli_creates_and_resumes_session_through_chat_bridge() {
-    run_codex_fixture_session(false).await;
+    run_codex_fixture_session(CodexFixtureRoute::ChatBridge).await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires an installed Codex CLI; isolated native Responses loopback fixture"]
 async fn codex_cli_native_responses_creates_and_resumes_session() {
-    run_codex_fixture_session(true).await;
+    run_codex_fixture_session(CodexFixtureRoute::NativeDirect).await;
 }
 
-async fn run_codex_fixture_session(native: bool) {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires an installed Codex CLI; native Responses through the production budget proxy and loopback upstream"]
+async fn codex_cli_native_responses_creates_and_resumes_session_through_budget_proxy() {
+    run_codex_fixture_session(CodexFixtureRoute::NativeBudgetProxy).await;
+}
+
+#[derive(Clone, Copy)]
+enum CodexFixtureRoute {
+    ChatBridge,
+    NativeDirect,
+    NativeBudgetProxy,
+}
+
+async fn run_codex_fixture_session(route: CodexFixtureRoute) {
     use std::sync::Mutex;
-    async fn mock(State(seen): State<Arc<Mutex<Vec<Value>>>>, Json(body): Json<Value>) -> Response {
-        seen.lock().unwrap().push(body.clone());
+    let native = !matches!(route, CodexFixtureRoute::ChatBridge);
+    let hard_budget = matches!(route, CodexFixtureRoute::NativeBudgetProxy);
+    #[derive(Clone)]
+    struct FixtureUpstream {
+        seen: Arc<Mutex<Vec<Value>>>,
+        client_search: bool,
+    }
+    async fn mock(State(state): State<FixtureUpstream>, Json(body): Json<Value>) -> Response {
+        state.seen.lock().unwrap().push(body.clone());
         let messages = body["messages"].as_array().unwrap();
         let has_result = |id: &str| {
             messages
@@ -200,10 +239,10 @@ async fn run_codex_fixture_session(native: bool) {
             .unwrap()
     }
     async fn native_mock(
-        State(seen): State<Arc<Mutex<Vec<Value>>>>,
+        State(state): State<FixtureUpstream>,
         Json(body): Json<Value>,
     ) -> Response {
-        seen.lock().unwrap().push(body.clone());
+        state.seen.lock().unwrap().push(body.clone());
         let input = body["input"].as_array().unwrap();
         let has_result = |id: &str| {
             input.iter().any(|i| {
@@ -214,10 +253,22 @@ async fn run_codex_fixture_session(native: bool) {
                     )
             })
         };
+        let searched = input
+            .iter()
+            .any(|item| item["type"] == "tool_search_output" && item["execution"] == "client");
         let item = if has_result("call_e2e_patch") {
             json!({"type":"message","id":"msg_native","role":"assistant","status":"completed","content":[{"type":"output_text","text":"XY_SWITCH_E2E_OK","annotations":[]}]})
         } else if has_result("call_e2e_goal") {
             json!({"type":"custom_tool_call","id":"ct_native","status":"completed","call_id":"call_e2e_patch","name":"apply_patch","input":"XY_SWITCH_INTENTIONALLY_INVALID_PATCH"})
+        } else if state.client_search && !searched {
+            assert!(
+                body["tools"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|tool| tool["type"] == "tool_search" && tool["execution"] == "client")
+            );
+            json!({"type":"tool_search_call","id":"ts_native","status":"completed","call_id":"call_e2e_search","execution":"client","arguments":{"query":"spawn_agent","limit":1}})
         } else {
             json!({"type":"function_call","id":"fc_native","status":"completed","call_id":"call_e2e_goal","name":"get_goal","arguments":"{}"})
         };
@@ -244,10 +295,20 @@ async fn run_codex_fixture_session(native: bool) {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .unwrap()
-        .join("artifacts/2026-09-21-regression")
+        .join(if hard_budget {
+            "artifacts/responses-budget-20261102"
+        } else {
+            "artifacts/2026-09-21-regression"
+        })
         .join(format!(
             "codex-e2e-{}-{}",
-            if native { "native" } else { "chat" },
+            if hard_budget {
+                "native-budget"
+            } else if native {
+                "native"
+            } else {
+                "chat"
+            },
             uuid::Uuid::new_v4()
         ));
     let home = root.join("home");
@@ -262,7 +323,10 @@ async fn run_codex_fixture_session(native: bool) {
     let seen = Arc::new(Mutex::new(Vec::new()));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
-    let upstream_seen = seen.clone();
+    let upstream_seen = FixtureUpstream {
+        seen: seen.clone(),
+        client_search: hard_budget,
+    };
     let upstream_task = tokio::spawn(async move {
         axum::serve(
             listener,
@@ -274,16 +338,24 @@ async fn run_codex_fixture_session(native: bool) {
         .await
     });
     let mut provider: Provider=serde_json::from_value(json!({"id":"kimi-e2e","name":"Kimi test","appGroup":"Codex","endpoint":format!("http://{addr}/v1"),"model":"kimi-fixture","enabled":true})).unwrap();
-    provider.advanced.upstream_format = "openai_chat".into();
+    provider.advanced.upstream_format = if native {
+        "openai_responses"
+    } else {
+        "openai_chat"
+    }
+    .into();
     database.save_provider(&provider).unwrap();
     database.set_current_provider(&provider.id).unwrap();
+    if hard_budget {
+        crate::governance::test_support::native_budget(&database, &provider.model, 128_000, 512);
+    }
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let proxy_addr = listener.local_addr().unwrap();
     let state = ProxyState {
         database: database.clone(),
         client: crate::network::test_client(),
         api_keys: Arc::new(FakeApiKeyProvider),
-        local_addr: None,
+        local_addr: Some(proxy_addr),
     };
     let proxy_task =
         tokio::spawn(async move { axum::serve(listener, router_with_state(state)).await });
@@ -293,8 +365,7 @@ async fn run_codex_fixture_session(native: bool) {
         home.clone(),
         root.join("data"),
     );
-    if native {
-        provider.advanced.upstream_format = "openai_responses".into();
+    if matches!(route, CodexFixtureRoute::NativeDirect) {
         let base = codex_direct_base_url(&provider).unwrap();
         // Same production config/catalog generators, fixture bearer token instead of OS credentials.
         let config = crate::takeover::managed_codex_config_internal(
@@ -312,6 +383,28 @@ async fn run_codex_fixture_session(native: bool) {
         manager
             .sync_codex_provider(&provider, Some(&format!("http://{proxy_addr}")))
             .unwrap();
+    }
+    if hard_budget {
+        let config = std::fs::read_to_string(codex_home.join("config.toml"))
+            .unwrap()
+            .parse::<toml_edit::DocumentMut>()
+            .unwrap();
+        let model_provider = config["model_provider"].as_str().unwrap();
+        assert_eq!(
+            config["model_providers"][model_provider]["base_url"]
+                .as_str()
+                .unwrap(),
+            format!("http://{proxy_addr}/v1")
+        );
+        assert_eq!(
+            database
+                .get_provider(&provider.id)
+                .unwrap()
+                .unwrap()
+                .advanced
+                .upstream_format,
+            "openai_responses"
+        );
     }
     let exe = std::env::var_os("XY_SWITCH_CODEX_EXE").unwrap_or_else(|| "codex".into());
     let mut session: Option<String> = None;
@@ -383,13 +476,33 @@ async fn run_codex_fixture_session(native: bool) {
     }
     let sessions = crate::sessions::SessionStore::new(&home, &codex_home).unwrap();
     let catalog = sessions.catalog().unwrap();
-    assert_eq!(catalog.sessions.len(), 1, "one resumed conversation, not two new ones");
+    assert_eq!(
+        catalog.sessions.len(),
+        1,
+        "one resumed conversation, not two new ones"
+    );
     let session_id = session.as_deref().unwrap();
     assert_eq!(catalog.sessions[0].session_id, session_id);
     let detail = sessions.detail("codex", session_id).unwrap();
-    assert!(detail.messages.iter().any(|message| message.role == "tool"), "native tool results must be readable in Sessions");
-    assert!(detail.messages.iter().filter(|message| message.role == "assistant" && message.content.contains("XY_SWITCH_E2E_OK")).count() >= 2, "both original and resumed replies must remain visible");
-    std::fs::write(root.join("session-readback.json"), serde_json::to_vec_pretty(&detail).unwrap()).unwrap();
+    assert!(
+        detail.messages.iter().any(|message| message.role == "tool"),
+        "native tool results must be readable in Sessions"
+    );
+    assert!(
+        detail
+            .messages
+            .iter()
+            .filter(|message| message.role == "assistant"
+                && message.content.contains("XY_SWITCH_E2E_OK"))
+            .count()
+            >= 2,
+        "both original and resumed replies must remain visible"
+    );
+    std::fs::write(
+        root.join("session-readback.json"),
+        serde_json::to_vec_pretty(&detail).unwrap(),
+    )
+    .unwrap();
     let seen = seen.lock().unwrap();
     let replies: Vec<&Value> = seen
         .iter()
@@ -424,6 +537,102 @@ async fn run_codex_fixture_session(native: bool) {
         patch.contains("patch") && !patch.contains("unsupported"),
         "custom tool parser did not execute: {patch}"
     );
+    if hard_budget {
+        let search_output = replies
+            .iter()
+            .find(|item| item["type"] == "tool_search_output" && item["execution"] == "client")
+            .expect("actual client tool discovery result missing");
+        let discovered = search_output["tools"].as_array().unwrap();
+        assert!(
+            discovered.iter().any(|tool| tool["type"] == "namespace"),
+            "tool discovery must return native namespace definitions: {search_output}"
+        );
+        assert!(
+            serde_json::to_string(discovered)
+                .unwrap()
+                .contains("spawn_agent")
+        );
+        assert!(
+            !replies.iter().any(|item| item["type"] == "function_call"
+                && item["name"]
+                    .as_str()
+                    .is_some_and(|name| name.contains("spawn_agent"))),
+            "discovery must not execute a subagent"
+        );
+        let resumed = seen.last().unwrap();
+        let resumed_input = resumed["input"].as_array().unwrap();
+        assert!(
+            resumed_input.iter().any(|item| item["role"] == "assistant"
+                && item["content"].to_string().contains("XY_SWITCH_E2E_OK")),
+            "resumed request must retain the original assistant reply"
+        );
+        assert!(
+            resumed_input
+                .iter()
+                .any(|item| item["type"] == "custom_tool_call_output"
+                    && item["call_id"] == "call_e2e_patch"),
+            "resumed request must retain the custom-tool result"
+        );
+        assert!(
+            resumed_input
+                .iter()
+                .any(|item| item["type"] == "tool_search_output"),
+            "resumed request must retain the discovered schemas"
+        );
+        for request in &*seen {
+            assert_eq!(request["max_output_tokens"], 512);
+            assert!(request.get("previous_response_id").is_none());
+            assert!(request.get("conversation").is_none());
+        }
+        let budget = crate::governance::budget::status(&database).unwrap();
+        assert!(budget.policy.enabled);
+        assert_eq!(budget.attempts, seen.len() as i64);
+        assert_eq!(budget.reserved_tokens, seen.len() as i64 * 128_512);
+        assert_eq!(budget.reserved_microusd, seen.len() as i64 * 129_024);
+        let logs = crate::usage::query_usage_logs(
+            &database.conn().lock().unwrap(),
+            &crate::usage::UsageFilter::default(),
+            100,
+            0,
+        )
+        .unwrap();
+        assert_eq!(
+            logs.len(),
+            seen.len(),
+            "every CLI request must be recorded by the application proxy"
+        );
+        for log in &logs {
+            assert!(log.success, "{log:?}");
+            assert_eq!((log.input_tokens, log.output_tokens), (20, 8));
+            let diagnostic = log.diagnostics.as_ref().unwrap();
+            assert_eq!(diagnostic.send_attempts, 1);
+            assert!(diagnostic.upstream_response_received);
+            assert_eq!(diagnostic.failure_stage, None);
+        }
+        let searches = detail
+            .messages
+            .iter()
+            .filter(|message| {
+                message
+                    .tool
+                    .as_ref()
+                    .is_some_and(|tool| tool.event_kind == crate::sessions::SessionToolKind::Search)
+            })
+            .count();
+        assert!(
+            searches > 0,
+            "tool discovery must remain readable in the restored session"
+        );
+        let evidence = json!({"mode":"native-budget-proxy","sessionId":session_id,"upstreamRequests":seen.len(),
+            "sameSessionResumed":true,"clientToolSearchReturned":true,"customToolParserExecuted":true,
+            "toolSearchReadbackEvents":searches,"resumedInputItems":resumed_input.len(),"budget":budget,
+            "requestLogs":logs,"newPaidApiRequests":0});
+        std::fs::write(
+            root.join("budget-proxy-evidence.json"),
+            serde_json::to_vec_pretty(&evidence).unwrap(),
+        )
+        .unwrap();
+    }
     std::fs::write(
         root.join("mock-requests.json"),
         serde_json::to_vec_pretty(&*seen).unwrap(),

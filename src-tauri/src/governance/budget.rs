@@ -2,6 +2,8 @@ use super::*;
 use crate::database::Provider;
 use rusqlite::OptionalExtension;
 use serde_json::{Value, json};
+#[path = "budget_responses.rs"]
+mod responses;
 pub const KEY: &str = "hard_budget_v1";
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -86,7 +88,9 @@ fn strict_text(value: &Value) -> bool {
     }
 }
 fn bound_payload(payload: &mut Value, format: &str, policy: &BudgetPolicy) -> Result<i64, String> {
-    if !strict_text(payload) {
+    if format == "responses" {
+        responses::validate(payload)?;
+    } else if !strict_text(payload) {
         return Err(
             "budget_unbounded_input: stateful, remote-tool and multimodal requests are blocked"
                 .into(),
@@ -143,6 +147,7 @@ fn bound_payload(payload: &mut Value, format: &str, policy: &BudgetPolicy) -> Re
             "service_tier",
             "safety_identifier",
             "prompt_cache_key",
+            "client_metadata",
         ],
         "anthropic" => &[
             "model",
@@ -171,7 +176,7 @@ fn bound_payload(payload: &mut Value, format: &str, policy: &BudgetPolicy) -> Re
     if object.get("n").is_some_and(|v| v.as_i64() != Some(1)) {
         return Err("budget_multiple_choices_blocked".into());
     }
-    if let Some(tools) = object.get("tools") {
+    if let Some(tools) = object.get("tools").filter(|_| format != "responses") {
         let tools = tools.as_array().ok_or("budget_invalid_tools")?;
         for tool in tools {
             let local_function = match format {
@@ -269,7 +274,11 @@ fn reserve_inner(
         .unwrap_or_default();
     p.validate()?;
     if !p.enabled {
-        return if source == "synthetic" { Err("synthetic_budget_required".into()) } else { Ok(()) };
+        return if source == "synthetic" {
+            Err("synthetic_budget_required".into())
+        } else {
+            Ok(())
+        };
     }
     let requested = bound_payload(payload, format, &p)?;
     let model = payload

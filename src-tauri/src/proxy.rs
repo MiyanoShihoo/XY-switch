@@ -3004,6 +3004,10 @@ mod tests {
 #[path = "governance/proxy_tests.rs"]
 mod governance_tests;
 
+#[cfg(test)]
+#[path = "governance/responses_proxy_tests.rs"]
+mod responses_budget_tests;
+
 #[cfg(all(test, windows))]
 #[path = "governance/live_tests.rs"]
 mod governance_live_tests;
