@@ -47,8 +47,9 @@ test('fragment-only navigation reloads once and cannot reuse the old fixture', a
   const h = harness({ navigation: { frameId: 'main' }, frames: [oldFrame, oldFrame, newFrame] });
   assert.equal((await navigate(h)).reloaded, true);
   assert.equal(reloads(h).length, 1);
-  assert.equal(h.evaluations.length, 1);
-  assert.equal(h.evaluations[0].frame.loaderId, 'new-document');
+  assert.equal(h.evaluations.length, 2);
+  assert.equal(h.evaluations[0].expression, 'location.href === ' + JSON.stringify(target));
+  assert.equal(h.evaluations[1].frame.loaderId, 'new-document');
 });
 test('same-URL navigation without a loader also requires a new document', async () => {
   const h = harness({ navigation: { frameId: 'main' } });
@@ -84,7 +85,8 @@ test('waiting for an unchanged loader is bounded and does not inspect stale DOM'
   const h = harness({ navigation: { frameId: 'main' }, frames: [oldFrame] });
   await assert.rejects(navigate(h), /Timed out waiting for a fresh ready renderer document/);
   assert.equal(reloads(h).length, 1);
-  assert.equal(h.evaluations.length, 0);
+  assert.equal(h.evaluations.length, 1);
+  assert.equal(h.evaluations[0].expression, 'location.href === ' + JSON.stringify(target));
 });
 test('waiting for an incomplete fresh renderer is also bounded', async () => {
   const h = harness({ readiness: [false] });
@@ -121,4 +123,46 @@ test('missing initial loader metadata fails before navigation', async () => {
   const h = harness({ frames: [{ id: 'main' }] });
   await assert.rejects(navigate(h), /Missing main-frame loader/);
   assert.equal(h.calls.some(call => call.method === 'Page.navigate'), false);
+});
+
+test('a fragment navigation acknowledgement can precede its URL commit', async () => {
+  let time = 0, currentUrl = 'http://127.0.0.1:1431/', refreshedUrl;
+  const transport = {
+    async call(method) {
+      if (method === 'Page.getFrameTree') return { frameTree: { frame: refreshedUrl ? newFrame : oldFrame } };
+      if (method === 'Page.navigate') return { frameId: 'main' };
+      assert.equal(method, 'Page.reload');
+      refreshedUrl = currentUrl;
+      return {};
+    },
+    async evaluate(expression) {
+      return new Script(expression).runInNewContext({
+        document: { readyState: 'complete', querySelector: () => ({}) }, location: { href: currentUrl },
+      });
+    },
+  };
+  const result = await navigateFreshDocument(transport, target, {
+    timeout: 240, now: () => time,
+    sleep: async milliseconds => { time += milliseconds; if (!refreshedUrl) currentUrl = target; },
+  });
+  assert.equal(refreshedUrl, target, 'reload must target the committed fragment URL');
+  assert.equal(result.loaderId, newFrame.loaderId);
+});
+
+test('an uncommitted fragment URL times out without refreshing the previous route', async () => {
+  const pendingNavigation = harness({ navigation: { frameId: 'main' }, readiness: [false] });
+  await assert.rejects(navigate(pendingNavigation), /Timed out waiting for renderer URL before reload/);
+  assert.equal(reloads(pendingNavigation).length, 0);
+  assert.equal(pendingNavigation.evaluations.length, 4);
+});
+test('an execution context transition during fragment commit is retried before reload', async () => {
+  const transition = harness({ navigation: { frameId: 'main' }, readiness: [new Error('Execution context was destroyed.'), true, true] });
+  await navigate(transition);
+  assert.equal(reloads(transition).length, 1);
+  assert.equal(transition.evaluations.length, 3);
+});
+test('unrelated fragment commit evaluation errors do not trigger a reload', async () => {
+  const failedCommit = harness({ navigation: { frameId: 'main' }, readiness: [new Error('Unexpected renderer exception')] });
+  await assert.rejects(navigate(failedCommit), /Unexpected renderer exception/);
+  assert.equal(reloads(failedCommit).length, 0);
 });

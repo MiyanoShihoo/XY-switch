@@ -20,7 +20,20 @@ export async function navigateFreshDocument({ call, evaluate }, url, {
   if (navigation.errorText) throw new Error('Renderer navigation failed: ' + navigation.errorText);
   assert(!navigation.isDownload, 'Renderer navigation must not download a file');
   const reloaded = !navigation.loaderId;
-  if (reloaded) await call('Page.reload');
+  if (reloaded) {
+    let committed = false;
+    while (now() < deadline) {
+      try {
+        committed = await evaluate('location.href === ' + JSON.stringify(expectedUrl));
+      } catch (error) {
+        if (!contextChanging(error)) throw error;
+      }
+      if (committed) break;
+      await sleep(Math.min(60, Math.max(0, deadline - now())));
+    }
+    if (!committed) throw new Error('Timed out waiting for renderer URL before reload: ' + expectedUrl);
+    await call('Page.reload');
+  }
 
   const ready = 'document.readyState === "complete" && Boolean(document.querySelector("h1")) && location.href === ' + JSON.stringify(expectedUrl);
   while (now() < deadline) {
