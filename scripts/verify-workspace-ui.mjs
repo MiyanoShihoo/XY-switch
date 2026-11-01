@@ -130,10 +130,14 @@ try {
     await c.screenshot(join(output,'sessions-partial-read.png'));
     await reset();await fixture('q.fail.get_session_detail="QA session detail read denied";');await nav('会话');
     await c.waitFor('document.body.innerText.includes("QA session detail read denied")');await absent('没有可读取的消息');
-    await fixture('delete q.fail.get_session_detail;');await c.button('重试');await c.waitFor('document.body.innerText.includes("请检查界面边界")');
+    const detailReads=await countCalls('get_session_detail');
+    await fixture('delete q.fail.get_session_detail;');await c.button('重试','document.querySelector(".session-messages")');await c.waitFor('document.body.innerText.includes("请检查界面边界")');
+    assert.equal(await countCalls('get_session_detail'),detailReads+1,'message retry must refetch the selected session');await absent('QA session detail read denied');
     await reset();await fixture('q.fail.get_session_catalog="QA session catalog read denied";');await nav('会话');
     await c.waitFor('document.body.innerText.includes("QA session catalog read denied")');await absent('尚未发现本地会话');
-    await fixture('delete q.fail.get_session_catalog;');await c.button('重试');await c.waitFor('document.body.innerText.includes("请检查界面边界")');
+    const catalogReads=await countCalls('get_session_catalog');
+    await fixture('delete q.fail.get_session_catalog;');await c.button('重试','[...document.querySelectorAll(".sessions-page > [role=alert]")].find(element=>element.textContent.includes("QA session catalog read denied"))');await c.waitFor('document.body.innerText.includes("请检查界面边界")');
+    assert.equal(await countCalls('get_session_catalog'),catalogReads+1,'catalog retry must refetch the session list');await absent('QA session catalog read denied');
   });
   await run('sessions-delete-and-filter',async()=>{
     await reset();await fixture('q.sessions.push({...q.sessions[0],providerId:"claude",sessionId:"qa-claude",title:"Claude QA session",resumeCommand:"claude --resume qa-claude"});');await nav('会话');
