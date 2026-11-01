@@ -16,7 +16,7 @@ test('public build commands retain only Windows, macOS and Linux targets', async
 test('CI contains only desktop builds and the Windows native acceptance path', async () => {
   const workflow = await read('.github/workflows/build.yml');
   const jobs = [...workflow.slice(workflow.indexOf("\njobs:\n")).matchAll(/^  ([a-z][a-z-]*):$/gm)].map(match => match[1]);
-  assert.deepEqual(jobs, ['frontend', 'website', 'desktop', 'macos', 'native-source', 'native-windows-sync']);
+  assert.deepEqual(jobs, ['frontend', 'website', 'renderer-ui', 'desktop', 'macos', 'native-source', 'native-windows-sync']);
   assert(!/ios|android|simulator|native_target/i.test(workflow));
   for (const line of ['platform: windows', 'platform: linux', 'pnpm build:macos:universal']) assert(workflow.includes(line));
   await assert.rejects(access(new URL('.github/workflows/ios-device.yml', root)), { code: 'ENOENT' });

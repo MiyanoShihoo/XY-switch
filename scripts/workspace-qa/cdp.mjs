@@ -3,6 +3,7 @@ import { writeFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { navigateFreshDocument } from './document-navigation.mjs';
 import { waitForPredicate } from './runtime-predicate.mjs';
+import { dispatchElementClick } from './pointer-click.mjs';
 
 export function isLocalRendererRequest(value, base) {
   try {
@@ -38,10 +39,8 @@ export async function connect(endpoint = process.env.CDP_ENDPOINT ?? 'http://127
   async function evaluate(expression) { const result=await call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(result.exceptionDetails)throw new Error(result.exceptionDetails.exception?.description??result.exceptionDetails.text);return result.result.value; }
   const waitFor = (expression, timeout = 10000) => waitForPredicate(evaluate, expression, { timeout });
   async function clickExpression(expression) {
-    const point = await evaluate('(() => { const e = '+expression+'; if (!e) throw new Error("Missing click target"); if(e.disabled)throw new Error("Disabled click target");e.scrollIntoView({block:"center",inline:"nearest"});const r=e.getBoundingClientRect(); return {x:r.x+r.width/2,y:r.y+r.height/2}; })()');
-    await call('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',clickCount:1,...point});
-    await call('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',clickCount:1,...point});
-    await new Promise(r=>setTimeout(r,90));
+    await dispatchElementClick({ evaluate, call }, expression);
+    await new Promise(resolve => setTimeout(resolve, 90));
   }
   const click=selector=>clickExpression('document.querySelector('+JSON.stringify(selector)+')');
   const button=(label,scope='document')=>clickExpression('[...'+scope+'.querySelectorAll("button")].find(e=>!e.closest("details:not([open])")&&!e.classList.contains("sr-only")&&e.getBoundingClientRect().width>1&&e.getBoundingClientRect().height>1&&getComputedStyle(e).visibility!=="hidden"&&(e.textContent.trim()==='+JSON.stringify(label)+'||e.getAttribute("aria-label")==='+JSON.stringify(label)+'))');
