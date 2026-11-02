@@ -17,11 +17,11 @@ on:
       native_source_run:
         description: 'Successful Build and verify run that produced the feature packages'
         type: string
-        default: '40908795739'
+        default: '41419299553'
       native_source_commit:
         description: 'Exact 40-character source commit; production inputs must still match'
         type: string
-        default: '614e2b21ea59b7256d09c7f34b30f6aeecd9064c'
+        default: 'fe4946bd2fcd4c27a7432aeadb5a656e0e6e676b'
 permissions:
   contents: read
 concurrency:
@@ -222,6 +222,10 @@ jobs:
     outputs:
       windows_id: ${{ steps.source.outputs.windows_id }}
       windows_digest: ${{ steps.source.outputs.windows_digest }}
+      linux_id: ${{ steps.source.outputs.linux_id }}
+      linux_digest: ${{ steps.source.outputs.linux_digest }}
+      macos_id: ${{ steps.source.outputs.macos_id }}
+      macos_digest: ${{ steps.source.outputs.macos_digest }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -229,8 +233,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Test Windows native acceptance harness
-        run: node --test scripts/native-acceptance.test.mjs scripts/desktop-platforms.test.mjs
+      - name: Test three-platform native acceptance harness
+        run: |
+          node --test scripts/native-acceptance.test.mjs scripts/desktop-platforms.test.mjs
+          python3 -B scripts/native-acceptance/unix_lifecycle_test.py
+          bash -n scripts/native-acceptance/unix-lifecycle.sh
       - name: Bind source commit, production inputs and immutable artifact digests
         id: source
         run: node scripts/native-acceptance/artifact.mjs source artifacts/native-acceptance/source.json
@@ -282,5 +289,122 @@ jobs:
         with:
           name: native-acceptance-windows-sync
           path: artifacts/native-acceptance/windows/
+          if-no-files-found: error
+          retention-days: 14
+
+  native-windows-lifecycle:
+    needs: native-source
+    runs-on: windows-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      actions: read
+    env:
+      NATIVE_SOURCE_RUN: ${{ inputs.native_source_run }}
+      NATIVE_SOURCE_COMMIT: ${{ inputs.native_source_commit }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download and verify current and official previous installers
+        shell: pwsh
+        run: |
+          node scripts/native-acceptance/artifact.mjs download "$env:RUNNER_TEMP/source-windows.zip"
+          if ($LASTEXITCODE -ne 0) { throw 'Artifact verification failed' }
+          node scripts/native-acceptance/extract-artifact.mjs "$env:RUNNER_TEMP/source-windows.zip" "$env:RUNNER_TEMP/source-windows"
+          if ($LASTEXITCODE -ne 0) { throw 'Artifact extraction failed' }
+          node scripts/native-acceptance/previous-release.mjs windows "$env:RUNNER_TEMP/previous-windows"
+          if ($LASTEXITCODE -ne 0) { throw 'Previous release verification failed' }
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+          NATIVE_ARTIFACT_ID: ${{ needs.native-source.outputs.windows_id }}
+          NATIVE_ARTIFACT_DIGEST: ${{ needs.native-source.outputs.windows_digest }}
+      - name: Real NSIS and MSI upgrade, native credentials, takeover and recovery
+        shell: pwsh
+        run: ./scripts/native-acceptance/windows-lifecycle.ps1 -ArtifactDirectory "$env:RUNNER_TEMP/source-windows" -PreviousDirectory "$env:RUNNER_TEMP/previous-windows" -OutputDirectory artifacts/native-acceptance/windows-lifecycle
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-acceptance-windows-lifecycle
+          path: artifacts/native-acceptance/windows-lifecycle/
+          if-no-files-found: error
+          retention-days: 14
+
+  native-linux-lifecycle:
+    needs: native-source
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      actions: read
+    env:
+      NATIVE_SOURCE_RUN: ${{ inputs.native_source_run }}
+      NATIVE_SOURCE_COMMIT: ${{ inputs.native_source_commit }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install native desktop verification prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-0 libayatana-appindicator3-1 libsecret-tools gnome-keyring dbus-x11 xvfb xdotool imagemagick tesseract-ocr fonts-noto-cjk
+      - name: Download and verify current and official previous packages
+        run: |
+          node scripts/native-acceptance/artifact.mjs download "$RUNNER_TEMP/source-linux.zip"
+          node scripts/native-acceptance/extract-artifact.mjs "$RUNNER_TEMP/source-linux.zip" "$RUNNER_TEMP/source-linux"
+          node scripts/native-acceptance/previous-release.mjs linux "$RUNNER_TEMP/previous-linux"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NATIVE_ARTIFACT_ID: ${{ needs.native-source.outputs.linux_id }}
+          NATIVE_ARTIFACT_DIGEST: ${{ needs.native-source.outputs.linux_digest }}
+      - name: Real Debian and AppImage upgrade, native GUI routing and recovery
+        run: bash scripts/native-acceptance/unix-lifecycle.sh linux "$RUNNER_TEMP/source-linux" "$RUNNER_TEMP/previous-linux" artifacts/native-acceptance/linux-lifecycle
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-acceptance-linux-lifecycle
+          path: artifacts/native-acceptance/linux-lifecycle/
+          if-no-files-found: error
+          retention-days: 14
+
+  native-macos-lifecycle:
+    needs: native-source
+    runs-on: macos-14
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      actions: read
+    env:
+      NATIVE_SOURCE_RUN: ${{ inputs.native_source_run }}
+      NATIVE_SOURCE_COMMIT: ${{ inputs.native_source_commit }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install screenshot text recognition
+        run: command -v tesseract || brew install tesseract
+      - name: Download and verify current and official previous bundles
+        run: |
+          node scripts/native-acceptance/artifact.mjs download "$RUNNER_TEMP/source-macos.zip"
+          node scripts/native-acceptance/extract-artifact.mjs "$RUNNER_TEMP/source-macos.zip" "$RUNNER_TEMP/source-macos"
+          node scripts/native-acceptance/previous-release.mjs macos "$RUNNER_TEMP/previous-macos"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NATIVE_ARTIFACT_ID: ${{ needs.native-source.outputs.macos_id }}
+          NATIVE_ARTIFACT_DIGEST: ${{ needs.native-source.outputs.macos_digest }}
+      - name: Real DMG installation, upgrade, native GUI routing and recovery
+        run: bash scripts/native-acceptance/unix-lifecycle.sh macos "$RUNNER_TEMP/source-macos" "$RUNNER_TEMP/previous-macos" artifacts/native-acceptance/macos-lifecycle
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-acceptance-macos-lifecycle
+          path: artifacts/native-acceptance/macos-lifecycle/
           if-no-files-found: error
           retention-days: 14

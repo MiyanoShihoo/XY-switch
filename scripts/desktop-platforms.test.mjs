@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { access, readFile } from 'node:fs/promises';
-import { packageInput, requireDisposableRunner } from './native-acceptance/lib.mjs';
+import { nativeArtifactNames, packageInput, requireDisposableRunner } from './native-acceptance/lib.mjs';
 
 const root = new URL('../', import.meta.url);
 const read = path => readFile(new URL(path, root), 'utf8');
@@ -13,10 +13,10 @@ test('public build commands retain only Windows, macOS and Linux targets', async
   assert(!/package-android|smoke-android|select-ios|smoke-ios/.test(scripts['test:packaging']));
 });
 
-test('CI contains only desktop builds and the Windows native acceptance path', async () => {
+test('CI contains desktop builds and three-platform native acceptance paths', async () => {
   const workflow = await read('.github/workflows/build.yml');
   const jobs = [...workflow.slice(workflow.indexOf("\njobs:\n")).matchAll(/^  ([a-z][a-z-]*):$/gm)].map(match => match[1]);
-  assert.deepEqual(jobs, ['frontend', 'website', 'renderer-ui', 'desktop', 'macos', 'native-source', 'native-windows-sync']);
+  assert.deepEqual(jobs, ['frontend', 'website', 'renderer-ui', 'desktop', 'macos', 'native-source', 'native-windows-sync', 'native-windows-lifecycle', 'native-linux-lifecycle', 'native-macos-lifecycle']);
   assert(!/ios|android|simulator|native_target/i.test(workflow));
   for (const line of ['platform: windows', 'platform: linux', 'pnpm build:macos:universal']) assert(workflow.includes(line));
   await assert.rejects(access(new URL('.github/workflows/ios-device.yml', root)), { code: 'ENOENT' });
@@ -24,16 +24,17 @@ test('CI contains only desktop builds and the Windows native acceptance path', a
 
 test('active package and workflow script references do not point at removed entry points', async () => {
   const inputs = [await read('package.json'), await read('.github/workflows/build.yml')];
-  const paths = new Set(inputs.flatMap(text => [...text.matchAll(/scripts\/[a-zA-Z0-9_./-]+\.(?:mjs|ps1|sh)/g)].map(match => match[0])));
+  const paths = new Set(inputs.flatMap(text => [...text.matchAll(/scripts\/[a-zA-Z0-9_./-]+\.(?:mjs|ps1|sh|py)/g)].map(match => match[0])));
   assert(paths.size > 10);
   for (const path of paths) await access(new URL(path, root));
 });
 
-test('Windows acceptance does not require or accept a mobile artifact', async () => {
+test('native acceptance selects the three desktop artifacts and rejects mobile packages', async () => {
   const source = await read('scripts/native-acceptance/artifact.mjs');
-  assert(source.includes("[['windows', 'xy-switch-windows-X64']]"));
+  assert(source.includes('selectNativeArtifacts(artifacts)'));
+  assert.deepEqual(Object.keys(nativeArtifactNames), ['windows', 'linux', 'macos']);
   assert(!/ios|android|simulator/i.test(source));
-  for (const platform of ['ios-arm64-simulator', 'android-universal', 'macos-universal']) {
+  for (const platform of ['ios-arm64-simulator', 'android-universal']) {
     await assert.rejects(packageInput('.', platform, '1.2.0'), /Unsupported native acceptance package/);
   }
   assert.throws(() => requireDisposableRunner('darwin', { GITHUB_ACTIONS: 'true', RUNNER_ENVIRONMENT: 'github-hosted' }), /requires Windows/);

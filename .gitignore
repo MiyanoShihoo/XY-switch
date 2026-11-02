@@ -30,6 +30,7 @@ C.jpg
 
 # Temporary scratch scripts
 *.py
+!scripts/native-acceptance/*.py
 *.cjs
 fix_*.cjs
 rewrite_*.cjs

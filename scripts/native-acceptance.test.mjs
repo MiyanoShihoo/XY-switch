@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { decryptSync, packageInput, requireDisposableRunner, safeFilename, sha256, waitForNativePage } from './native-acceptance/lib.mjs';
+import { decryptSync, nativeArtifactNames, packageInput, requireDisposableRunner, safeFilename, selectNativeArtifacts, sha256, waitForNativePage } from './native-acceptance/lib.mjs';
 
 const secret = 'synthetic native test passphrase';
 function encrypt(payload) {
@@ -36,6 +36,33 @@ test('envelope size and magic are checked before expensive KDF', () => {
 test('cross-platform package filenames cannot escape the artifact directory', () => {
   for (const name of ['../x', '..\\x', 'C:\\x', '/x', '..', 'x:y', 'a\0b', '']) assert.throws(() => safeFilename(name));
   assert.equal(safeFilename('XY-Switch-1.2.0.exe'), 'XY-Switch-1.2.0.exe');
+});
+test('three-platform selection binds unique live package artifacts and rejects invalid provenance', () => {
+  const artifacts = Object.values(nativeArtifactNames).map((name, index) => ({ name, id: index + 1, digest: 'sha256:' + 'a'.repeat(64), size_in_bytes: 100, expired: false }));
+  assert.deepEqual(Object.keys(selectNativeArtifacts(artifacts)), ['windows', 'linux', 'macos']);
+  for (const change of [{ expired: true }, { digest: 'sha256:invalid' }, { id: 0 }, { size_in_bytes: 0 }, { name: 'workspace-renderer-ui' }]) {
+    assert.throws(() => selectNativeArtifacts([{ ...artifacts[0], ...change }, ...artifacts.slice(1)]));
+  }
+  assert.throws(() => selectNativeArtifacts([...artifacts, artifacts[1]]), /Expected one unexpired/);
+  assert.throws(() => selectNativeArtifacts(artifacts.slice(0, 2)));
+});
+test('all desktop manifests reject forged sizes, digests and duplicated filenames', async () => {
+  for (const platform of Object.keys({ 'windows-x64': 1, 'linux-x64': 1, 'macos-universal': 1 })) {
+    const root = await mkdtemp(join(tmpdir(), 'xy-native-manifest-')), directory = join(root, platform);
+    await mkdir(directory);
+    const data = Buffer.from('synthetic package'), file = { name: 'package.bin', format: platform === 'windows-x64' ? 'nsis' : 'fixture', bytes: data.length, sha256: sha256(data) };
+    await writeFile(join(directory, file.name), data);
+    await writeFile(join(directory, 'native-nsis-payload-check.json'), JSON.stringify({ installedSha256: 'a'.repeat(64) }));
+    const save = files => writeFile(join(directory, 'manifest.json'), JSON.stringify({ version: '1.2.0', files }));
+    await save([file]);
+    assert.equal((await packageInput(root, platform, '1.2.0')).platform, platform);
+    for (const change of [{ bytes: 0 }, { bytes: data.length + 1 }, { bytes: 1.5 }, { sha256: 'invalid' }, { sha256: 'b'.repeat(64) }, { name: '../outside.bin' }]) {
+      await save([{ ...file, ...change }]);
+      await assert.rejects(packageInput(root, platform, '1.2.0'));
+    }
+    await save([file, { ...file, name: file.name.toUpperCase() }]);
+    await assert.rejects(packageInput(root, platform, '1.2.0'), /Duplicate manifest/);
+  }
 });
 test('Windows installer verification binds the package and previously installed payload', async () => {
   const root = await mkdtemp(join(tmpdir(), 'xy-native-windows-')), path = join(root, 'windows-x64'); await mkdir(path);

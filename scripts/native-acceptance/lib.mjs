@@ -9,6 +9,19 @@ export function requireDisposableRunner(platform = process.platform, env = proce
   assert.equal(env.RUNNER_ENVIRONMENT, 'github-hosted', 'Native acceptance requires a disposable GitHub-hosted runner');
   assert.equal(platform, 'win32', 'This native acceptance harness requires Windows');
 }
+export const nativeArtifactNames = Object.freeze({ windows: 'xy-switch-windows-X64', linux: 'xy-switch-linux-X64', macos: 'xy-switch-macos-universal' });
+export function selectNativeArtifacts(artifacts) {
+  assert(Array.isArray(artifacts));
+  return Object.fromEntries(Object.entries(nativeArtifactNames).map(([platform, name]) => {
+    const matches = artifacts.filter(artifact => artifact.name === name && !artifact.expired);
+    assert.equal(matches.length, 1, `Expected one unexpired ${name}`);
+    const artifact = matches[0];
+    assert(Number.isSafeInteger(artifact.id) && artifact.id > 0);
+    assert.match(artifact.digest ?? '', /^sha256:[0-9a-f]{64}$/);
+    assert(Number.isSafeInteger(artifact.size_in_bytes) && artifact.size_in_bytes > 0);
+    return [platform, { id: artifact.id, name, digest: artifact.digest, size: artifact.size_in_bytes }];
+  }));
+}
 export async function waitForNativePage(client, { timeoutMs = 60_000, intervalMs = 150 } = {}) {
   assert(Number.isSafeInteger(timeoutMs) && timeoutMs > 0);
   assert(Number.isSafeInteger(intervalMs) && intervalMs >= 0);
@@ -61,23 +74,32 @@ async function find(root, match, depth = 0) {
 }
 export async function packageInput(root, platform, version) {
   root = resolve(root);
-  if (platform === 'windows-x64') {
+  if (['windows-x64', 'linux-x64', 'macos-universal'].includes(platform)) {
     const matches = (await find(root, name => name === 'manifest.json')).filter(path => basename(resolve(path, '..')) === platform);
-    assert.equal(matches.length, 1, 'Expected one Windows package manifest');
+    assert.equal(matches.length, 1, `Expected one ${platform} package manifest`);
     const directory = resolve(matches[0], '..');
     const manifest = JSON.parse(await readFile(matches[0], 'utf8'));
     assert.equal(manifest.version, version);
     assert(Array.isArray(manifest.files) && manifest.files.length > 0);
+    const names = new Set();
     for (const entry of manifest.files) {
       const path = join(directory, safeFilename(entry.name));
+      assert(!names.has(entry.name.toLowerCase()), 'Duplicate manifest filename');
+      names.add(entry.name.toLowerCase());
+      assert(Number.isSafeInteger(entry.bytes) && entry.bytes > 0, 'Invalid manifest file size');
+      assert.match(entry.sha256 ?? '', /^[0-9a-f]{64}$/, 'Invalid manifest SHA256');
       assert.equal((await stat(path)).size, entry.bytes);
       assert.equal(sha256(await readFile(path)), entry.sha256);
     }
-    const nsis = manifest.files.filter(file => file.format === 'nsis');
-    assert.equal(nsis.length, 1);
-    const original = JSON.parse((await readFile(join(directory, 'native-nsis-payload-check.json'), 'utf8')).replace(/^\uFEFF/, ''));
-    assert.match(original.installedSha256, /^[0-9a-f]{64}$/);
-    return { directory, installer: join(directory, nsis[0].name), installerSha256: nsis[0].sha256, installedSha256: original.installedSha256, version, platform };
+    const result = { directory, version, platform, files: manifest.files.map(file => ({ ...file, path: join(directory, file.name) })) };
+    if (platform === 'windows-x64') {
+      const nsis = result.files.filter(file => file.format === 'nsis');
+      assert.equal(nsis.length, 1);
+      const original = JSON.parse((await readFile(join(directory, 'native-nsis-payload-check.json'), 'utf8')).replace(/^\uFEFF/, ''));
+      assert.match(original.installedSha256, /^[0-9a-f]{64}$/);
+      Object.assign(result, { installer: nsis[0].path, installerSha256: nsis[0].sha256, installedSha256: original.installedSha256 });
+    }
+    return result;
   }
   throw new Error('Unsupported native acceptance package: ' + platform);
 }

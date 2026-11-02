@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
-import { sha256 } from './lib.mjs';
+import { selectNativeArtifacts, sha256 } from './lib.mjs';
 
 const repo = process.env.GITHUB_REPOSITORY;
 assert.match(repo ?? '', /^[\w.-]+\/[\w.-]+$/);
@@ -29,13 +29,8 @@ if (mode === 'source') {
   const currentPackage = JSON.parse(await readFile('package.json', 'utf8'));
   for (const key of ['version', 'dependencies', 'devDependencies']) assert.deepEqual(currentPackage[key], oldPackage[key], `Changed production package ${key}`);
   const artifacts = (await (await api(`/actions/runs/${id}/artifacts?per_page=100`)).json()).artifacts;
-  const selected = {};
-  for (const [platform, name] of [['windows', 'xy-switch-windows-X64']]) {
-    const matches = artifacts.filter(artifact => artifact.name === name && !artifact.expired);
-    assert.equal(matches.length, 1, `Missing ${name}`);
-    const artifact = matches[0];
-    assert.match(artifact.digest, /^sha256:[0-9a-f]{64}$/);
-    selected[platform] = { id: artifact.id, name, digest: artifact.digest, size: artifact.size_in_bytes };
+  const selected = selectNativeArtifacts(artifacts);
+  for (const [platform, artifact] of Object.entries(selected)) {
     await appendFile(process.env.GITHUB_OUTPUT, `${platform}_id=${artifact.id}\n${platform}_digest=${artifact.digest}\n`);
   }
   const report = { sourceCommit: commit, sourceRun: run.id, sourceAttempt: run.run_attempt, sourceUrl: run.html_url, harnessCommit: process.env.GITHUB_SHA, productionInputsUnchanged: true, artifacts: selected };
