@@ -23,6 +23,16 @@ test('MSI component lookup accepts actual default installation and rejects unrel
   assert.equal(msiInstalledExecutable({ ...record, installedPath: 'C:\\Program Files\\XY Switch\\xy-switch.exe' }, roots), 'C:\\Program Files\\XY Switch\\xy-switch.exe');
   for (const installedPath of ['C:\\Windows\\xy-switch.exe', 'D:\\runner\\msi-other\\xy-switch.exe', 'D:\\runner\\msi\\other.exe', 'D:xy-switch.exe', '\\\\server\\share\\xy-switch.exe', '']) assert.throws(() => msiInstalledExecutable({ ...record, installedPath }, roots));
   assert.throws(() => msiInstalledExecutable({ ...record, productCode: '' }, roots));
+  const previousDirectory = 'D:\\runner\\nsis';
+  assert.equal(msiInstalledExecutable({ ...record, installedPath: previousDirectory + '\\xy-switch.exe' }, { ...roots, previousDirectory }), previousDirectory + '\\xy-switch.exe');
+  assert.throws(() => msiInstalledExecutable({ ...record, installedPath: previousDirectory + '\\xy-switch.exe' }, roots));
+  assert.throws(() => msiInstalledExecutable(record, { ...roots, previousDirectory: 'D:\\another-task\\nsis' }));
+});
+test('MSI identity selects individual rows from real database tables and rejects missing or duplicate executables', { skip: process.platform !== 'win32' }, async () => {
+  const temporary = await mkdtemp(join(tmpdir(), 'xy-msi-identity-'));
+  const result = spawnSync('pwsh.exe', ['-NoProfile', '-NonInteractive', '-File', fileURLToPath(new URL('./native-acceptance/windows-msi-identity.test.ps1', import.meta.url)), '-Temporary', temporary], { encoding: 'utf8', windowsHide: true, timeout: 30_000 });
+  assert.equal(result.status, 0, result.stderr || result.error?.message);
+  assert.deepEqual(JSON.parse(result.stdout.replace(/^\uFEFF/, '')), { passed: true, cases: 3, installed: false });
 });
 function encrypt(payload) {
   const header = Buffer.concat([Buffer.from('XYSYNC01'), randomBytes(32), randomBytes(12)]);

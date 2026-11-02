@@ -44,8 +44,9 @@ async function installer(path, format, install = true) {
       currentInstaller = path;
       const { stdout } = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-File', fileURLToPath(new URL('./windows-msi-path.ps1', import.meta.url)), '-Package', path], { windowsHide: true, timeout: 30_000 });
       const registration = JSON.parse(stdout.replace(/^\uFEFF/, ''));
-      executable = msiInstalledExecutable(registration, { requestedDirectory, programFiles: process.env.ProgramFiles });
-      await writeFile(join(output, 'msi-component-' + Date.now() + '.json'), JSON.stringify(registration, null, 2));
+      const previousDirectory = dirname(requestedDirectory).toLowerCase() === temporary.toLowerCase() ? join(temporary, 'nsis') : undefined;
+      await writeFile(join(output, 'msi-component-' + Date.now() + '.json'), JSON.stringify({ ...registration, requestedDirectory, previousDirectory }, null, 2));
+      executable = msiInstalledExecutable(registration, { requestedDirectory, previousDirectory, programFiles: process.env.ProgramFiles });
     }
   }
   else await run(path, install ? ['/S', '/D=' + resolve(executable, '..')] : ['/S'], { windowsHide: true, timeout: 240_000 });
