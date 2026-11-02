@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createDecipheriv, createHash, pbkdf2Sync } from 'node:crypto';
 import { readdir, readFile, stat } from 'node:fs/promises';
-import { basename, join, resolve } from 'node:path';
+import { basename, join, resolve, win32 } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
 export function requireDisposableRunner(platform = process.platform, env = process.env) {
@@ -10,6 +10,16 @@ export function requireDisposableRunner(platform = process.platform, env = proce
   assert.equal(platform, 'win32', 'This native acceptance harness requires Windows');
 }
 export const nativeArtifactNames = Object.freeze({ windows: 'xy-switch-windows-X64', linux: 'xy-switch-linux-X64', macos: 'xy-switch-macos-universal' });
+export function msiInstalledExecutable(record, { requestedDirectory, programFiles }) {
+  for (const name of ['productCode', 'componentId']) assert.match(record[name] ?? '', /^\{[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}\}$/i);
+  assert.match(record.installedPath ?? '', /^[a-z]:\\/i, 'MSI must register an absolute local component path');
+  assert(typeof requestedDirectory === 'string' && typeof programFiles === 'string');
+  const executable = win32.normalize(record.installedPath);
+  assert.equal(win32.basename(executable).toLowerCase(), 'xy-switch.exe');
+  const allowed = [win32.resolve(requestedDirectory), win32.resolve(programFiles, 'XY Switch')].map(directory => directory.toLowerCase());
+  assert(allowed.includes(win32.dirname(executable).toLowerCase()), 'MSI component escaped its requested or default application directory');
+  return executable;
+}
 export function selectNativeArtifacts(artifacts) {
   assert(Array.isArray(artifacts));
   return Object.fromEntries(Object.entries(nativeArtifactNames).map(([platform, name]) => {

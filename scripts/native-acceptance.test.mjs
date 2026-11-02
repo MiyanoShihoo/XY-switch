@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { decryptSync, nativeArtifactNames, packageInput, requireDisposableRunner, safeFilename, selectNativeArtifacts, sha256, waitForNativePage } from './native-acceptance/lib.mjs';
+import { decryptSync, msiInstalledExecutable, nativeArtifactNames, packageInput, requireDisposableRunner, safeFilename, selectNativeArtifacts, sha256, waitForNativePage } from './native-acceptance/lib.mjs';
 import { connect, isNativeRendererRequest } from './workspace-qa/cdp.mjs';
 
 test('packaged CDP allows only native renderer and IPC origins and refuses ordinary workstations', async () => {
@@ -16,6 +16,14 @@ test('packaged CDP allows only native renderer and IPC origins and refuses ordin
 });
 
 const secret = 'synthetic native test passphrase';
+test('MSI component lookup accepts actual default installation and rejects unrelated executable paths', () => {
+  const record = { productCode: '{D7527AD1-29A1-46D5-ABD5-FDE574C7E625}', componentId: '{5A553FFE-C6EA-556F-81AD-EA86F3651DF1}', installedPath: 'D:\\runner\\msi\\xy-switch.exe' };
+  const roots = { requestedDirectory: 'D:\\runner\\msi', programFiles: 'C:\\Program Files' };
+  assert.equal(msiInstalledExecutable(record, roots), record.installedPath);
+  assert.equal(msiInstalledExecutable({ ...record, installedPath: 'C:\\Program Files\\XY Switch\\xy-switch.exe' }, roots), 'C:\\Program Files\\XY Switch\\xy-switch.exe');
+  for (const installedPath of ['C:\\Windows\\xy-switch.exe', 'D:\\runner\\msi-other\\xy-switch.exe', 'D:\\runner\\msi\\other.exe', 'D:xy-switch.exe', '\\\\server\\share\\xy-switch.exe', '']) assert.throws(() => msiInstalledExecutable({ ...record, installedPath }, roots));
+  assert.throws(() => msiInstalledExecutable({ ...record, productCode: '' }, roots));
+});
 function encrypt(payload) {
   const header = Buffer.concat([Buffer.from('XYSYNC01'), randomBytes(32), randomBytes(12)]);
   const key = pbkdf2Sync(secret, header.subarray(8, 40), 600_000, 32, 'sha256');

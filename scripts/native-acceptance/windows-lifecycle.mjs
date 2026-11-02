@@ -5,9 +5,10 @@ import { createServer } from 'node:http';
 import { access, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { parseArgs, promisify } from 'node:util';
+import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { connect } from '../workspace-qa/cdp.mjs';
-import { packageInput, requireDisposableRunner, sha256, waitForNativePage } from './lib.mjs';
+import { msiInstalledExecutable, packageInput, requireDisposableRunner, sha256, waitForNativePage } from './lib.mjs';
 
 requireDisposableRunner();
 const run = promisify(execFile);
@@ -36,7 +37,17 @@ async function step(name, work) {
   results.push({ name, passed: true, elapsedMs: Date.now() - started, ...(evidence ? { evidence } : {}) }); console.log('PASS ' + name);
 }
 async function installer(path, format, install = true) {
-  if (format === 'msi') await run('msiexec.exe', [install ? '/i' : '/x', path, '/qn', '/norestart', ...(install ? ['INSTALLDIR=' + resolve(executable, '..')] : []), '/l*v', join(temporary, 'msi-' + Date.now() + '.log')], { windowsHide: true, timeout: 240_000 }).catch(error => { if (error.code !== 3010) throw error; });
+  if (format === 'msi') {
+    const requestedDirectory = resolve(executable, '..');
+    await run('msiexec.exe', [install ? '/i' : '/x', path, '/qn', '/norestart', ...(install ? ['INSTALLDIR=' + requestedDirectory] : []), '/l*v', join(output, 'msi-' + Date.now() + '.log')], { windowsHide: true, timeout: 240_000 }).catch(error => { if (error.code !== 3010) throw error; });
+    if (install) {
+      currentInstaller = path;
+      const { stdout } = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-File', fileURLToPath(new URL('./windows-msi-path.ps1', import.meta.url)), '-Package', path], { windowsHide: true, timeout: 30_000 });
+      const registration = JSON.parse(stdout.replace(/^\uFEFF/, ''));
+      executable = msiInstalledExecutable(registration, { requestedDirectory, programFiles: process.env.ProgramFiles });
+      await writeFile(join(output, 'msi-component-' + Date.now() + '.json'), JSON.stringify(registration, null, 2));
+    }
+  }
   else await run(path, install ? ['/S', '/D=' + resolve(executable, '..')] : ['/S'], { windowsHide: true, timeout: 240_000 });
 }
 async function stop() {
