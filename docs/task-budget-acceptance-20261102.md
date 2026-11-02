@@ -4,7 +4,7 @@
 
 开发分支：`codex/e2ee-sync-20261029`
 
-交付状态：实现与本地回归完成；源码提交、远端核对及隔离 renderer CI 待收尾。
+交付状态：实现、本地回归、隔离 renderer CI 及源码推送均已完成；最终文档补充按同一已验收代码树交付。
 
 ## 1. 范围与配置
 
@@ -48,6 +48,7 @@
 | 完整前端 | 47 文件、531 项通过 | 现有完整 Vitest 回归。 |
 | 完整 Rust library | 455 passed、7 ignored、0 failed | 默认 library 全量 462 项；7 项 opt-in 未计作本轮执行成功。 |
 | 类型与生产 renderer | 均通过 | `pnpm lint`、`pnpm run build:renderer`。 |
+| 隔离 renderer CI | 6 套、75 项交互全部通过 | 同一干净源码提交完成 47 文件/531 项前端、81 项界面辅助检查、类型和 renderer 构建；严格本地网络断言通过，浏览器与 server 均关闭。 |
 | 格式与 diff | 新增四个 Rust 模块格式检查、`git diff --check` 通过 | 全仓存在历史 Rust 格式差异；HEAD 未改动 xai_responses.rs 的独立基线检查退出 1，本轮不扩大格式化范围。 |
 
 本轮所有新 HTTP 回归使用生产代理路由和本地模拟上游；usage/价格用于验证记账，不是供应商实际账单。新增收费 API 调用 **0**。完整 Rust 结果仅有既有 `ShadowOutcome` 未使用导入警告。新增 Rust 模块完成格式检查，取消测试同步修复后再次完成全量 library 回归。
@@ -60,8 +61,24 @@
 
 本机证据位于 `artifacts/task-budget-qa/20261102/`、`artifacts/task-budget-qa/20261102-chrome/` 中的 `headless-acceptance.json`、`governance/results.json`、`verification.log` 及截图。已视觉检查中文桌面任务详情和英文暗色 390px 详情；费用与状态显示一致。此机器先前已有相同注入记录，见 [原生验收](native-acceptance-20261030.md) 和 [界面重建验收](workspace-ui-reconstruction-20261030.md)。
 
-下一步对提交后的源码启动 `Build and verify` 的 `renderer_acceptance_only=true` 手动 CI，绑定源码 SHA，执行完整前端/类型、界面辅助检查、renderer 构建及全部六套隔离 headless UI。CI 最终状态及不可变证据在交付后补入此节；当前不把待运行 CI 计为通过。安装包与插件业务验收仍是开发计划中独立的下一项 P0。
+隔离 `Build and verify` 运行 [41413538674](https://github.com/MiyanoShihoo/XY-switch/actions/runs/41413538674) 已完成，最终状态 `success`，`renderer-ui` 成功；输入为 `renderer_acceptance_only=true`。源码 SHA 严格绑定 `0eaedf958c6c0271f47bcc80cc31859597263aa9`，运行平台为 GitHub 托管 Linux。类型、完整前端 47 文件/531 项、81 项界面辅助检查、生产 renderer 构建及六套 headless UI 全部成功。安装包及其他平台任务本次按工作流设计跳过，未计入本轮验收成功。
+
+| 隔离交互套件 | 成功 / 总数 |
+| --- | --- |
+| navigation | 8 / 8 |
+| workspace | 15 / 15 |
+| i18n | 16 / 16 |
+| sessions | 8 / 8 |
+| governance | 17 / 17 |
+| sync | 11 / 11 |
+| 合计 | 75 / 75 |
+
+产物 `workspace-renderer-ui` 的不可变 ID 为 `13126248750`；GitHub 返回摘要与本地 ZIP 实算摘要一致：`sha256:9c04fc28087d75a072830218bb4f9b266d8f9f01e0a2c8ce6cfa31e0e9a6f7fc`。下载后逐份检查六套结果文件，全为 PASS；`headless-acceptance.json` 确认同一源码、仅精确 renderer HTTP/WebSocket 来源、`passed=true`、`browserClosed=true`、`serverClosed=true`。已视觉检查 CI 中文桌面任务详情及英文暗色 390px 详情，累计预留、已知超额、未结费用与状态显示一致。
+
+本地下载证据位于 `artifacts/task-budget-qa/ci-41413538674/`，步骤日志为 `ci-renderer-41413538674.log`；同目录上级的 `ci-status.json`、`ci-artifacts.json`、`ci-download-receipt.json` 和 `acceptance-evidence.json` 记录来源、摘要及计数，均为本机验收产物。安装包与插件业务验收是开发计划中独立的下一项 P0。
 
 ## 6. 交付核对
 
-2026-11-02 已核对远端开发分支包含上一轮文档提交 `f4bd5268b9639c018dffc0d56290df0a6428556f`，已恢复仓库既有写入凭据。本轮实现、界面回归及本文尚待提交推送。交付后记录验收源码 SHA、CI 运行 ID、最终文档提交与远端 SHA；文档补充提交应明确是否保持同一已验收代码树。
+2026-11-02 本轮源码提交 `0eaedf958c6c0271f47bcc80cc31859597263aa9` 已正常推送至 `codex/e2ee-sync-20261029`，推送后核对远端 SHA 与本地一致；其父提交为上一轮文档 `f4bd5268b9639c018dffc0d56290df0a6428556f`。源码以该 SHA 完成隔离 CI 验收。
+
+验收完成后的补充提交仅更新本文与 `docs/development-plan.md`；交付时再次检查该文档提交与已验收源码之间没有代码、测试、工作流、脚本或依赖差异，并核对当前开发分支远端 SHA。具体文档提交及远端结果保存在本机 `artifacts/task-budget-qa/delivery-receipt.json`，源码证据与最终文档提交分别记录。
