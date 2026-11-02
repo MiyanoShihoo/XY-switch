@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "tool": "diagram-generator/render_diagram.py",
+  "attemptedAt": "2026-11-02T15:19:16.3223022Z",
+  "source": "report/analysis-flow.mmd",
+  "sourceSha256": "f09f02acd287388fd8fe72e952ef5c2b916130ce6ac9d218659eed242f3994b4",
+  "format": "svg",
+  "exitCode": 1,
+  "messages": [
+    "render failed: Mermaid rendering requires the Mermaid CLI executable `mmdc`. Install it with `npm install -g @mermaid-js/mermaid-cli`, or return the Mermaid source only."
+  ],
+  "outputExists": false,
+  "editableSourceAvailable": true,
+  "chargedApiCalls": 0
+}

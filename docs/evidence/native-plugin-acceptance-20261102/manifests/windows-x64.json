@@ -1,0 +1,21 @@
+{
+  "version": "1.2.0",
+  "platform": "windows",
+  "architecture": "x64",
+  "builtAt": "2026-11-02T09:28:50.437Z",
+  "signatureVerification": "not-performed",
+  "files": [
+    {
+      "name": "XY-Switch-1.2.0-windows-x64-setup.exe",
+      "format": "nsis",
+      "bytes": 5275657,
+      "sha256": "6371977825a2d914b7d3d5124ba6d2fff6924e7db1406af39be27b23eac92869"
+    },
+    {
+      "name": "XY-Switch-1.2.0-windows-x64.msi",
+      "format": "msi",
+      "bytes": 7139328,
+      "sha256": "7b6bbc30906af3eb88bb189d1e038dd25277a8cf2b18e9079cb3e621c042b7b5"
+    }
+  ]
+}

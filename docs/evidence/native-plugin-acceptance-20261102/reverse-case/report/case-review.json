@@ -1,0 +1,60 @@
+{
+  "status": "PASS",
+  "case_root": "E:\\XY switch\\workspaces\\session-favorites-20261029\\artifacts\\native-plugin-acceptance-20261102\\plugin-business\\work\\xy-switch-installer",
+  "generated_at": "2026-11-02T15:20:15.403188+00:00",
+  "scope": {
+    "auth_status": "granted",
+    "network_mode": "offline",
+    "ready_for_act": "true",
+    "assets": [
+      "E:\\XY switch\\workspaces\\session-favorites-20261029\\artifacts\\native-plugin-acceptance-20261102\\github-run-41419299553\\windows-x64\\1.2.0\\windows-x64\\XY-Switch-1.2.0-windows-x64-setup.exe"
+    ]
+  },
+  "summary": {
+    "errors": 0,
+    "warnings": 0,
+    "evidence": 7,
+    "workitems": 6,
+    "timeline_events": 6,
+    "findings": 5,
+    "paths": 1
+  },
+  "issues": [],
+  "traceability": {
+    "E-001": {
+      "workitems": 3,
+      "timeline": 3,
+      "reports": 2
+    },
+    "E-002": {
+      "workitems": 3,
+      "timeline": 3,
+      "reports": 5
+    },
+    "E-003": {
+      "workitems": 3,
+      "timeline": 3,
+      "reports": 3
+    },
+    "E-004": {
+      "workitems": 3,
+      "timeline": 3,
+      "reports": 3
+    },
+    "E-005": {
+      "workitems": 3,
+      "timeline": 3,
+      "reports": 3
+    },
+    "E-006": {
+      "workitems": 3,
+      "timeline": 4,
+      "reports": 3
+    },
+    "E-007": {
+      "workitems": 3,
+      "timeline": 3,
+      "reports": 3
+    }
+  }
+}

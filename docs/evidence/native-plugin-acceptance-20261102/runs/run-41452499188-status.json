@@ -1,0 +1,165 @@
+﻿{
+    "runId":  41452499188,
+    "headSha":  "0279977f314913d72e0b85a187ccd17217ae95ed",
+    "status":  "completed",
+    "conclusion":  "success",
+    "url":  "https://github.com/MiyanoShihoo/XY-switch/actions/runs/41452499188",
+    "attempt":  1,
+    "checkedAt":  "2026-11-02T15:24:39.1017341Z",
+    "jobs":  [
+                 {
+                     "id":  125300895671,
+                     "name":  "native-source",
+                     "status":  "completed",
+                     "conclusion":  "success",
+                     "startedAt":  "2026-11-02T13:23:07Z",
+                     "completedAt":  "2026-11-02T13:23:21Z",
+                     "steps":  [
+
+                               ]
+                 },
+                 {
+                     "id":  125300896397,
+                     "name":  "website",
+                     "status":  "completed",
+                     "conclusion":  "success",
+                     "startedAt":  "2026-11-02T13:23:06Z",
+                     "completedAt":  "2026-11-02T13:23:40Z",
+                     "steps":  [
+
+                               ]
+                 },
+                 {
+                     "id":  125300897537,
+                     "name":  "renderer-ui",
+                     "status":  "completed",
+                     "conclusion":  "skipped",
+                     "startedAt":  "2026-11-02T13:23:04Z",
+                     "completedAt":  "2026-11-02T13:23:04Z",
+                     "steps":  [
+
+                               ]
+                 },
+                 {
+                     "id":  125300897759,
+                     "name":  "desktop",
+                     "status":  "completed",
+                     "conclusion":  "skipped",
+                     "startedAt":  "2026-11-02T13:23:04Z",
+                     "completedAt":  "2026-11-02T13:23:04Z",
+                     "steps":  [
+
+                               ]
+                 },
+                 {
+                     "id":  125300898736,
+                     "name":  "macos",
+                     "status":  "completed",
+                     "conclusion":  "skipped",
+                     "startedAt":  "2026-11-02T13:23:05Z",
+                     "completedAt":  "2026-11-02T13:23:04Z",
+                     "steps":  [
+
+                               ]
+                 },
+                 {
+                     "id":  125300951027,
+                     "name":  "frontend",
+                     "status":  "completed",
+                     "conclusion":  "skipped",
+                     "startedAt":  "2026-11-02T13:23:11Z",
+                     "completedAt":  "2026-11-02T13:23:04Z",
+                     "steps":  [
+
+                               ]
+                 },
+                 {
+                     "id":  125301036081,
+                     "name":  "native-windows-lifecycle",
+                     "status":  "completed",
+                     "conclusion":  "success",
+                     "startedAt":  "2026-11-02T13:23:24Z",
+                     "completedAt":  "2026-11-02T13:25:26Z",
+                     "steps":  [
+
+                               ]
+                 },
+                 {
+                     "id":  125301036083,
+                     "name":  "native-linux-lifecycle",
+                     "status":  "completed",
+                     "conclusion":  "success",
+                     "startedAt":  "2026-11-02T13:23:23Z",
+                     "completedAt":  "2026-11-02T13:26:56Z",
+                     "steps":  [
+
+                               ]
+                 },
+                 {
+                     "id":  125301036213,
+                     "name":  "native-macos-lifecycle",
+                     "status":  "completed",
+                     "conclusion":  "success",
+                     "startedAt":  "2026-11-02T13:23:26Z",
+                     "completedAt":  "2026-11-02T13:26:01Z",
+                     "steps":  [
+
+                               ]
+                 },
+                 {
+                     "id":  125301036267,
+                     "name":  "native-windows-sync",
+                     "status":  "completed",
+                     "conclusion":  "success",
+                     "startedAt":  "2026-11-02T13:23:24Z",
+                     "completedAt":  "2026-11-02T13:24:15Z",
+                     "steps":  [
+
+                               ]
+                 }
+             ],
+    "artifacts":  [
+                      {
+                          "id":  13146290481,
+                          "name":  "native-acceptance-linux-lifecycle",
+                          "size_in_bytes":  6874150,
+                          "digest":  "sha256:1f8f1b8d4a36c7a8065fea755947e9d86a625353309b3eb08877fa50422562f6",
+                          "expired":  false
+                      },
+                      {
+                          "id":  13146230396,
+                          "name":  "native-acceptance-macos-lifecycle",
+                          "size_in_bytes":  5068865,
+                          "digest":  "sha256:0cadf9be5b13b50278c183eca393343507bcd1f23b8e92b476a7ea1e132401cd",
+                          "expired":  false
+                      },
+                      {
+                          "id":  13145605683,
+                          "name":  "desktop-website-ui",
+                          "size_in_bytes":  863801,
+                          "digest":  "sha256:62f20214cc7762c410b3a8f0cccb16e5bb83e93977bfe5cb459a1029fe4e57f9",
+                          "expired":  false
+                      },
+                      {
+                          "id":  13145496067,
+                          "name":  "native-acceptance-windows-sync",
+                          "size_in_bytes":  475233,
+                          "digest":  "sha256:7e9ae231ada129d768c7c6358b7456d94f3f85cfdd4224e6d94dd34667d9b943",
+                          "expired":  false
+                      },
+                      {
+                          "id":  13144992813,
+                          "name":  "native-acceptance-windows-lifecycle",
+                          "size_in_bytes":  765098,
+                          "digest":  "sha256:d58c50af4ba14695bf35c606c39ba5e31ec8eceba53f961cf5188ea637c72b69",
+                          "expired":  false
+                      },
+                      {
+                          "id":  13144712708,
+                          "name":  "native-acceptance-source",
+                          "size_in_bytes":  613,
+                          "digest":  "sha256:743f4da016d41f1c6103b5c01b7a6e625533f6254b0a63d1e8dde036b9007e88",
+                          "expired":  false
+                      }
+                  ]
+}

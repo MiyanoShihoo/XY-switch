@@ -1,0 +1,136 @@
+﻿{
+    "runId":  41419299553,
+    "headSha":  "fe4946bd2fcd4c27a7432aeadb5a656e0e6e676b",
+    "status":  "completed",
+    "conclusion":  "success",
+    "url":  "https://github.com/MiyanoShihoo/XY-switch/actions/runs/41419299553",
+    "attempt":  1,
+    "checkedAt":  "2026-11-02T15:24:36.0072755Z",
+    "jobs":  [
+                 {
+                     "id":  125190727014,
+                     "name":  "website",
+                     "status":  "completed",
+                     "conclusion":  "success",
+                     "startedAt":  "2026-11-02T09:16:38Z",
+                     "completedAt":  "2026-11-02T09:17:15Z",
+                     "steps":  [
+
+                               ]
+                 },
+                 {
+                     "id":  125190727250,
+                     "name":  "frontend",
+                     "status":  "completed",
+                     "conclusion":  "success",
+                     "startedAt":  "2026-11-02T09:16:45Z",
+                     "completedAt":  "2026-11-02T09:17:18Z",
+                     "steps":  [
+
+                               ]
+                 },
+                 {
+                     "id":  125190727408,
+                     "name":  "renderer-ui",
+                     "status":  "completed",
+                     "conclusion":  "success",
+                     "startedAt":  "2026-11-02T09:16:38Z",
+                     "completedAt":  "2026-11-02T09:20:46Z",
+                     "steps":  [
+
+                               ]
+                 },
+                 {
+                     "id":  125190729059,
+                     "name":  "native-source",
+                     "status":  "completed",
+                     "conclusion":  "skipped",
+                     "startedAt":  "2026-11-02T09:16:36Z",
+                     "completedAt":  "2026-11-02T09:16:36Z",
+                     "steps":  [
+
+                               ]
+                 },
+                 {
+                     "id":  125190729132,
+                     "name":  "native-windows-sync",
+                     "status":  "completed",
+                     "conclusion":  "skipped",
+                     "startedAt":  "2026-11-02T09:16:36Z",
+                     "completedAt":  "2026-11-02T09:16:36Z",
+                     "steps":  [
+
+                               ]
+                 },
+                 {
+                     "id":  125191037431,
+                     "name":  "desktop (windows-latest, windows)",
+                     "status":  "completed",
+                     "conclusion":  "success",
+                     "startedAt":  "2026-11-02T09:17:24Z",
+                     "completedAt":  "2026-11-02T09:29:25Z",
+                     "steps":  [
+
+                               ]
+                 },
+                 {
+                     "id":  125191037481,
+                     "name":  "desktop (ubuntu-22.04, linux)",
+                     "status":  "completed",
+                     "conclusion":  "success",
+                     "startedAt":  "2026-11-02T09:17:20Z",
+                     "completedAt":  "2026-11-02T09:25:29Z",
+                     "steps":  [
+
+                               ]
+                 },
+                 {
+                     "id":  125191037523,
+                     "name":  "macos",
+                     "status":  "completed",
+                     "conclusion":  "success",
+                     "startedAt":  "2026-11-02T09:17:21Z",
+                     "completedAt":  "2026-11-02T09:24:11Z",
+                     "steps":  [
+
+                               ]
+                 }
+             ],
+    "artifacts":  [
+                      {
+                          "id":  13129851304,
+                          "name":  "xy-switch-macos-universal",
+                          "size_in_bytes":  33186964,
+                          "digest":  "sha256:54c2e7338ef148b97f5992295c27b4a063142be9f9aea7c2d2243b013cfa2a21",
+                          "expired":  false
+                      },
+                      {
+                          "id":  13129807250,
+                          "name":  "xy-switch-windows-X64",
+                          "size_in_bytes":  12331510,
+                          "digest":  "sha256:8b9ea6a3ac41469d82a9c3d4e382c48ce4112056952d000146163da1cfbaed98",
+                          "expired":  false
+                      },
+                      {
+                          "id":  13129316666,
+                          "name":  "desktop-website-ui",
+                          "size_in_bytes":  863800,
+                          "digest":  "sha256:71a5c4cfa12cc6ad670507bdc856cd5d883761104609e60a33a37e5957702bd1",
+                          "expired":  false
+                      },
+                      {
+                          "id":  13129162536,
+                          "name":  "xy-switch-linux-X64",
+                          "size_in_bytes":  91524865,
+                          "digest":  "sha256:803bfd4947b5646bd43f300caadc4d05e5ffd98c1a81ee2268c80803245358de",
+                          "expired":  false
+                      },
+                      {
+                          "id":  13129133808,
+                          "name":  "workspace-renderer-ui",
+                          "size_in_bytes":  15566223,
+                          "digest":  "sha256:92e3c985ca2a90ba027d0afe9e55d0bfb5f2673839b9d7f17f51370e13963471",
+                          "expired":  false
+                      }
+                  ]
+}

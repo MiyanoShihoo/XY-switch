@@ -1,0 +1,1392 @@
+{
+  "quality": "parsed-bounded-descriptors-and-thunks",
+  "moduleCount": 7,
+  "functionCount": 163,
+  "directory": {
+    "index": 1,
+    "address": 34044,
+    "size": 160,
+    "addressKind": "rva"
+  },
+  "modules": [
+    {
+      "name": "ADVAPI32.dll",
+      "descriptorRva": 34044,
+      "descriptorFileOffset": 28924,
+      "lookupUsesIatFallback": false,
+      "functions": [
+        {
+          "lookupRva": 34204,
+          "iatRva": 32768,
+          "name": "RegEnumValueW",
+          "hint": 482,
+          "nameRva": 34884,
+          "nameFileOffset": 29766
+        },
+        {
+          "lookupRva": 34208,
+          "iatRva": 32772,
+          "name": "RegEnumKeyW",
+          "hint": 480,
+          "nameRva": 34900,
+          "nameFileOffset": 29782
+        },
+        {
+          "lookupRva": 34212,
+          "iatRva": 32776,
+          "name": "RegQueryValueExW",
+          "hint": 504,
+          "nameRva": 34914,
+          "nameFileOffset": 29796
+        },
+        {
+          "lookupRva": 34216,
+          "iatRva": 32780,
+          "name": "RegSetValueExW",
+          "hint": 517,
+          "nameRva": 34934,
+          "nameFileOffset": 29816
+        },
+        {
+          "lookupRva": 34220,
+          "iatRva": 32784,
+          "name": "RegCloseKey",
+          "hint": 459,
+          "nameRva": 34952,
+          "nameFileOffset": 29834
+        },
+        {
+          "lookupRva": 34224,
+          "iatRva": 32788,
+          "name": "RegDeleteValueW",
+          "hint": 473,
+          "nameRva": 34966,
+          "nameFileOffset": 29848
+        },
+        {
+          "lookupRva": 34228,
+          "iatRva": 32792,
+          "name": "RegDeleteKeyW",
+          "hint": 471,
+          "nameRva": 34984,
+          "nameFileOffset": 29866
+        },
+        {
+          "lookupRva": 34232,
+          "iatRva": 32796,
+          "name": "AdjustTokenPrivileges",
+          "hint": 28,
+          "nameRva": 35000,
+          "nameFileOffset": 29882
+        },
+        {
+          "lookupRva": 34236,
+          "iatRva": 32800,
+          "name": "LookupPrivilegeValueW",
+          "hint": 336,
+          "nameRva": 35024,
+          "nameFileOffset": 29906
+        },
+        {
+          "lookupRva": 34240,
+          "iatRva": 32804,
+          "name": "OpenProcessToken",
+          "hint": 428,
+          "nameRva": 35048,
+          "nameFileOffset": 29930
+        },
+        {
+          "lookupRva": 34244,
+          "iatRva": 32808,
+          "name": "RegOpenKeyExW",
+          "hint": 493,
+          "nameRva": 35068,
+          "nameFileOffset": 29950
+        },
+        {
+          "lookupRva": 34248,
+          "iatRva": 32812,
+          "name": "RegCreateKeyExW",
+          "hint": 466,
+          "nameRva": 35084,
+          "nameFileOffset": 29966
+        }
+      ]
+    },
+    {
+      "name": "SHELL32.dll",
+      "descriptorRva": 34064,
+      "descriptorFileOffset": 28944,
+      "lookupUsesIatFallback": false,
+      "functions": [
+        {
+          "lookupRva": 34576,
+          "iatRva": 33140,
+          "name": "SHGetPathFromIDListW",
+          "hint": 189,
+          "nameRva": 35176,
+          "nameFileOffset": 30058
+        },
+        {
+          "lookupRva": 34580,
+          "iatRva": 33144,
+          "name": "SHBrowseForFolderW",
+          "hint": 122,
+          "nameRva": 35154,
+          "nameFileOffset": 30036
+        },
+        {
+          "lookupRva": 34584,
+          "iatRva": 33148,
+          "name": "SHGetFileInfoW",
+          "hint": 173,
+          "nameRva": 35136,
+          "nameFileOffset": 30018
+        },
+        {
+          "lookupRva": 34588,
+          "iatRva": 33152,
+          "name": "SHFileOperationW",
+          "hint": 155,
+          "nameRva": 35116,
+          "nameFileOffset": 29998
+        },
+        {
+          "lookupRva": 34592,
+          "iatRva": 33156,
+          "name": "ShellExecuteExW",
+          "hint": 266,
+          "nameRva": 35200,
+          "nameFileOffset": 30082
+        }
+      ]
+    },
+    {
+      "name": "ole32.dll",
+      "descriptorRva": 34084,
+      "descriptorFileOffset": 28964,
+      "lookupUsesIatFallback": false,
+      "functions": [
+        {
+          "lookupRva": 34860,
+          "iatRva": 33424,
+          "name": "CoCreateInstance",
+          "hint": 16,
+          "nameRva": 35262,
+          "nameFileOffset": 30144
+        },
+        {
+          "lookupRva": 34864,
+          "iatRva": 33428,
+          "name": "OleUninitialize",
+          "hint": 261,
+          "nameRva": 35282,
+          "nameFileOffset": 30164
+        },
+        {
+          "lookupRva": 34868,
+          "iatRva": 33432,
+          "name": "OleInitialize",
+          "hint": 238,
+          "nameRva": 35300,
+          "nameFileOffset": 30182
+        },
+        {
+          "lookupRva": 34872,
+          "iatRva": 33436,
+          "name": "IIDFromString",
+          "hint": 198,
+          "nameRva": 35246,
+          "nameFileOffset": 30128
+        },
+        {
+          "lookupRva": 34876,
+          "iatRva": 33440,
+          "name": "CoTaskMemFree",
+          "hint": 101,
+          "nameRva": 35230,
+          "nameFileOffset": 30112
+        }
+      ]
+    },
+    {
+      "name": "COMCTL32.dll",
+      "descriptorRva": 34104,
+      "descriptorFileOffset": 28984,
+      "lookupUsesIatFallback": false,
+      "functions": [
+        {
+          "lookupRva": 34256,
+          "iatRva": 32820,
+          "name": "ImageList_Destroy",
+          "hint": 56,
+          "nameRva": 35326,
+          "nameFileOffset": 30208
+        },
+        {
+          "lookupRva": 34260,
+          "iatRva": 32824,
+          "name": null,
+          "ordinal": 17
+        },
+        {
+          "lookupRva": 34264,
+          "iatRva": 32828,
+          "name": "ImageList_AddMasked",
+          "hint": 52,
+          "nameRva": 35346,
+          "nameFileOffset": 30228
+        },
+        {
+          "lookupRva": 34268,
+          "iatRva": 32832,
+          "name": "ImageList_Create",
+          "hint": 55,
+          "nameRva": 35368,
+          "nameFileOffset": 30250
+        }
+      ]
+    },
+    {
+      "name": "USER32.dll",
+      "descriptorRva": 34124,
+      "descriptorFileOffset": 29004,
+      "lookupUsesIatFallback": false,
+      "functions": [
+        {
+          "lookupRva": 34600,
+          "iatRva": 33164,
+          "name": "MessageBoxIndirectW",
+          "hint": 483,
+          "nameRva": 36344,
+          "nameFileOffset": 31226
+        },
+        {
+          "lookupRva": 34604,
+          "iatRva": 33168,
+          "name": "GetDlgItemTextW",
+          "hint": 276,
+          "nameRva": 36326,
+          "nameFileOffset": 31208
+        },
+        {
+          "lookupRva": 34608,
+          "iatRva": 33172,
+          "name": "SetDlgItemTextW",
+          "hint": 596,
+          "nameRva": 36308,
+          "nameFileOffset": 31190
+        },
+        {
+          "lookupRva": 34612,
+          "iatRva": 33176,
+          "name": "CreatePopupMenu",
+          "hint": 94,
+          "nameRva": 36270,
+          "nameFileOffset": 31152
+        },
+        {
+          "lookupRva": 34616,
+          "iatRva": 33180,
+          "name": "AppendMenuW",
+          "hint": 9,
+          "nameRva": 36256,
+          "nameFileOffset": 31138
+        },
+        {
+          "lookupRva": 34620,
+          "iatRva": 33184,
+          "name": "TrackPopupMenu",
+          "hint": 676,
+          "nameRva": 36238,
+          "nameFileOffset": 31120
+        },
+        {
+          "lookupRva": 34624,
+          "iatRva": 33188,
+          "name": "OpenClipboard",
+          "hint": 502,
+          "nameRva": 36222,
+          "nameFileOffset": 31104
+        },
+        {
+          "lookupRva": 34628,
+          "iatRva": 33192,
+          "name": "EmptyClipboard",
+          "hint": 193,
+          "nameRva": 36204,
+          "nameFileOffset": 31086
+        },
+        {
+          "lookupRva": 34632,
+          "iatRva": 33196,
+          "name": "SetClipboardData",
+          "hint": 586,
+          "nameRva": 36184,
+          "nameFileOffset": 31066
+        },
+        {
+          "lookupRva": 34636,
+          "iatRva": 33200,
+          "name": "CloseClipboard",
+          "hint": 66,
+          "nameRva": 36166,
+          "nameFileOffset": 31048
+        },
+        {
+          "lookupRva": 34640,
+          "iatRva": 33204,
+          "name": "IsWindowVisible",
+          "hint": 433,
+          "nameRva": 36148,
+          "nameFileOffset": 31030
+        },
+        {
+          "lookupRva": 34644,
+          "iatRva": 33208,
+          "name": "CallWindowProcW",
+          "hint": 28,
+          "nameRva": 36130,
+          "nameFileOffset": 31012
+        },
+        {
+          "lookupRva": 34648,
+          "iatRva": 33212,
+          "name": "GetMessagePos",
+          "hint": 316,
+          "nameRva": 36114,
+          "nameFileOffset": 30996
+        },
+        {
+          "lookupRva": 34652,
+          "iatRva": 33216,
+          "name": "CheckDlgButton",
+          "hint": 56,
+          "nameRva": 36096,
+          "nameFileOffset": 30978
+        },
+        {
+          "lookupRva": 34656,
+          "iatRva": 33220,
+          "name": "LoadCursorW",
+          "hint": 445,
+          "nameRva": 36082,
+          "nameFileOffset": 30964
+        },
+        {
+          "lookupRva": 34660,
+          "iatRva": 33224,
+          "name": "SetCursor",
+          "hint": 589,
+          "nameRva": 36070,
+          "nameFileOffset": 30952
+        },
+        {
+          "lookupRva": 34664,
+          "iatRva": 33228,
+          "name": "GetSysColor",
+          "hint": 346,
+          "nameRva": 36056,
+          "nameFileOffset": 30938
+        },
+        {
+          "lookupRva": 34668,
+          "iatRva": 33232,
+          "name": "SetWindowPos",
+          "hint": 643,
+          "nameRva": 36040,
+          "nameFileOffset": 30922
+        },
+        {
+          "lookupRva": 34672,
+          "iatRva": 33236,
+          "name": "GetWindowLongW",
+          "hint": 367,
+          "nameRva": 36022,
+          "nameFileOffset": 30904
+        },
+        {
+          "lookupRva": 34676,
+          "iatRva": 33240,
+          "name": "IsWindowEnabled",
+          "hint": 430,
+          "nameRva": 36004,
+          "nameFileOffset": 30886
+        },
+        {
+          "lookupRva": 34680,
+          "iatRva": 33244,
+          "name": "SetClassLongW",
+          "hint": 584,
+          "nameRva": 35988,
+          "nameFileOffset": 30870
+        },
+        {
+          "lookupRva": 34684,
+          "iatRva": 33248,
+          "name": "GetSystemMenu",
+          "hint": 348,
+          "nameRva": 35972,
+          "nameFileOffset": 30854
+        },
+        {
+          "lookupRva": 34688,
+          "iatRva": 33252,
+          "name": "EnableMenuItem",
+          "hint": 194,
+          "nameRva": 35954,
+          "nameFileOffset": 30836
+        },
+        {
+          "lookupRva": 34692,
+          "iatRva": 33256,
+          "name": "GetWindowRect",
+          "hint": 372,
+          "nameRva": 35938,
+          "nameFileOffset": 30820
+        },
+        {
+          "lookupRva": 34696,
+          "iatRva": 33260,
+          "name": "ScreenToClient",
+          "hint": 561,
+          "nameRva": 35920,
+          "nameFileOffset": 30802
+        },
+        {
+          "lookupRva": 34700,
+          "iatRva": 33264,
+          "name": "EndDialog",
+          "hint": 198,
+          "nameRva": 35908,
+          "nameFileOffset": 30790
+        },
+        {
+          "lookupRva": 34704,
+          "iatRva": 33268,
+          "name": "RegisterClassW",
+          "hint": 537,
+          "nameRva": 35890,
+          "nameFileOffset": 30772
+        },
+        {
+          "lookupRva": 34708,
+          "iatRva": 33272,
+          "name": "SystemParametersInfoW",
+          "hint": 666,
+          "nameRva": 35866,
+          "nameFileOffset": 30748
+        },
+        {
+          "lookupRva": 34712,
+          "iatRva": 33276,
+          "name": "CharPrevW",
+          "hint": 47,
+          "nameRva": 36366,
+          "nameFileOffset": 31248
+        },
+        {
+          "lookupRva": 34716,
+          "iatRva": 33280,
+          "name": "GetClassInfoW",
+          "hint": 249,
+          "nameRva": 35832,
+          "nameFileOffset": 30714
+        },
+        {
+          "lookupRva": 34720,
+          "iatRva": 33284,
+          "name": "DialogBoxParamW",
+          "hint": 159,
+          "nameRva": 35814,
+          "nameFileOffset": 30696
+        },
+        {
+          "lookupRva": 34724,
+          "iatRva": 33288,
+          "name": "CharNextW",
+          "hint": 44,
+          "nameRva": 35802,
+          "nameFileOffset": 30684
+        },
+        {
+          "lookupRva": 34728,
+          "iatRva": 33292,
+          "name": "ExitWindowsEx",
+          "hint": 225,
+          "nameRva": 35786,
+          "nameFileOffset": 30668
+        },
+        {
+          "lookupRva": 34732,
+          "iatRva": 33296,
+          "name": "DestroyWindow",
+          "hint": 153,
+          "nameRva": 35770,
+          "nameFileOffset": 30652
+        },
+        {
+          "lookupRva": 34736,
+          "iatRva": 33300,
+          "name": "CreateDialogParamW",
+          "hint": 86,
+          "nameRva": 35748,
+          "nameFileOffset": 30630
+        },
+        {
+          "lookupRva": 34740,
+          "iatRva": 33304,
+          "name": "SetTimer",
+          "hint": 634,
+          "nameRva": 35736,
+          "nameFileOffset": 30618
+        },
+        {
+          "lookupRva": 34744,
+          "iatRva": 33308,
+          "name": "SetWindowTextW",
+          "hint": 647,
+          "nameRva": 35718,
+          "nameFileOffset": 30600
+        },
+        {
+          "lookupRva": 34748,
+          "iatRva": 33312,
+          "name": "PostQuitMessage",
+          "hint": 516,
+          "nameRva": 35700,
+          "nameFileOffset": 30582
+        },
+        {
+          "lookupRva": 34752,
+          "iatRva": 33316,
+          "name": "SetForegroundWindow",
+          "hint": 599,
+          "nameRva": 35678,
+          "nameFileOffset": 30560
+        },
+        {
+          "lookupRva": 34756,
+          "iatRva": 33320,
+          "name": "ShowWindow",
+          "hint": 658,
+          "nameRva": 35664,
+          "nameFileOffset": 30546
+        },
+        {
+          "lookupRva": 34760,
+          "iatRva": 33324,
+          "name": "wsprintfW",
+          "hint": 728,
+          "nameRva": 35652,
+          "nameFileOffset": 30534
+        },
+        {
+          "lookupRva": 34764,
+          "iatRva": 33328,
+          "name": "SendMessageTimeoutW",
+          "hint": 575,
+          "nameRva": 35630,
+          "nameFileOffset": 30512
+        },
+        {
+          "lookupRva": 34768,
+          "iatRva": 33332,
+          "name": "FindWindowExW",
+          "hint": 229,
+          "nameRva": 35614,
+          "nameFileOffset": 30496
+        },
+        {
+          "lookupRva": 34772,
+          "iatRva": 33336,
+          "name": "IsWindow",
+          "hint": 429,
+          "nameRva": 35602,
+          "nameFileOffset": 30484
+        },
+        {
+          "lookupRva": 34776,
+          "iatRva": 33340,
+          "name": "GetDlgItem",
+          "hint": 273,
+          "nameRva": 35588,
+          "nameFileOffset": 30470
+        },
+        {
+          "lookupRva": 34780,
+          "iatRva": 33344,
+          "name": "SetWindowLongW",
+          "hint": 641,
+          "nameRva": 35570,
+          "nameFileOffset": 30452
+        },
+        {
+          "lookupRva": 34784,
+          "iatRva": 33348,
+          "name": "LoadImageW",
+          "hint": 449,
+          "nameRva": 35556,
+          "nameFileOffset": 30438
+        },
+        {
+          "lookupRva": 34788,
+          "iatRva": 33352,
+          "name": "GetDC",
+          "hint": 268,
+          "nameRva": 35548,
+          "nameFileOffset": 30430
+        },
+        {
+          "lookupRva": 34792,
+          "iatRva": 33356,
+          "name": "ReleaseDC",
+          "hint": 554,
+          "nameRva": 35536,
+          "nameFileOffset": 30418
+        },
+        {
+          "lookupRva": 34796,
+          "iatRva": 33360,
+          "name": "EnableWindow",
+          "hint": 196,
+          "nameRva": 35520,
+          "nameFileOffset": 30402
+        },
+        {
+          "lookupRva": 34800,
+          "iatRva": 33364,
+          "name": "InvalidateRect",
+          "hint": 403,
+          "nameRva": 35502,
+          "nameFileOffset": 30384
+        },
+        {
+          "lookupRva": 34804,
+          "iatRva": 33368,
+          "name": "SendMessageW",
+          "hint": 576,
+          "nameRva": 35486,
+          "nameFileOffset": 30368
+        },
+        {
+          "lookupRva": 34808,
+          "iatRva": 33372,
+          "name": "DefWindowProcW",
+          "hint": 143,
+          "nameRva": 35468,
+          "nameFileOffset": 30350
+        },
+        {
+          "lookupRva": 34812,
+          "iatRva": 33376,
+          "name": "BeginPaint",
+          "hint": 13,
+          "nameRva": 35454,
+          "nameFileOffset": 30336
+        },
+        {
+          "lookupRva": 34816,
+          "iatRva": 33380,
+          "name": "GetClientRect",
+          "hint": 255,
+          "nameRva": 35438,
+          "nameFileOffset": 30320
+        },
+        {
+          "lookupRva": 34820,
+          "iatRva": 33384,
+          "name": "FillRect",
+          "hint": 226,
+          "nameRva": 35426,
+          "nameFileOffset": 30308
+        },
+        {
+          "lookupRva": 34824,
+          "iatRva": 33388,
+          "name": "DrawTextW",
+          "hint": 191,
+          "nameRva": 35414,
+          "nameFileOffset": 30296
+        },
+        {
+          "lookupRva": 34828,
+          "iatRva": 33392,
+          "name": "EndPaint",
+          "hint": 200,
+          "nameRva": 35402,
+          "nameFileOffset": 30284
+        },
+        {
+          "lookupRva": 34832,
+          "iatRva": 33396,
+          "name": "CharNextA",
+          "hint": 42,
+          "nameRva": 36378,
+          "nameFileOffset": 31260
+        },
+        {
+          "lookupRva": 34836,
+          "iatRva": 33400,
+          "name": "wsprintfA",
+          "hint": 727,
+          "nameRva": 36390,
+          "nameFileOffset": 31272
+        },
+        {
+          "lookupRva": 34840,
+          "iatRva": 33404,
+          "name": "DispatchMessageW",
+          "hint": 162,
+          "nameRva": 36402,
+          "nameFileOffset": 31284
+        },
+        {
+          "lookupRva": 34844,
+          "iatRva": 33408,
+          "name": "CreateWindowExW",
+          "hint": 97,
+          "nameRva": 35848,
+          "nameFileOffset": 30730
+        },
+        {
+          "lookupRva": 34848,
+          "iatRva": 33412,
+          "name": "PeekMessageW",
+          "hint": 513,
+          "nameRva": 36422,
+          "nameFileOffset": 31304
+        },
+        {
+          "lookupRva": 34852,
+          "iatRva": 33416,
+          "name": "GetSystemMetrics",
+          "hint": 349,
+          "nameRva": 36288,
+          "nameFileOffset": 31170
+        }
+      ]
+    },
+    {
+      "name": "GDI32.dll",
+      "descriptorRva": 34144,
+      "descriptorFileOffset": 29024,
+      "lookupUsesIatFallback": false,
+      "functions": [
+        {
+          "lookupRva": 34276,
+          "iatRva": 32840,
+          "name": "GetDeviceCaps",
+          "hint": 363,
+          "nameRva": 36554,
+          "nameFileOffset": 31436
+        },
+        {
+          "lookupRva": 34280,
+          "iatRva": 32844,
+          "name": "SetBkColor",
+          "hint": 533,
+          "nameRva": 36570,
+          "nameFileOffset": 31452
+        },
+        {
+          "lookupRva": 34284,
+          "iatRva": 32848,
+          "name": "SelectObject",
+          "hint": 526,
+          "nameRva": 36450,
+          "nameFileOffset": 31332
+        },
+        {
+          "lookupRva": 34288,
+          "iatRva": 32852,
+          "name": "DeleteObject",
+          "hint": 143,
+          "nameRva": 36538,
+          "nameFileOffset": 31420
+        },
+        {
+          "lookupRva": 34292,
+          "iatRva": 32856,
+          "name": "CreateBrushIndirect",
+          "hint": 41,
+          "nameRva": 36516,
+          "nameFileOffset": 31398
+        },
+        {
+          "lookupRva": 34296,
+          "iatRva": 32860,
+          "name": "CreateFontIndirectW",
+          "hint": 61,
+          "nameRva": 36494,
+          "nameFileOffset": 31376
+        },
+        {
+          "lookupRva": 34300,
+          "iatRva": 32864,
+          "name": "SetBkMode",
+          "hint": 534,
+          "nameRva": 36482,
+          "nameFileOffset": 31364
+        },
+        {
+          "lookupRva": 34304,
+          "iatRva": 32868,
+          "name": "SetTextColor",
+          "hint": 572,
+          "nameRva": 36466,
+          "nameFileOffset": 31348
+        }
+      ]
+    },
+    {
+      "name": "KERNEL32.dll",
+      "descriptorRva": 34164,
+      "descriptorFileOffset": 29044,
+      "lookupUsesIatFallback": false,
+      "functions": [
+        {
+          "lookupRva": 34312,
+          "iatRva": 32876,
+          "name": "RemoveDirectoryW",
+          "hint": 709,
+          "nameRva": 37500,
+          "nameFileOffset": 32382
+        },
+        {
+          "lookupRva": 34316,
+          "iatRva": 32880,
+          "name": "lstrcmpiA",
+          "hint": 963,
+          "nameRva": 37520,
+          "nameFileOffset": 32402
+        },
+        {
+          "lookupRva": 34320,
+          "iatRva": 32884,
+          "name": "GetTempFileNameW",
+          "hint": 468,
+          "nameRva": 37532,
+          "nameFileOffset": 32414
+        },
+        {
+          "lookupRva": 34324,
+          "iatRva": 32888,
+          "name": "CreateProcessW",
+          "hint": 105,
+          "nameRva": 37482,
+          "nameFileOffset": 32364
+        },
+        {
+          "lookupRva": 34328,
+          "iatRva": 32892,
+          "name": "CreateDirectoryW",
+          "hint": 78,
+          "nameRva": 37462,
+          "nameFileOffset": 32344
+        },
+        {
+          "lookupRva": 34332,
+          "iatRva": 32896,
+          "name": "CreateThread",
+          "hint": 111,
+          "nameRva": 37446,
+          "nameFileOffset": 32328
+        },
+        {
+          "lookupRva": 34336,
+          "iatRva": 32900,
+          "name": "GlobalLock",
+          "hint": 515,
+          "nameRva": 37432,
+          "nameFileOffset": 32314
+        },
+        {
+          "lookupRva": 34340,
+          "iatRva": 32904,
+          "name": "GlobalUnlock",
+          "hint": 522,
+          "nameRva": 37416,
+          "nameFileOffset": 32298
+        },
+        {
+          "lookupRva": 34344,
+          "iatRva": 32908,
+          "name": "GetDiskFreeSpaceW",
+          "hint": 336,
+          "nameRva": 37396,
+          "nameFileOffset": 32278
+        },
+        {
+          "lookupRva": 34348,
+          "iatRva": 32912,
+          "name": "WideCharToMultiByte",
+          "hint": 916,
+          "nameRva": 37374,
+          "nameFileOffset": 32256
+        },
+        {
+          "lookupRva": 34352,
+          "iatRva": 32916,
+          "name": "lstrcpynW",
+          "hint": 970,
+          "nameRva": 37362,
+          "nameFileOffset": 32244
+        },
+        {
+          "lookupRva": 34356,
+          "iatRva": 32920,
+          "name": "lstrlenW",
+          "hint": 973,
+          "nameRva": 37350,
+          "nameFileOffset": 32232
+        },
+        {
+          "lookupRva": 34360,
+          "iatRva": 32924,
+          "name": "SetErrorMode",
+          "hint": 789,
+          "nameRva": 37334,
+          "nameFileOffset": 32216
+        },
+        {
+          "lookupRva": 34364,
+          "iatRva": 32928,
+          "name": "GetVersionExW",
+          "hint": 490,
+          "nameRva": 37318,
+          "nameFileOffset": 32200
+        },
+        {
+          "lookupRva": 34368,
+          "iatRva": 32932,
+          "name": "GetCommandLineW",
+          "hint": 273,
+          "nameRva": 37300,
+          "nameFileOffset": 32182
+        },
+        {
+          "lookupRva": 34372,
+          "iatRva": 32936,
+          "name": "GetTempPathW",
+          "hint": 470,
+          "nameRva": 37284,
+          "nameFileOffset": 32166
+        },
+        {
+          "lookupRva": 34376,
+          "iatRva": 32940,
+          "name": "GetWindowsDirectoryW",
+          "hint": 500,
+          "nameRva": 37260,
+          "nameFileOffset": 32142
+        },
+        {
+          "lookupRva": 34380,
+          "iatRva": 32944,
+          "name": "SetEnvironmentVariableW",
+          "hint": 788,
+          "nameRva": 37234,
+          "nameFileOffset": 32116
+        },
+        {
+          "lookupRva": 34384,
+          "iatRva": 32948,
+          "name": "CopyFileW",
+          "hint": 70,
+          "nameRva": 37222,
+          "nameFileOffset": 32104
+        },
+        {
+          "lookupRva": 34388,
+          "iatRva": 32952,
+          "name": "WriteFile",
+          "hint": 932,
+          "nameRva": 37552,
+          "nameFileOffset": 32434
+        },
+        {
+          "lookupRva": 34392,
+          "iatRva": 32956,
+          "name": "GetCurrentProcess",
+          "hint": 322,
+          "nameRva": 37188,
+          "nameFileOffset": 32070
+        },
+        {
+          "lookupRva": 34396,
+          "iatRva": 32960,
+          "name": "GetModuleFileNameW",
+          "hint": 382,
+          "nameRva": 37166,
+          "nameFileOffset": 32048
+        },
+        {
+          "lookupRva": 34400,
+          "iatRva": 32964,
+          "name": "GetLastError",
+          "hint": 369,
+          "nameRva": 37150,
+          "nameFileOffset": 32032
+        },
+        {
+          "lookupRva": 34404,
+          "iatRva": 32968,
+          "name": "GetFileSize",
+          "hint": 355,
+          "nameRva": 37136,
+          "nameFileOffset": 32018
+        },
+        {
+          "lookupRva": 34408,
+          "iatRva": 32972,
+          "name": "CreateFileW",
+          "hint": 86,
+          "nameRva": 37122,
+          "nameFileOffset": 32004
+        },
+        {
+          "lookupRva": 34412,
+          "iatRva": 32976,
+          "name": "GetTickCount",
+          "hint": 479,
+          "nameRva": 37106,
+          "nameFileOffset": 31988
+        },
+        {
+          "lookupRva": 34416,
+          "iatRva": 32980,
+          "name": "Sleep",
+          "hint": 854,
+          "nameRva": 37098,
+          "nameFileOffset": 31980
+        },
+        {
+          "lookupRva": 34420,
+          "iatRva": 32984,
+          "name": "SetFileAttributesW",
+          "hint": 794,
+          "nameRva": 37076,
+          "nameFileOffset": 31958
+        },
+        {
+          "lookupRva": 34424,
+          "iatRva": 32988,
+          "name": "GetFileAttributesW",
+          "hint": 353,
+          "nameRva": 37054,
+          "nameFileOffset": 31936
+        },
+        {
+          "lookupRva": 34428,
+          "iatRva": 32992,
+          "name": "SetCurrentDirectoryW",
+          "hint": 779,
+          "nameRva": 37030,
+          "nameFileOffset": 31912
+        },
+        {
+          "lookupRva": 34432,
+          "iatRva": 32996,
+          "name": "MoveFileW",
+          "hint": 625,
+          "nameRva": 37018,
+          "nameFileOffset": 31900
+        },
+        {
+          "lookupRva": 34436,
+          "iatRva": 33000,
+          "name": "GetFullPathNameW",
+          "hint": 362,
+          "nameRva": 36998,
+          "nameFileOffset": 31880
+        },
+        {
+          "lookupRva": 34440,
+          "iatRva": 33004,
+          "name": "GetShortPathNameW",
+          "hint": 438,
+          "nameRva": 36978,
+          "nameFileOffset": 31860
+        },
+        {
+          "lookupRva": 34444,
+          "iatRva": 33008,
+          "name": "SearchPathW",
+          "hint": 732,
+          "nameRva": 36964,
+          "nameFileOffset": 31846
+        },
+        {
+          "lookupRva": 34448,
+          "iatRva": 33012,
+          "name": "CompareFileTime",
+          "hint": 57,
+          "nameRva": 36946,
+          "nameFileOffset": 31828
+        },
+        {
+          "lookupRva": 34452,
+          "iatRva": 33016,
+          "name": "SetFileTime",
+          "hint": 799,
+          "nameRva": 36932,
+          "nameFileOffset": 31814
+        },
+        {
+          "lookupRva": 34456,
+          "iatRva": 33020,
+          "name": "CloseHandle",
+          "hint": 52,
+          "nameRva": 36918,
+          "nameFileOffset": 31800
+        },
+        {
+          "lookupRva": 34460,
+          "iatRva": 33024,
+          "name": "lstrcmpiW",
+          "hint": 964,
+          "nameRva": 36906,
+          "nameFileOffset": 31788
+        },
+        {
+          "lookupRva": 34464,
+          "iatRva": 33028,
+          "name": "lstrcmpW",
+          "hint": 961,
+          "nameRva": 36894,
+          "nameFileOffset": 31776
+        },
+        {
+          "lookupRva": 34468,
+          "iatRva": 33032,
+          "name": "ExpandEnvironmentStringsW",
+          "hint": 189,
+          "nameRva": 36866,
+          "nameFileOffset": 31748
+        },
+        {
+          "lookupRva": 34472,
+          "iatRva": 33036,
+          "name": "GlobalFree",
+          "hint": 511,
+          "nameRva": 36852,
+          "nameFileOffset": 31734
+        },
+        {
+          "lookupRva": 34476,
+          "iatRva": 33040,
+          "name": "GlobalAlloc",
+          "hint": 504,
+          "nameRva": 36838,
+          "nameFileOffset": 31720
+        },
+        {
+          "lookupRva": 34480,
+          "iatRva": 33044,
+          "name": "GetModuleHandleW",
+          "hint": 386,
+          "nameRva": 36818,
+          "nameFileOffset": 31700
+        },
+        {
+          "lookupRva": 34484,
+          "iatRva": 33048,
+          "name": "LoadLibraryExW",
+          "hint": 596,
+          "nameRva": 36800,
+          "nameFileOffset": 31682
+        },
+        {
+          "lookupRva": 34488,
+          "iatRva": 33052,
+          "name": "FreeLibrary",
+          "hint": 248,
+          "nameRva": 36786,
+          "nameFileOffset": 31668
+        },
+        {
+          "lookupRva": 34492,
+          "iatRva": 33056,
+          "name": "WritePrivateProfileStringW",
+          "hint": 938,
+          "nameRva": 36756,
+          "nameFileOffset": 31638
+        },
+        {
+          "lookupRva": 34496,
+          "iatRva": 33060,
+          "name": "GetPrivateProfileStringW",
+          "hint": 413,
+          "nameRva": 36728,
+          "nameFileOffset": 31610
+        },
+        {
+          "lookupRva": 34500,
+          "iatRva": 33064,
+          "name": "lstrlenA",
+          "hint": 972,
+          "nameRva": 36716,
+          "nameFileOffset": 31598
+        },
+        {
+          "lookupRva": 34504,
+          "iatRva": 33068,
+          "name": "MultiByteToWideChar",
+          "hint": 629,
+          "nameRva": 36694,
+          "nameFileOffset": 31576
+        },
+        {
+          "lookupRva": 34508,
+          "iatRva": 33072,
+          "name": "ReadFile",
+          "hint": 693,
+          "nameRva": 36682,
+          "nameFileOffset": 31564
+        },
+        {
+          "lookupRva": 34512,
+          "iatRva": 33076,
+          "name": "SetFilePointer",
+          "hint": 795,
+          "nameRva": 36664,
+          "nameFileOffset": 31546
+        },
+        {
+          "lookupRva": 34516,
+          "iatRva": 33080,
+          "name": "FindClose",
+          "hint": 206,
+          "nameRva": 36652,
+          "nameFileOffset": 31534
+        },
+        {
+          "lookupRva": 34520,
+          "iatRva": 33084,
+          "name": "FindNextFileW",
+          "hint": 221,
+          "nameRva": 36636,
+          "nameFileOffset": 31518
+        },
+        {
+          "lookupRva": 34524,
+          "iatRva": 33088,
+          "name": "FindFirstFileW",
+          "hint": 213,
+          "nameRva": 36618,
+          "nameFileOffset": 31500
+        },
+        {
+          "lookupRva": 34528,
+          "iatRva": 33092,
+          "name": "DeleteFileW",
+          "hint": 132,
+          "nameRva": 36604,
+          "nameFileOffset": 31486
+        },
+        {
+          "lookupRva": 34532,
+          "iatRva": 33096,
+          "name": "MulDiv",
+          "hint": 628,
+          "nameRva": 36594,
+          "nameFileOffset": 31476
+        },
+        {
+          "lookupRva": 34536,
+          "iatRva": 33100,
+          "name": "lstrcpyA",
+          "hint": 966,
+          "nameRva": 37564,
+          "nameFileOffset": 32446
+        },
+        {
+          "lookupRva": 34540,
+          "iatRva": 33104,
+          "name": "MoveFileExW",
+          "hint": 624,
+          "nameRva": 37576,
+          "nameFileOffset": 32458
+        },
+        {
+          "lookupRva": 34544,
+          "iatRva": 33108,
+          "name": "lstrcatW",
+          "hint": 958,
+          "nameRva": 37590,
+          "nameFileOffset": 32472
+        },
+        {
+          "lookupRva": 34548,
+          "iatRva": 33112,
+          "name": "GetSystemDirectoryW",
+          "hint": 450,
+          "nameRva": 37602,
+          "nameFileOffset": 32484
+        },
+        {
+          "lookupRva": 34552,
+          "iatRva": 33116,
+          "name": "GetProcAddress",
+          "hint": 416,
+          "nameRva": 37624,
+          "nameFileOffset": 32506
+        },
+        {
+          "lookupRva": 34556,
+          "iatRva": 33120,
+          "name": "GetModuleHandleA",
+          "hint": 383,
+          "nameRva": 37642,
+          "nameFileOffset": 32524
+        },
+        {
+          "lookupRva": 34560,
+          "iatRva": 33124,
+          "name": "GetExitCodeProcess",
+          "hint": 346,
+          "nameRva": 37662,
+          "nameFileOffset": 32544
+        },
+        {
+          "lookupRva": 34564,
+          "iatRva": 33128,
+          "name": "WaitForSingleObject",
+          "hint": 912,
+          "nameRva": 37684,
+          "nameFileOffset": 32566
+        },
+        {
+          "lookupRva": 34568,
+          "iatRva": 33132,
+          "name": "ExitProcess",
+          "hint": 185,
+          "nameRva": 37208,
+          "nameFileOffset": 32090
+        }
+      ]
+    }
+  ],
+  "dynamicLoadingAnchors": [
+    {
+      "module": "KERNEL32.dll",
+      "lookupRva": 34484,
+      "iatRva": 33048,
+      "name": "LoadLibraryExW",
+      "hint": 596,
+      "nameRva": 36800,
+      "nameFileOffset": 31682
+    },
+    {
+      "module": "KERNEL32.dll",
+      "lookupRva": 34552,
+      "iatRva": 33116,
+      "name": "GetProcAddress",
+      "hint": 416,
+      "nameRva": 37624,
+      "nameFileOffset": 32506
+    }
+  ],
+  "claimBoundary": "Direct imports are static references. They do not establish complete runtime capabilities or absence of networking."
+}

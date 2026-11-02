@@ -1,0 +1,31 @@
+{
+  "sampleSha256": "6371977825a2d914b7d3d5124ba6d2fff6924e7db1406af39be27b23eac92869",
+  "claimBoundary": "Selected static strings only; no runtime behavior or whole payload claims",
+  "strings": [
+    {
+      "encoding": "ascii",
+      "fileOffset": 31682,
+      "text": "LoadLibraryExW"
+    },
+    {
+      "encoding": "ascii",
+      "fileOffset": 32506,
+      "text": "GetProcAddress"
+    },
+    {
+      "encoding": "ascii",
+      "fileOffset": 32586,
+      "text": "KERNEL32.dll"
+    },
+    {
+      "encoding": "ascii",
+      "fileOffset": 52776,
+      "text": ".0\" processorArchitecture=\"*\" name=\"Nullsoft.NSIS.exehead\" type=\"win32\"/><description>Nullsoft Install System v3.11</description><dependency><dependentAssembly>"
+    },
+    {
+      "encoding": "ascii",
+      "fileOffset": 54280,
+      "text": "NullsoftInst|0"
+    }
+  ]
+}

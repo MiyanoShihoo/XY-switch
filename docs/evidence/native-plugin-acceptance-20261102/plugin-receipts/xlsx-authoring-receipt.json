@@ -1,0 +1,51 @@
+{
+  "plugin": "spreadsheets",
+  "operation": "create",
+  "output": "E:\\XY switch\\workspaces\\session-favorites-20261029\\artifacts\\native-plugin-acceptance-20261102\\plugin-business\\outputs\\01a19703-6847-7010-86a0-1562d1bc45c4\\XY-Switch-package-sizes.xlsx",
+  "sha256": "edda047b61513857856e0af65885880a87e331cbbd9e769c247f323041f567c2",
+  "bytes": 5071,
+  "sourceCommit": "fe4946bd2fcd4c27a7432aeadb5a656e0e6e676b",
+  "harnessCommit": "0279977f314913d72e0b85a187ccd17217ae95ed",
+  "acceptanceRun": 41452499188,
+  "sheets": [
+    "包体积"
+  ],
+  "liveFormulaCount": 15,
+  "formulaErrors": [],
+  "sensitivity": {
+    "before": {
+      "bytes": 5275657,
+      "packageMiB": 5.031258583068848,
+      "packageShare": 0.038348927433391286,
+      "totalBytes": 137569871,
+      "totalMiB": 131.196852684021,
+      "totalShare": 1
+    },
+    "changed": {
+      "bytes": 6324233,
+      "packageMiB": 6.031258583068848,
+      "packageShare": 0.045623314478483515,
+      "totalBytes": 138618447,
+      "totalMiB": 132.196852684021,
+      "totalShare": 1
+    },
+    "restored": {
+      "bytes": 5275657,
+      "packageMiB": 5.031258583068848,
+      "packageShare": 0.038348927433391286,
+      "totalBytes": 137569871,
+      "totalMiB": 131.196852684021,
+      "totalShare": 1
+    }
+  },
+  "reopened": {
+    "bytes": 5275657,
+    "packageMiB": 5.031258583068848,
+    "packageShare": 0.038348927433391286,
+    "totalBytes": 137569871,
+    "totalMiB": 131.196852684021,
+    "totalShare": 1
+  },
+  "preview": "E:\\XY switch\\workspaces\\session-favorites-20261029\\artifacts\\native-plugin-acceptance-20261102\\plugin-business\\work\\qa\\xlsx\\package-sizes.png",
+  "chargedApiCalls": 0
+}

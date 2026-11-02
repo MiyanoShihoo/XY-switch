@@ -6,3 +6,7 @@
 *.png binary
 *.ico binary
 *.icns binary
+docs/evidence/native-plugin-acceptance-20261102/** -text whitespace=cr-at-eol
+scripts/native-acceptance/inspect-pe.py -text whitespace=cr-at-eol,-blank-at-eof
+scripts/native-acceptance/inspect-header.ps1 -text whitespace=cr-at-eol,-blank-at-eof
+.gitattributes text eol=lf

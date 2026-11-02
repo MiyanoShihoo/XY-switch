@@ -1,0 +1,21 @@
+{
+  "version": "1.2.0",
+  "platform": "macos",
+  "architecture": "universal",
+  "builtAt": "2026-11-02T09:23:49.654Z",
+  "signatureVerification": "not-performed",
+  "files": [
+    {
+      "name": "XY-Switch-1.2.0-macos-universal.app.zip",
+      "format": "app",
+      "bytes": 15650646,
+      "sha256": "715bb8aa2c318a84602c4fd1623a0fa621293de7114f0a99f072f55c9880410d"
+    },
+    {
+      "name": "XY-Switch-1.2.0-macos-universal.dmg",
+      "format": "dmg",
+      "bytes": 17512100,
+      "sha256": "263a6da5c82755baa606ba076601b150acf428814a9beeace4be3c97363f7fc6"
+    }
+  ]
+}

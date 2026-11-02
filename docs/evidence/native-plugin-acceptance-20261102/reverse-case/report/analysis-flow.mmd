@@ -1,0 +1,11 @@
+flowchart TD
+  sample["同一构建的 NSIS 原始安装包"] --> binding["manifest 与 SHA256 绑定 E-001"]
+  binding --> python["Python 有界静态解析 E-002"]
+  binding --> powershell["PowerShell 独立字节核对 E-003"]
+  python --> imports["直接导入与有限字符串 E-004 / E-005"]
+  python --> compare["十项标量及原始字节一致 E-006"]
+  powershell --> compare
+  compare --> findings["PE 外壳与 NSIS header 结论 F-001 / F-002"]
+  imports --> candidates["运行能力维持候选 F-003 / F-004"]
+  findings --> review["证据摘要与严格 case 审查 P-001"]
+  candidates --> review

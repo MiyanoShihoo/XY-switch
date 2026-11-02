@@ -1,0 +1,1847 @@
+{
+  "schemaVersion": 1,
+  "product": "XY Switch",
+  "date": "2026-11-02",
+  "verifiedAt": "2026-11-02T15:36:25.629Z",
+  "source": {
+    "sourceCommit": "fe4946bd2fcd4c27a7432aeadb5a656e0e6e676b",
+    "sourceRun": 41419299553,
+    "sourceAttempt": 1,
+    "sourceUrl": "https://github.com/MiyanoShihoo/XY-switch/actions/runs/41419299553",
+    "harnessCommit": "0279977f314913d72e0b85a187ccd17217ae95ed",
+    "productionInputsUnchanged": true,
+    "artifacts": {
+      "windows": {
+        "id": 13129807250,
+        "name": "xy-switch-windows-X64",
+        "digest": "sha256:8b9ea6a3ac41469d82a9c3d4e382c48ce4112056952d000146163da1cfbaed98",
+        "size": 12331510
+      },
+      "linux": {
+        "id": 13129162536,
+        "name": "xy-switch-linux-X64",
+        "digest": "sha256:803bfd4947b5646bd43f300caadc4d05e5ffd98c1a81ee2268c80803245358de",
+        "size": 91524865
+      },
+      "macos": {
+        "id": 13129851304,
+        "name": "xy-switch-macos-universal",
+        "digest": "sha256:54c2e7338ef148b97f5992295c27b4a063142be9f9aea7c2d2243b013cfa2a21",
+        "size": 33186964
+      }
+    }
+  },
+  "sourceRecordSha256": "e497ecfee94b6bd8cb893332e2f06f3ff07ac4f58cb3ad6bf53cf61fba0f0773",
+  "runs": [
+    {
+      "runId": 41419299553,
+      "headSha": "fe4946bd2fcd4c27a7432aeadb5a656e0e6e676b",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/MiyanoShihoo/XY-switch/actions/runs/41419299553",
+      "attempt": 1,
+      "checkedAt": "2026-11-02T15:24:36.0072755Z",
+      "jobs": [
+        {
+          "id": 125190727014,
+          "name": "website",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 125190727250,
+          "name": "frontend",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 125190727408,
+          "name": "renderer-ui",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 125190729059,
+          "name": "native-source",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "id": 125190729132,
+          "name": "native-windows-sync",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "id": 125191037431,
+          "name": "desktop (windows-latest, windows)",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 125191037481,
+          "name": "desktop (ubuntu-22.04, linux)",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 125191037523,
+          "name": "macos",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ],
+      "receiptFile": "runs/run-41419299553-status.json"
+    },
+    {
+      "runId": 41452499188,
+      "headSha": "0279977f314913d72e0b85a187ccd17217ae95ed",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/MiyanoShihoo/XY-switch/actions/runs/41452499188",
+      "attempt": 1,
+      "checkedAt": "2026-11-02T15:24:39.1017341Z",
+      "jobs": [
+        {
+          "id": 125300895671,
+          "name": "native-source",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 125300896397,
+          "name": "website",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 125300897537,
+          "name": "renderer-ui",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "id": 125300897759,
+          "name": "desktop",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "id": 125300898736,
+          "name": "macos",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "id": 125300951027,
+          "name": "frontend",
+          "status": "completed",
+          "conclusion": "skipped"
+        },
+        {
+          "id": 125301036081,
+          "name": "native-windows-lifecycle",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 125301036083,
+          "name": "native-linux-lifecycle",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 125301036213,
+          "name": "native-macos-lifecycle",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "id": 125301036267,
+          "name": "native-windows-sync",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ],
+      "receiptFile": "runs/run-41452499188-status.json"
+    }
+  ],
+  "packages": [
+    {
+      "name": "XY-Switch-1.2.0-windows-x64-setup.exe",
+      "format": "nsis",
+      "bytes": 5275657,
+      "sha256": "6371977825a2d914b7d3d5124ba6d2fff6924e7db1406af39be27b23eac92869",
+      "platform": "windows-x64",
+      "manifest": "manifests/windows-x64.json",
+      "signatureVerification": "not-performed"
+    },
+    {
+      "name": "XY-Switch-1.2.0-windows-x64.msi",
+      "format": "msi",
+      "bytes": 7139328,
+      "sha256": "7b6bbc30906af3eb88bb189d1e038dd25277a8cf2b18e9079cb3e621c042b7b5",
+      "platform": "windows-x64",
+      "manifest": "manifests/windows-x64.json",
+      "signatureVerification": "not-performed"
+    },
+    {
+      "name": "XY-Switch-1.2.0-linux-x64.deb",
+      "format": "deb",
+      "bytes": 6989396,
+      "sha256": "5d0b68edee914e5c50ac3313fdbf30bde70e9698577363ca0f13331790a35b3e",
+      "platform": "linux-x64",
+      "manifest": "manifests/linux-x64.json",
+      "signatureVerification": "not-performed"
+    },
+    {
+      "name": "XY-Switch-1.2.0-linux-x64.AppImage",
+      "format": "appimage",
+      "bytes": 85002744,
+      "sha256": "75bb16d3e9b222803e161a3e1452db4264920f8fd8719d1e1ebe16965f85bcbe",
+      "platform": "linux-x64",
+      "manifest": "manifests/linux-x64.json",
+      "signatureVerification": "not-performed"
+    },
+    {
+      "name": "XY-Switch-1.2.0-macos-universal.app.zip",
+      "format": "app",
+      "bytes": 15650646,
+      "sha256": "715bb8aa2c318a84602c4fd1623a0fa621293de7114f0a99f072f55c9880410d",
+      "platform": "macos-universal",
+      "manifest": "manifests/macos-universal.json",
+      "signatureVerification": "not-performed"
+    },
+    {
+      "name": "XY-Switch-1.2.0-macos-universal.dmg",
+      "format": "dmg",
+      "bytes": 17512100,
+      "sha256": "263a6da5c82755baa606ba076601b150acf428814a9beeace4be3c97363f7fc6",
+      "platform": "macos-universal",
+      "manifest": "manifests/macos-universal.json",
+      "signatureVerification": "not-performed"
+    }
+  ],
+  "totalPackageBytes": 137569871,
+  "packageManifests": [
+    {
+      "path": "artifacts/native-plugin-acceptance-20261102/github-run-41419299553/windows-x64/1.2.0/windows-x64/manifest.json",
+      "bytes": 568,
+      "sha256": "4938679477d4bf5598007089b69b2f550b768d9ba583987fc45f0ac746319a3f",
+      "sourceCommitFieldPresent": false,
+      "archivedFile": "manifests/windows-x64.json"
+    },
+    {
+      "path": "artifacts/native-plugin-acceptance-20261102/github-run-41419299553/linux-x64/1.2.0/linux-x64/manifest.json",
+      "bytes": 566,
+      "sha256": "1dbcbfdb4a90972e570c7aba938be971f5acbccafe649d8ba7ecd80863124f6c",
+      "sourceCommitFieldPresent": false,
+      "archivedFile": "manifests/linux-x64.json"
+    },
+    {
+      "path": "artifacts/native-plugin-acceptance-20261102/github-run-41419299553/macos-universal/1.2.0/macos-universal/manifest.json",
+      "bytes": 579,
+      "sha256": "250536a76379d3711414c5392d6740c3af625bd90bfa867b3f27a7b9c1586e89",
+      "sourceCommitFieldPresent": false,
+      "archivedFile": "manifests/macos-universal.json"
+    }
+  ],
+  "artifactArchives": [
+    {
+      "runId": 41419299553,
+      "artifactId": 13129851304,
+      "name": "xy-switch-macos-universal",
+      "bytes": 33186964,
+      "digest": "sha256:54c2e7338ef148b97f5992295c27b4a063142be9f9aea7c2d2243b013cfa2a21",
+      "verified": true
+    },
+    {
+      "runId": 41419299553,
+      "artifactId": 13129807250,
+      "name": "xy-switch-windows-X64",
+      "bytes": 12331510,
+      "digest": "sha256:8b9ea6a3ac41469d82a9c3d4e382c48ce4112056952d000146163da1cfbaed98",
+      "verified": true
+    },
+    {
+      "runId": 41419299553,
+      "artifactId": 13129162536,
+      "name": "xy-switch-linux-X64",
+      "bytes": 91524865,
+      "digest": "sha256:803bfd4947b5646bd43f300caadc4d05e5ffd98c1a81ee2268c80803245358de",
+      "verified": true
+    },
+    {
+      "runId": 41452499188,
+      "artifactId": 13146290481,
+      "name": "native-acceptance-linux-lifecycle",
+      "bytes": 6874150,
+      "digest": "sha256:1f8f1b8d4a36c7a8065fea755947e9d86a625353309b3eb08877fa50422562f6",
+      "verified": true
+    },
+    {
+      "runId": 41452499188,
+      "artifactId": 13146230396,
+      "name": "native-acceptance-macos-lifecycle",
+      "bytes": 5068865,
+      "digest": "sha256:0cadf9be5b13b50278c183eca393343507bcd1f23b8e92b476a7ea1e132401cd",
+      "verified": true
+    },
+    {
+      "runId": 41452499188,
+      "artifactId": 13145496067,
+      "name": "native-acceptance-windows-sync",
+      "bytes": 475233,
+      "digest": "sha256:7e9ae231ada129d768c7c6358b7456d94f3f85cfdd4224e6d94dd34667d9b943",
+      "verified": true
+    },
+    {
+      "runId": 41452499188,
+      "artifactId": 13144992813,
+      "name": "native-acceptance-windows-lifecycle",
+      "bytes": 765098,
+      "digest": "sha256:d58c50af4ba14695bf35c606c39ba5e31ec8eceba53f961cf5188ea637c72b69",
+      "verified": true
+    },
+    {
+      "runId": 41452499188,
+      "artifactId": 13144712708,
+      "name": "native-acceptance-source",
+      "bytes": 613,
+      "digest": "sha256:743f4da016d41f1c6103b5c01b7a6e625533f6254b0a63d1e8dde036b9007e88",
+      "verified": true
+    }
+  ],
+  "nativeChecks": [
+    {
+      "file": "windows-lifecycle/lifecycle-results.json",
+      "sha256": "72f1612c3869f5e4ac5a5ac2817f678145e4ddc39c770533c09351586a15c460",
+      "sourceCommit": "fe4946bd2fcd4c27a7432aeadb5a656e0e6e676b",
+      "harnessCommit": "0279977f314913d72e0b85a187ccd17217ae95ed",
+      "sourceRun": 41419299553,
+      "rawSourceRunType": "string",
+      "passed": 12,
+      "total": 12,
+      "apiCallsCharged": 0,
+      "scope": "Real NSIS and MSI installation and upgrade; packaged GUI clicks and production IPC; native credential read by a forwarded request to synthetic loopback upstream; forced termination and startup restoration; export/import and reinstall",
+      "rawFile": "github-run-41452499188/native-acceptance-windows-lifecycle/lifecycle-results.json",
+      "checks": [
+        {
+          "name": "nsis-old-install-and-native-fixture",
+          "passed": true,
+          "elapsedMs": 33148
+        },
+        {
+          "name": "nsis-upgrade-and-preserve-config",
+          "passed": true,
+          "elapsedMs": 2893,
+          "evidence": {
+            "format": "nsis",
+            "installedSha256": "3ec3704e229ecca445295df7069b9ac7ac54f210e29bc6540575751bf20a8d86",
+            "fullBinarySha256Matched": true
+          }
+        },
+        {
+          "name": "nsis-native-credential-and-ui-takeover",
+          "passed": true,
+          "elapsedMs": 1393,
+          "evidence": {
+            "nativeAuthorizationMatched": true,
+            "responseSha256": "471e0abe47137788c4c58d0f7a70909a09e44e38e863a5a84fffb43abc89929f",
+            "upstreamRequests": 1,
+            "chargedApiCalls": 0
+          }
+        },
+        {
+          "name": "nsis-crash-cold-start-and-credential-persistence",
+          "passed": true,
+          "elapsedMs": 2589,
+          "evidence": {
+            "forcedTermination": true,
+            "recoveredOriginalBytes": true,
+            "nativeAuthorizationMatched": true,
+            "responseSha256": "7d339d9557d8a9f3ffb5ccf0f72c107d1279d1260847987c019a372bc1e1b896",
+            "upstreamRequests": 2,
+            "chargedApiCalls": 0
+          }
+        },
+        {
+          "name": "nsis-configuration-export-import",
+          "passed": true,
+          "elapsedMs": 312
+        },
+        {
+          "name": "nsis-uninstall-reinstall-and-config-restore",
+          "passed": true,
+          "elapsedMs": 3745
+        },
+        {
+          "name": "msi-old-install-and-native-fixture",
+          "passed": true,
+          "elapsedMs": 15439
+        },
+        {
+          "name": "msi-upgrade-and-preserve-config",
+          "passed": true,
+          "elapsedMs": 5686,
+          "evidence": {
+            "format": "msi",
+            "installedSha256": "34e68d76b2c7157e8b993bd6af073d8206e7dfa624b594a709d1a39ae8012c76",
+            "fullBinarySha256Matched": true
+          }
+        },
+        {
+          "name": "msi-native-credential-and-ui-takeover",
+          "passed": true,
+          "elapsedMs": 3184,
+          "evidence": {
+            "nativeAuthorizationMatched": true,
+            "responseSha256": "c764fd5a1fe8b8990e9b77fe7583419ef33f32e900d1be5975a5afc1c16d583b",
+            "upstreamRequests": 1,
+            "chargedApiCalls": 0
+          }
+        },
+        {
+          "name": "msi-crash-cold-start-and-credential-persistence",
+          "passed": true,
+          "elapsedMs": 3742,
+          "evidence": {
+            "forcedTermination": true,
+            "recoveredOriginalBytes": true,
+            "nativeAuthorizationMatched": true,
+            "responseSha256": "05e4dd653809b67bffdd4e880f81f8fd1e0f97117fe18451131fe69c6c23ba98",
+            "upstreamRequests": 2,
+            "chargedApiCalls": 0
+          }
+        },
+        {
+          "name": "msi-configuration-export-import",
+          "passed": true,
+          "elapsedMs": 1176
+        },
+        {
+          "name": "msi-uninstall-reinstall-and-config-restore",
+          "passed": true,
+          "elapsedMs": 6129
+        }
+      ],
+      "installedSha256ByFormat": {
+        "nsis": "3ec3704e229ecca445295df7069b9ac7ac54f210e29bc6540575751bf20a8d86",
+        "msi": "34e68d76b2c7157e8b993bd6af073d8206e7dfa624b594a709d1a39ae8012c76"
+      },
+      "originalResultArray": "results"
+    },
+    {
+      "file": "linux-lifecycle/lifecycle-results.json",
+      "sha256": "631fe79e63894c96d43e87ab52a73c5311aecfeeea66c5b75b401ee616183bc2",
+      "sourceCommit": "fe4946bd2fcd4c27a7432aeadb5a656e0e6e676b",
+      "harnessCommit": "0279977f314913d72e0b85a187ccd17217ae95ed",
+      "sourceRun": 41419299553,
+      "rawSourceRunType": "string",
+      "passed": 43,
+      "total": 43,
+      "apiCallsCharged": 0,
+      "operatingSystem": "Linux-6.8.0-1070-azure-x86_64-with-glibc2.35",
+      "runnerArchitecture": "x86_64",
+      "scope": "Real disposable CI installation, upgrade, uninstall and reinstall; screenshots and OS pointer clicks in the verified native GUI; native credential read via production loopback routing; forced termination and cold-start restoration. Provider/prompt fixtures and SQLite backup restoration are prepared offline, not GUI import. macOS covers the CI runner architecture, not both Universal slices executing.",
+      "rawFile": "github-run-41452499188/native-acceptance-linux-lifecycle/lifecycle-results.json",
+      "checks": [
+        {
+          "name": "isolated-native-credential-store",
+          "passed": true,
+          "elapsedMs": 0
+        },
+        {
+          "name": "deb-official-old-install",
+          "passed": true,
+          "elapsedMs": 449
+        },
+        {
+          "name": "deb-old-native-gui",
+          "passed": true,
+          "elapsedMs": 6084,
+          "evidence": {
+            "pid": 3693,
+            "executableSha256": "f5a92f495131b17abf0b9e316645e5fb00a1ce4e984cbe267a60a26a168e7095",
+            "isolatedDatabase": true
+          }
+        },
+        {
+          "name": "deb-offline-old-configuration-fixture",
+          "passed": true,
+          "elapsedMs": 3,
+          "evidence": {
+            "providerPreserved": true,
+            "promptPreserved": true,
+            "databaseIntegrity": "ok"
+          }
+        },
+        {
+          "name": "deb-actual-upgrade",
+          "passed": true,
+          "elapsedMs": 480
+        },
+        {
+          "name": "deb-upgraded-native-gui",
+          "passed": true,
+          "elapsedMs": 4411,
+          "evidence": {
+            "pid": 3895,
+            "executableSha256": "1c7c051bcc3209f2606463a2f92939be46fa409823a00646f8dee88d27a92064",
+            "isolatedDatabase": true
+          }
+        },
+        {
+          "name": "deb-upgraded-configuration-preserved",
+          "passed": true,
+          "elapsedMs": 1789,
+          "evidence": {
+            "fixtureVisible": true,
+            "screenshot": "3895-003-deb-upgraded-provider-visible.png"
+          }
+        },
+        {
+          "name": "deb-native-credential-fixture",
+          "passed": true,
+          "elapsedMs": 27
+        },
+        {
+          "name": "deb-native-gui-start-routing",
+          "passed": true,
+          "elapsedMs": 3695,
+          "evidence": {
+            "listeningOnLoopback": true,
+            "port": 32955
+          }
+        },
+        {
+          "name": "deb-native-gui-connect-codex",
+          "passed": true,
+          "elapsedMs": 9484,
+          "evidence": {
+            "managedFiles": 3,
+            "originalBackupBytesMatch": true
+          }
+        },
+        {
+          "name": "deb-production-routing-native-credential-read",
+          "passed": true,
+          "elapsedMs": 17,
+          "evidence": {
+            "responseSha256": "57145e7cbf51a277bb57c8322ef1b52c470044acb45230cadecadf8fa4d15e1d",
+            "upstream": {
+              "path": "/v1/chat/completions",
+              "model": "native-lifecycle-model",
+              "authorizationMatched": true
+            },
+            "chargedApiCalls": 0
+          }
+        },
+        {
+          "name": "deb-native-gui-restore-codex",
+          "passed": true,
+          "elapsedMs": 2443,
+          "evidence": {
+            "originalConfigurationSha256": "606984f0663019d98cc63cce839a660227ff095add1bb7080c91b03683a89cbf",
+            "originalAuthSha256": "15c1fe44fc27959971f46524bdf11d26c4c65b05b37eb884dac4f34ecf6274de",
+            "backupMetadataRemoved": true
+          }
+        },
+        {
+          "name": "deb-native-gui-stop-and-restore",
+          "passed": true,
+          "elapsedMs": 3712,
+          "evidence": {
+            "originalBytesRestored": true,
+            "backupMetadataRemoved": true,
+            "listenerStopped": true
+          }
+        },
+        {
+          "name": "deb-forced-termination-cold-start",
+          "passed": true,
+          "elapsedMs": 16014,
+          "evidence": {
+            "pid": 4352,
+            "executableSha256": "1c7c051bcc3209f2606463a2f92939be46fa409823a00646f8dee88d27a92064",
+            "isolatedDatabase": true,
+            "forcedTermination": true,
+            "originalBytesRestored": true,
+            "listenerStopped": true,
+            "enabledPreference": false
+          }
+        },
+        {
+          "name": "deb-cold-start-production-credential-read",
+          "passed": true,
+          "elapsedMs": 22091,
+          "evidence": {
+            "responseSha256": "14c69ef2bb3f0fd2e9aca5b83ae8396ae183727bce2567741cb5c6ef7dbde2d5",
+            "upstream": {
+              "path": "/v1/chat/completions",
+              "model": "native-lifecycle-model",
+              "authorizationMatched": true
+            },
+            "chargedApiCalls": 0
+          }
+        },
+        {
+          "name": "deb-offline-configuration-backup",
+          "passed": true,
+          "elapsedMs": 19,
+          "evidence": {
+            "backup": "deb-configuration-backup.sqlite3",
+            "sha256": "301da1b6962872c1f05bd80e3cc4d436cc5e93c0960207740f3111ff5953cfaf",
+            "containsNativeCredentials": false
+          }
+        },
+        {
+          "name": "deb-actual-uninstall-config-preservation",
+          "passed": true,
+          "elapsedMs": 209,
+          "evidence": {
+            "providerPreserved": true,
+            "promptPreserved": true,
+            "databaseIntegrity": "ok",
+            "deployedExecutableRemoved": true,
+            "appDataPreserved": true
+          }
+        },
+        {
+          "name": "deb-actual-reinstall",
+          "passed": true,
+          "elapsedMs": 464
+        },
+        {
+          "name": "deb-reinstalled-native-gui",
+          "passed": true,
+          "elapsedMs": 4257,
+          "evidence": {
+            "pid": 4694,
+            "executableSha256": "1c7c051bcc3209f2606463a2f92939be46fa409823a00646f8dee88d27a92064",
+            "isolatedDatabase": true
+          }
+        },
+        {
+          "name": "deb-reinstalled-config-preserved",
+          "passed": true,
+          "elapsedMs": 1,
+          "evidence": {
+            "providerPreserved": true,
+            "promptPreserved": true,
+            "databaseIntegrity": "ok"
+          }
+        },
+        {
+          "name": "deb-offline-backup-restore-and-native-gui",
+          "passed": true,
+          "elapsedMs": 4633,
+          "evidence": {
+            "fixtureVisible": true,
+            "screenshot": "4807-002-deb-restored-provider-visible.png"
+          }
+        },
+        {
+          "name": "deb-final-uninstall",
+          "passed": true,
+          "elapsedMs": 208,
+          "evidence": {
+            "providerPreserved": true,
+            "promptPreserved": true,
+            "databaseIntegrity": "ok",
+            "deployedExecutableRemoved": true,
+            "appDataPreserved": true
+          }
+        },
+        {
+          "name": "appimage-official-old-install",
+          "passed": true,
+          "elapsedMs": 249
+        },
+        {
+          "name": "appimage-old-native-gui",
+          "passed": true,
+          "elapsedMs": 4313,
+          "evidence": {
+            "pid": 4949,
+            "executableSha256": "e3226a317deece7399c0e1b57accdd83ff09ad694f5ee18cb63d345b9881eaf3",
+            "isolatedDatabase": true
+          }
+        },
+        {
+          "name": "appimage-offline-old-configuration-fixture",
+          "passed": true,
+          "elapsedMs": 2,
+          "evidence": {
+            "providerPreserved": true,
+            "promptPreserved": true,
+            "databaseIntegrity": "ok"
+          }
+        },
+        {
+          "name": "appimage-actual-upgrade",
+          "passed": true,
+          "elapsedMs": 291
+        },
+        {
+          "name": "appimage-upgraded-native-gui",
+          "passed": true,
+          "elapsedMs": 4323,
+          "evidence": {
+            "pid": 5068,
+            "executableSha256": "75bb16d3e9b222803e161a3e1452db4264920f8fd8719d1e1ebe16965f85bcbe",
+            "isolatedDatabase": true
+          }
+        },
+        {
+          "name": "appimage-upgraded-configuration-preserved",
+          "passed": true,
+          "elapsedMs": 1794,
+          "evidence": {
+            "fixtureVisible": true,
+            "screenshot": "5068-003-appimage-upgraded-provider-visible.png"
+          }
+        },
+        {
+          "name": "appimage-native-credential-fixture",
+          "passed": true,
+          "elapsedMs": 27
+        },
+        {
+          "name": "appimage-native-gui-start-routing",
+          "passed": true,
+          "elapsedMs": 3749,
+          "evidence": {
+            "listeningOnLoopback": true,
+            "port": 46017
+          }
+        },
+        {
+          "name": "appimage-native-gui-connect-codex",
+          "passed": true,
+          "elapsedMs": 9725,
+          "evidence": {
+            "managedFiles": 3,
+            "originalBackupBytesMatch": true
+          }
+        },
+        {
+          "name": "appimage-production-routing-native-credential-read",
+          "passed": true,
+          "elapsedMs": 16,
+          "evidence": {
+            "responseSha256": "f533a4d0b390999400000246fcdfe4c405ec4c12588fec872110b609f189f58c",
+            "upstream": {
+              "path": "/v1/chat/completions",
+              "model": "native-lifecycle-model",
+              "authorizationMatched": true
+            },
+            "chargedApiCalls": 0
+          }
+        },
+        {
+          "name": "appimage-native-gui-restore-codex",
+          "passed": true,
+          "elapsedMs": 2476,
+          "evidence": {
+            "originalConfigurationSha256": "606984f0663019d98cc63cce839a660227ff095add1bb7080c91b03683a89cbf",
+            "originalAuthSha256": "15c1fe44fc27959971f46524bdf11d26c4c65b05b37eb884dac4f34ecf6274de",
+            "backupMetadataRemoved": true
+          }
+        },
+        {
+          "name": "appimage-native-gui-stop-and-restore",
+          "passed": true,
+          "elapsedMs": 3730,
+          "evidence": {
+            "originalBytesRestored": true,
+            "backupMetadataRemoved": true,
+            "listenerStopped": true
+          }
+        },
+        {
+          "name": "appimage-forced-termination-cold-start",
+          "passed": true,
+          "elapsedMs": 16202,
+          "evidence": {
+            "pid": 5529,
+            "executableSha256": "75bb16d3e9b222803e161a3e1452db4264920f8fd8719d1e1ebe16965f85bcbe",
+            "isolatedDatabase": true,
+            "forcedTermination": true,
+            "originalBytesRestored": true,
+            "listenerStopped": true,
+            "enabledPreference": false
+          }
+        },
+        {
+          "name": "appimage-cold-start-production-credential-read",
+          "passed": true,
+          "elapsedMs": 22417,
+          "evidence": {
+            "responseSha256": "3cce13c9c7871f19bef031536d324b7eb17aca9231c155bb99cab8f46d0ec325",
+            "upstream": {
+              "path": "/v1/chat/completions",
+              "model": "native-lifecycle-model",
+              "authorizationMatched": true
+            },
+            "chargedApiCalls": 0
+          }
+        },
+        {
+          "name": "appimage-offline-configuration-backup",
+          "passed": true,
+          "elapsedMs": 5,
+          "evidence": {
+            "backup": "appimage-configuration-backup.sqlite3",
+            "sha256": "5b83a4cd243afa9fa13443a43f716bcae5184c226857d50b1f19501f37f795b9",
+            "containsNativeCredentials": false
+          }
+        },
+        {
+          "name": "appimage-actual-uninstall-config-preservation",
+          "passed": true,
+          "elapsedMs": 2,
+          "evidence": {
+            "providerPreserved": true,
+            "promptPreserved": true,
+            "databaseIntegrity": "ok",
+            "deployedExecutableRemoved": true,
+            "appDataPreserved": true
+          }
+        },
+        {
+          "name": "appimage-actual-reinstall",
+          "passed": true,
+          "elapsedMs": 254
+        },
+        {
+          "name": "appimage-reinstalled-native-gui",
+          "passed": true,
+          "elapsedMs": 2848,
+          "evidence": {
+            "pid": 5881,
+            "executableSha256": "75bb16d3e9b222803e161a3e1452db4264920f8fd8719d1e1ebe16965f85bcbe",
+            "isolatedDatabase": true
+          }
+        },
+        {
+          "name": "appimage-reinstalled-config-preserved",
+          "passed": true,
+          "elapsedMs": 1,
+          "evidence": {
+            "providerPreserved": true,
+            "promptPreserved": true,
+            "databaseIntegrity": "ok"
+          }
+        },
+        {
+          "name": "appimage-offline-backup-restore-and-native-gui",
+          "passed": true,
+          "elapsedMs": 4790,
+          "evidence": {
+            "fixtureVisible": true,
+            "screenshot": "5990-002-appimage-restored-provider-visible.png"
+          }
+        },
+        {
+          "name": "appimage-final-uninstall",
+          "passed": true,
+          "elapsedMs": 1,
+          "evidence": {
+            "providerPreserved": true,
+            "promptPreserved": true,
+            "databaseIntegrity": "ok",
+            "deployedExecutableRemoved": true,
+            "appDataPreserved": true
+          }
+        }
+      ],
+      "installations": [
+        {
+          "format": "deb",
+          "version": "1.0.0",
+          "package": "XY-Switch-1.0.0-linux-x64.deb",
+          "packageSha256": "fe17586a488425533e75ae9f857575c0545c85e3109065712ad2ecee0021fd6f",
+          "registeredVersion": "1.0.0",
+          "installedSha256": "f5a92f495131b17abf0b9e316645e5fb00a1ce4e984cbe267a60a26a168e7095"
+        },
+        {
+          "format": "deb",
+          "version": "1.2.0",
+          "package": "XY-Switch-1.2.0-linux-x64.deb",
+          "packageSha256": "5d0b68edee914e5c50ac3313fdbf30bde70e9698577363ca0f13331790a35b3e",
+          "registeredVersion": "1.2.0",
+          "installedSha256": "1c7c051bcc3209f2606463a2f92939be46fa409823a00646f8dee88d27a92064"
+        },
+        {
+          "format": "deb",
+          "version": "1.2.0",
+          "package": "XY-Switch-1.2.0-linux-x64.deb",
+          "packageSha256": "5d0b68edee914e5c50ac3313fdbf30bde70e9698577363ca0f13331790a35b3e",
+          "registeredVersion": "1.2.0",
+          "installedSha256": "1c7c051bcc3209f2606463a2f92939be46fa409823a00646f8dee88d27a92064"
+        },
+        {
+          "format": "appimage",
+          "version": "1.0.0",
+          "package": "XY-Switch-1.0.0-linux-x64.AppImage",
+          "packageSha256": "e3226a317deece7399c0e1b57accdd83ff09ad694f5ee18cb63d345b9881eaf3",
+          "installedSha256": "e3226a317deece7399c0e1b57accdd83ff09ad694f5ee18cb63d345b9881eaf3"
+        },
+        {
+          "format": "appimage",
+          "version": "1.2.0",
+          "package": "XY-Switch-1.2.0-linux-x64.AppImage",
+          "packageSha256": "75bb16d3e9b222803e161a3e1452db4264920f8fd8719d1e1ebe16965f85bcbe",
+          "installedSha256": "75bb16d3e9b222803e161a3e1452db4264920f8fd8719d1e1ebe16965f85bcbe"
+        },
+        {
+          "format": "appimage",
+          "version": "1.2.0",
+          "package": "XY-Switch-1.2.0-linux-x64.AppImage",
+          "packageSha256": "75bb16d3e9b222803e161a3e1452db4264920f8fd8719d1e1ebe16965f85bcbe",
+          "installedSha256": "75bb16d3e9b222803e161a3e1452db4264920f8fd8719d1e1ebe16965f85bcbe"
+        }
+      ],
+      "credentialStoreRestored": true,
+      "originalResultArray": "results"
+    },
+    {
+      "file": "macos-lifecycle/lifecycle-results.json",
+      "sha256": "a98a35a94ef14267d0ec399ba7abf77c73a69de8f3539635b4def262b9f86f70",
+      "sourceCommit": "fe4946bd2fcd4c27a7432aeadb5a656e0e6e676b",
+      "harnessCommit": "0279977f314913d72e0b85a187ccd17217ae95ed",
+      "sourceRun": 41419299553,
+      "rawSourceRunType": "string",
+      "passed": 22,
+      "total": 22,
+      "apiCallsCharged": 0,
+      "operatingSystem": "macOS-14.8.9-arm64-arm-64bit-Mach-O",
+      "runnerArchitecture": "arm64",
+      "scope": "Real disposable CI installation, upgrade, uninstall and reinstall; screenshots and OS pointer clicks in the verified native GUI; native credential read via production loopback routing; forced termination and cold-start restoration. Provider/prompt fixtures and SQLite backup restoration are prepared offline, not GUI import. macOS covers the CI runner architecture, not both Universal slices executing.",
+      "rawFile": "github-run-41452499188/native-acceptance-macos-lifecycle/lifecycle-results.json",
+      "checks": [
+        {
+          "name": "isolated-native-credential-store",
+          "passed": true,
+          "elapsedMs": 284
+        },
+        {
+          "name": "dmg-official-old-install",
+          "passed": true,
+          "elapsedMs": 4509
+        },
+        {
+          "name": "dmg-old-native-gui",
+          "passed": true,
+          "elapsedMs": 11096,
+          "evidence": {
+            "pid": 4992,
+            "executableSha256": "1fd49d29f18914ff415eb0d5f870ea13332c5eb97d28ccc1579345658ae381d1",
+            "isolatedDatabase": true
+          }
+        },
+        {
+          "name": "dmg-offline-old-configuration-fixture",
+          "passed": true,
+          "elapsedMs": 211,
+          "evidence": {
+            "providerPreserved": true,
+            "promptPreserved": true,
+            "databaseIntegrity": "ok"
+          }
+        },
+        {
+          "name": "dmg-actual-upgrade",
+          "passed": true,
+          "elapsedMs": 2625
+        },
+        {
+          "name": "dmg-upgraded-native-gui",
+          "passed": true,
+          "elapsedMs": 5417,
+          "evidence": {
+            "pid": 5210,
+            "executableSha256": "f545ce11a4a10e409e11f8921b9df4fb5766aaa8ea621d3479aafad1c6233c42",
+            "isolatedDatabase": true
+          }
+        },
+        {
+          "name": "dmg-upgraded-configuration-preserved",
+          "passed": true,
+          "elapsedMs": 1624,
+          "evidence": {
+            "fixtureVisible": true,
+            "screenshot": "5210-003-dmg-upgraded-provider-visible.png"
+          }
+        },
+        {
+          "name": "dmg-native-credential-fixture",
+          "passed": true,
+          "elapsedMs": 76
+        },
+        {
+          "name": "dmg-native-gui-start-routing",
+          "passed": true,
+          "elapsedMs": 4167,
+          "evidence": {
+            "listeningOnLoopback": true,
+            "port": 49200
+          }
+        },
+        {
+          "name": "dmg-native-gui-connect-codex",
+          "passed": true,
+          "elapsedMs": 11606,
+          "evidence": {
+            "managedFiles": 3,
+            "originalBackupBytesMatch": true
+          }
+        },
+        {
+          "name": "dmg-production-routing-native-credential-read",
+          "passed": true,
+          "elapsedMs": 105,
+          "evidence": {
+            "responseSha256": "0eb1d4b7db948f3aeaf7d91d9ad62ac8ad00e059e456d65b414dd1cdc24167e0",
+            "upstream": {
+              "path": "/v1/chat/completions",
+              "model": "native-lifecycle-model",
+              "authorizationMatched": true
+            },
+            "chargedApiCalls": 0
+          }
+        },
+        {
+          "name": "dmg-native-gui-restore-codex",
+          "passed": true,
+          "elapsedMs": 2594,
+          "evidence": {
+            "originalConfigurationSha256": "606984f0663019d98cc63cce839a660227ff095add1bb7080c91b03683a89cbf",
+            "originalAuthSha256": "15c1fe44fc27959971f46524bdf11d26c4c65b05b37eb884dac4f34ecf6274de",
+            "backupMetadataRemoved": true
+          }
+        },
+        {
+          "name": "dmg-native-gui-stop-and-restore",
+          "passed": true,
+          "elapsedMs": 3920,
+          "evidence": {
+            "originalBytesRestored": true,
+            "backupMetadataRemoved": true,
+            "listenerStopped": true
+          }
+        },
+        {
+          "name": "dmg-forced-termination-cold-start",
+          "passed": true,
+          "elapsedMs": 20204,
+          "evidence": {
+            "pid": 6074,
+            "executableSha256": "f545ce11a4a10e409e11f8921b9df4fb5766aaa8ea621d3479aafad1c6233c42",
+            "isolatedDatabase": true,
+            "forcedTermination": true,
+            "originalBytesRestored": true,
+            "listenerStopped": true,
+            "enabledPreference": false
+          }
+        },
+        {
+          "name": "dmg-cold-start-production-credential-read",
+          "passed": true,
+          "elapsedMs": 23206,
+          "evidence": {
+            "responseSha256": "f6b0787025bb38d89861a7c3431407562647be35c68312536f6bd5b27551b731",
+            "upstream": {
+              "path": "/v1/chat/completions",
+              "model": "native-lifecycle-model",
+              "authorizationMatched": true
+            },
+            "chargedApiCalls": 0
+          }
+        },
+        {
+          "name": "dmg-offline-configuration-backup",
+          "passed": true,
+          "elapsedMs": 65,
+          "evidence": {
+            "backup": "dmg-configuration-backup.sqlite3",
+            "sha256": "809a7777affafe731dd7279a96859a347be113f3ebf5f6079f35270288240e2b",
+            "containsNativeCredentials": false
+          }
+        },
+        {
+          "name": "dmg-actual-uninstall-config-preservation",
+          "passed": true,
+          "elapsedMs": 6,
+          "evidence": {
+            "providerPreserved": true,
+            "promptPreserved": true,
+            "databaseIntegrity": "ok",
+            "deployedExecutableRemoved": true,
+            "appDataPreserved": true
+          }
+        },
+        {
+          "name": "dmg-actual-reinstall",
+          "passed": true,
+          "elapsedMs": 946
+        },
+        {
+          "name": "dmg-reinstalled-native-gui",
+          "passed": true,
+          "elapsedMs": 4751,
+          "evidence": {
+            "pid": 6607,
+            "executableSha256": "f545ce11a4a10e409e11f8921b9df4fb5766aaa8ea621d3479aafad1c6233c42",
+            "isolatedDatabase": true
+          }
+        },
+        {
+          "name": "dmg-reinstalled-config-preserved",
+          "passed": true,
+          "elapsedMs": 2,
+          "evidence": {
+            "providerPreserved": true,
+            "promptPreserved": true,
+            "databaseIntegrity": "ok"
+          }
+        },
+        {
+          "name": "dmg-offline-backup-restore-and-native-gui",
+          "passed": true,
+          "elapsedMs": 5586,
+          "evidence": {
+            "fixtureVisible": true,
+            "screenshot": "6637-003-dmg-restored-provider-visible.png"
+          }
+        },
+        {
+          "name": "dmg-final-uninstall",
+          "passed": true,
+          "elapsedMs": 6,
+          "evidence": {
+            "providerPreserved": true,
+            "promptPreserved": true,
+            "databaseIntegrity": "ok",
+            "deployedExecutableRemoved": true,
+            "appDataPreserved": true
+          }
+        }
+      ],
+      "installations": [
+        {
+          "format": "dmg",
+          "version": "1.0.0",
+          "package": "XY-Switch-1.0.0-macos-universal.dmg",
+          "packageSha256": "d0e3296c475a7ecfbd449fad391b73ff8f97b90b5543e67e9bab48685bd586c1",
+          "codesignIntegrity": "verified",
+          "architectures": [
+            "x86_64",
+            "arm64"
+          ],
+          "signing": "ad-hoc",
+          "gatekeeper": "not-accepted",
+          "installedSha256": "1fd49d29f18914ff415eb0d5f870ea13332c5eb97d28ccc1579345658ae381d1"
+        },
+        {
+          "format": "dmg",
+          "version": "1.2.0",
+          "package": "XY-Switch-1.2.0-macos-universal.dmg",
+          "packageSha256": "263a6da5c82755baa606ba076601b150acf428814a9beeace4be3c97363f7fc6",
+          "codesignIntegrity": "verified",
+          "architectures": [
+            "x86_64",
+            "arm64"
+          ],
+          "signing": "ad-hoc",
+          "gatekeeper": "not-accepted",
+          "installedSha256": "f545ce11a4a10e409e11f8921b9df4fb5766aaa8ea621d3479aafad1c6233c42"
+        },
+        {
+          "format": "dmg",
+          "version": "1.2.0",
+          "package": "XY-Switch-1.2.0-macos-universal.dmg",
+          "packageSha256": "263a6da5c82755baa606ba076601b150acf428814a9beeace4be3c97363f7fc6",
+          "codesignIntegrity": "verified",
+          "architectures": [
+            "x86_64",
+            "arm64"
+          ],
+          "signing": "ad-hoc",
+          "gatekeeper": "not-accepted",
+          "installedSha256": "f545ce11a4a10e409e11f8921b9df4fb5766aaa8ea621d3479aafad1c6233c42"
+        }
+      ],
+      "credentialStoreRestored": true,
+      "originalResultArray": "results"
+    },
+    {
+      "file": "windows-sync/results.json",
+      "sha256": "fad69b9f9c21aaec62c0b86067c78c539056cb8e4eacb1fe3242bfe22aebb440",
+      "sourceCommit": "fe4946bd2fcd4c27a7432aeadb5a656e0e6e676b",
+      "harnessCommit": "0279977f314913d72e0b85a187ccd17217ae95ed",
+      "sourceRun": 41419299553,
+      "rawSourceRunType": "string",
+      "passed": 6,
+      "total": 6,
+      "limitations": [
+        "Synthetic records; no real provider credentials or paid API calls",
+        "Not Linux/macOS native UI acceptance",
+        "Test-only CDP on a disposable child; released packages are unchanged"
+      ],
+      "rawFile": "github-run-41452499188/native-acceptance-windows-sync/results.json",
+      "checks": [
+        {
+          "name": "production-ipc-and-synthetic-fixture",
+          "passed": true,
+          "elapsedMs": 540
+        },
+        {
+          "name": "native-save-picker-and-independent-decryption",
+          "passed": true,
+          "elapsedMs": 8088
+        },
+        {
+          "name": "destination-local-conflicts-and-picker-cancel",
+          "passed": true,
+          "elapsedMs": 1605
+        },
+        {
+          "name": "native-open-picker-wrong-passphrase-no-write",
+          "passed": true,
+          "elapsedMs": 1320
+        },
+        {
+          "name": "native-import-preview-explicit-choices-and-backup",
+          "passed": true,
+          "elapsedMs": 2250
+        },
+        {
+          "name": "native-rollback-preview-and-persisted-restoration",
+          "passed": true,
+          "elapsedMs": 546
+        }
+      ],
+      "originalResultArray": "reports"
+    }
+  ],
+  "nativeCheckTotal": 83,
+  "nativeCheckPassed": 83,
+  "pluginCount": 6,
+  "plugins": [
+    {
+      "plugin": "documents",
+      "output": "XY-Switch-installation-and-recovery.docx",
+      "bytes": 40291,
+      "sha256": "52d63761e1c61a973601627aae306a1d6bd736ade874f5f8792686897435b22d",
+      "receipt": "docx-authoring-receipt.json",
+      "passed": true,
+      "invocation": "create_documents.py: python-docx; plugin DOCX render workflow",
+      "sourceCommit": "fe4946bd2fcd4c27a7432aeadb5a656e0e6e676b",
+      "harnessCommit": "0279977f314913d72e0b85a187ccd17217ae95ed",
+      "acceptanceRun": 41452499188,
+      "chargedApiCalls": 0,
+      "originalReceiptSha256": "fce4fdf0952634e4be521cd485010ece4cb42cb4179caf0fdab3765d8d003bda",
+      "details": {
+        "pageCount": 2,
+        "tableCount": 1,
+        "visualPagesReviewed": 2
+      },
+      "archivedOutput": "plugin-deliverables/XY-Switch-installation-and-recovery.docx",
+      "archivedReceipt": "plugin-receipts/docx-authoring-receipt.json"
+    },
+    {
+      "plugin": "pdf",
+      "output": "XY-Switch-package-checksums.pdf",
+      "bytes": 75800,
+      "sha256": "27a41f115f1d4f862400eb72cebb76145f246feff148b0a91e64adf04a0c570d",
+      "receipt": "pdf-authoring-receipt.json",
+      "passed": true,
+      "invocation": "create_documents.py: ReportLab; plugin PDF render workflow",
+      "sourceCommit": "fe4946bd2fcd4c27a7432aeadb5a656e0e6e676b",
+      "harnessCommit": "0279977f314913d72e0b85a187ccd17217ae95ed",
+      "acceptanceRun": 41452499188,
+      "chargedApiCalls": 0,
+      "originalReceiptSha256": "0b151353c3fb7f268c6b50198dded99cdd4ee2e89b835b4d94cff6df49bb5a2e",
+      "details": {
+        "pageCount": 2,
+        "checksumsPresent": 6,
+        "visualPagesReviewed": 2
+      },
+      "archivedOutput": "plugin-deliverables/XY-Switch-package-checksums.pdf",
+      "archivedReceipt": "plugin-receipts/pdf-authoring-receipt.json"
+    },
+    {
+      "plugin": "spreadsheets",
+      "output": "XY-Switch-package-sizes.xlsx",
+      "bytes": 5071,
+      "sha256": "edda047b61513857856e0af65885880a87e331cbbd9e769c247f323041f567c2",
+      "receipt": "xlsx-authoring-receipt.json",
+      "passed": true,
+      "invocation": "create_workbook.mjs: Artifact Tool workbook authoring, recalculation and re-import",
+      "sourceCommit": "fe4946bd2fcd4c27a7432aeadb5a656e0e6e676b",
+      "harnessCommit": "0279977f314913d72e0b85a187ccd17217ae95ed",
+      "acceptanceRun": 41452499188,
+      "chargedApiCalls": 0,
+      "originalReceiptSha256": "ceeb3111c4a3bd228b25d025a6e3ed3ba271fb29fb5980e67f6408789771f74f",
+      "details": {
+        "sheets": [
+          "包体积"
+        ],
+        "liveFormulaCount": 15,
+        "formulaErrors": [],
+        "sensitivity": {
+          "before": {
+            "bytes": 5275657,
+            "packageMiB": 5.031258583068848,
+            "packageShare": 0.038348927433391286,
+            "totalBytes": 137569871,
+            "totalMiB": 131.196852684021,
+            "totalShare": 1
+          },
+          "changed": {
+            "bytes": 6324233,
+            "packageMiB": 6.031258583068848,
+            "packageShare": 0.045623314478483515,
+            "totalBytes": 138618447,
+            "totalMiB": 132.196852684021,
+            "totalShare": 1
+          },
+          "restored": {
+            "bytes": 5275657,
+            "packageMiB": 5.031258583068848,
+            "packageShare": 0.038348927433391286,
+            "totalBytes": 137569871,
+            "totalMiB": 131.196852684021,
+            "totalShare": 1
+          }
+        },
+        "reopened": {
+          "bytes": 5275657,
+          "packageMiB": 5.031258583068848,
+          "packageShare": 0.038348927433391286,
+          "totalBytes": 137569871,
+          "totalMiB": 131.196852684021,
+          "totalShare": 1
+        }
+      },
+      "archivedOutput": "plugin-deliverables/XY-Switch-package-sizes.xlsx",
+      "archivedReceipt": "plugin-receipts/xlsx-authoring-receipt.json"
+    },
+    {
+      "plugin": "presentations",
+      "output": "XY-Switch-three-platform-acceptance.pptx",
+      "bytes": 34983,
+      "sha256": "442a108abec7a40189c059caff0bb5da4d4226836b317b9340b37064eacafc39",
+      "receipt": "pptx-authoring-receipt.json",
+      "passed": true,
+      "invocation": "create_presentation.mjs: Artifact Tool presentation authoring; official finalization and re-import",
+      "sourceCommit": "fe4946bd2fcd4c27a7432aeadb5a656e0e6e676b",
+      "harnessCommit": "0279977f314913d72e0b85a187ccd17217ae95ed",
+      "acceptanceRun": 41452499188,
+      "chargedApiCalls": 0,
+      "originalReceiptSha256": "601862b44b30585e5042e2ebc60c19c258f120f2dea2a6b67453bcdf82f36c9a",
+      "details": {
+        "slideCount": 5,
+        "nativeEditableTableCount": 2,
+        "requiredNativeTableOwnerSlides": [
+          2,
+          3
+        ],
+        "packageIntegrity": "pass",
+        "layoutFindings": 0,
+        "layoutWarnings": 0,
+        "firstPartyImport": {
+          "performed": true,
+          "passed": true,
+          "slideCount": 5,
+          "sha256": "442a108abec7a40189c059caff0bb5da4d4226836b317b9340b37064eacafc39"
+        },
+        "visualSlidesReviewed": 5,
+        "nativePowerpointExecuted": false
+      },
+      "archivedOutput": "plugin-deliverables/XY-Switch-three-platform-acceptance.pptx",
+      "archivedReceipt": "plugin-receipts/pptx-authoring-receipt.json"
+    },
+    {
+      "plugin": "template-creator",
+      "operation": "create",
+      "invocation": "Official create-template-skill.mjs; --home points to isolated template-home",
+      "passed": true,
+      "creatorExitCode": 0,
+      "sourceCommit": "fe4946bd2fcd4c27a7432aeadb5a656e0e6e676b",
+      "harnessCommit": "0279977f314913d72e0b85a187ccd17217ae95ed",
+      "acceptanceRun": 41452499188,
+      "chargedApiCalls": 0,
+      "skillName": "artifact-template-xy-switch",
+      "displayName": "XY Switch 安装恢复验收",
+      "manifest": {
+        "schemaVersion": 1,
+        "kind": "document",
+        "reference": "assets/reference.docx",
+        "preview": "assets/preview.png"
+      },
+      "retainedAssets": [
+        {
+          "kind": "reference",
+          "bytes": 40291,
+          "sha256": "52d63761e1c61a973601627aae306a1d6bd736ade874f5f8792686897435b22d",
+          "matched": true
+        },
+        {
+          "kind": "preview",
+          "bytes": 278173,
+          "sha256": "0dcf376c33f53a8d5df1a6181decda2827f42b6e3b25113dbb3a7ef8c30d8873",
+          "matched": true
+        }
+      ],
+      "agentMetadataMatchesCreatorResult": true,
+      "verificationMethod": "Exact comparison with expected official creator YAML fields; no generic YAML parser required",
+      "originalReceiptSha256": "996d5d72d816177f3bdc5b9460d5977c5a253556f0c3909ba1fbf229fbf5f007",
+      "limitation": "Isolated local template creation; does not establish a live installed user template",
+      "archivedReceipt": "plugin-receipts/template-acceptance-receipt.json",
+      "officialCreatorResult": "plugin-receipts/template-create-result.json"
+    },
+    {
+      "schemaVersion": 1,
+      "plugin": "reverse-skill",
+      "operation": "offline-static-pe-analysis",
+      "passed": true,
+      "verifiedAt": "2026-11-02T15:35:22.491Z",
+      "sourceCommit": "fe4946bd2fcd4c27a7432aeadb5a656e0e6e676b",
+      "harnessCommit": "0279977f314913d72e0b85a187ccd17217ae95ed",
+      "sourceRun": 41419299553,
+      "acceptanceRun": 41452499188,
+      "sample": "XY-Switch-1.2.0-windows-x64-setup.exe",
+      "sampleSha256": "6371977825a2d914b7d3d5124ba6d2fff6924e7db1406af39be27b23eac92869",
+      "sampleExecuted": false,
+      "chargedApiCalls": 0,
+      "independentObservations": [
+        "Python hashlib/struct/re",
+        "PowerShell Get-FileHash/.NET BitConverter"
+      ],
+      "independentComparisonCount": 10,
+      "validatedFindings": 2,
+      "candidateFindings": 3,
+      "evidenceCount": 7,
+      "workitemsDone": 6,
+      "strictReview": {
+        "status": "PASS",
+        "generatedAt": "2026-11-02T15:20:15.403188+00:00",
+        "summary": {
+          "errors": 0,
+          "warnings": 0,
+          "evidence": 7,
+          "workitems": 6,
+          "timeline_events": 6,
+          "findings": 5,
+          "paths": 1
+        },
+        "receipt": "reverse-case/report/case-review.json"
+      },
+      "diagram": {
+        "editableSource": "reverse-case/report/analysis-flow.mmd",
+        "svgExportExitCode": 1,
+        "svgGenerated": false,
+        "reason": "mmdc is not available",
+        "receipt": "reverse-case/report/diagram-render-receipt.json"
+      },
+      "timelineHistory": {
+        "beforeBytes": 401,
+        "afterBytes": 3650,
+        "beforeSha256": "efa83724a4deed661d7683fc5fb146b901a477ae2c46b754d6bf40ddcd64929a",
+        "afterSha256": "e01c3813ca04d9756e5075248341774b9adadb6e71cd493d741415f9b57402b5",
+        "priorBytePrefixPreserved": true,
+        "priorTextPrefixPreserved": true,
+        "verifiedAt": "2026-11-02T15:35:22.491Z"
+      },
+      "limitations": [
+        "Installer shell only; compressed application payload not decoded",
+        "Imports and strings derive from the same parser; not independent behavior evidence",
+        "Production signature verification not performed"
+      ],
+      "invocation": "inspect_pe.py, independent inspect_header.ps1, official review_case.py --verify-hashes --strict",
+      "archivedReceipt": "plugin-receipts/reverse-skill-business-receipt.json"
+    }
+  ],
+  "pluginQaArtifacts": [
+    {
+      "file": "qa/docx/page-1.png",
+      "bytes": 278173,
+      "sha256": "0dcf376c33f53a8d5df1a6181decda2827f42b6e3b25113dbb3a7ef8c30d8873"
+    },
+    {
+      "file": "qa/docx/page-2.png",
+      "bytes": 336556,
+      "sha256": "520b601ae2e84c15af35b9c2267245bba927736a3e1ec305462353d35cd7abde"
+    },
+    {
+      "file": "qa/pdf/page-1.png",
+      "bytes": 112538,
+      "sha256": "10322333c1db03cf5a088da2643712833dc55a67e762bc989a98e21762dcc616"
+    },
+    {
+      "file": "qa/pdf/page-2.png",
+      "bytes": 139239,
+      "sha256": "69c38038f16b3050bc4255f502f446928e56ad6717457aba4f6ded6b50a02544"
+    },
+    {
+      "file": "qa/xlsx/inspection.ndjson",
+      "bytes": 987,
+      "sha256": "4f8d0ac07a0042c954731c4f43ad25a7b75ee15ea58344e56ebea69c6afb32a6"
+    },
+    {
+      "file": "qa/xlsx/package-sizes.png",
+      "bytes": 124464,
+      "sha256": "0da5bc3998534b175164fecb642d0a71ae05b2f1a4f7989fcd299b6a4eba626a"
+    },
+    {
+      "file": "qa/pptx/validation.json",
+      "bytes": 4593,
+      "sha256": "5ea2546c1e70e3133dbe2e4e5479a0621b56956019fca8109d297ebd938997df"
+    },
+    {
+      "file": "qa/pptx/slide-1.png",
+      "bytes": 35316,
+      "sha256": "a14f578708fb47f99fbfb3756cdce58c33979341653652f408292f6367609b3e"
+    },
+    {
+      "file": "qa/pptx/slide-2.png",
+      "bytes": 68004,
+      "sha256": "26f9d7d6a1b107cae72fbaa87e87fef482421e9a8bb90ef4356d5a4b05a45177"
+    },
+    {
+      "file": "qa/pptx/slide-3.png",
+      "bytes": 79819,
+      "sha256": "9ec9eb0c313a8bba56af94ad359738c7e7cf69f4938faf9fe3e922351a29d6c2"
+    },
+    {
+      "file": "qa/pptx/slide-4.png",
+      "bytes": 70074,
+      "sha256": "58fac0727d822707f40e4f3a1aebd648e0f165e3b8514513ea8719b90c9a6cfd"
+    },
+    {
+      "file": "qa/pptx/slide-5.png",
+      "bytes": 83753,
+      "sha256": "778bf8ba178bd2f96906b4835eff241b5dab63be18a93b0eaae846a4b460a358"
+    }
+  ],
+  "chargedApiCalls": 0,
+  "scope": {
+    "installations": "Disposable GitHub-hosted runners only",
+    "windows": "x64 disposable Windows runner; exact Windows version not recorded",
+    "linux": "Linux-6.8.0-1070-azure-x86_64-with-glibc2.35",
+    "macos": "macOS-14.8.9-arm64-arm-64bit-Mach-O",
+    "macosRuntimeArchitecture": "arm64",
+    "upgradeFromVersion": "1.0.0",
+    "upgradeFromCommit": "1f0c8c197b9aab301bb3ac39683c1e5871e2045e",
+    "upgradeToVersion": "1.2.0",
+    "linuxMacosConfigurationRestore": "Offline SQLite backups restored, then confirmed in the real GUI",
+    "windowsConfigurationRestore": "Production IPC export/import plus separate native picker and encrypted-sync acceptance",
+    "forwarding": "Synthetic loopback upstream; additional paid API calls zero",
+    "pluginHost": "Codex plugin skills and their local runtimes; not an XY Switch internal plugin protocol"
+  },
+  "limitations": [
+    "Six package signatureVerification fields are not-performed",
+    "macOS ad-hoc integrity succeeded; Gatekeeper did not accept the package; production signing and notarization remain pending",
+    "macOS Universal includes x86_64 and arm64 slices, but only arm64 was executed",
+    "macOS DMG lifecycle executed; app.zip was packaged and hashed but not independently installed/executed",
+    "Linux/macOS native GUI encrypted import/export was not exercised",
+    "Mermaid SVG export unavailable because mmdc was absent; editable source delivered"
+  ],
+  "failureAttribution": [
+    {
+      "area": "Native CI harness",
+      "result": "Resolved; final five core native jobs passed",
+      "details": "MSI component paths and row identity, exact per-format payload hashes, archive same-volume handling, isolated keychain/OCR/CDP handling and persisted GUI language selection"
+    },
+    {
+      "area": "DOCX rendering",
+      "result": "Resolved; final two pages visually reviewed",
+      "details": "Table border and column-width adjustments to generated test document"
+    },
+    {
+      "area": "Template helper verification",
+      "result": "Resolved; official creator always returned exitCode 0",
+      "details": "Bundled Node lacked yaml; cross-context deepStrictEqual array mismatch was a verifier false report. Exact official YAML fields and scalar comparisons passed"
+    },
+    {
+      "area": "Mermaid SVG export",
+      "result": "Known export boundary, not a reverse analysis failure",
+      "details": "Official renderer exitCode 1; mmdc unavailable; source and receipt retained"
+    }
+  ],
+  "sourceRecordFile": "source.json",
+  "archivedFiles": [
+    {
+      "file": "reverse-case/evidence/E-001.md",
+      "bytes": 807,
+      "sha256": "ad811381e23688349049ac6f8c570470b3b098ab1d80d9fbe0df0ec6343db8c8"
+    },
+    {
+      "file": "reverse-case/evidence/E-002.md",
+      "bytes": 796,
+      "sha256": "82bc2089edd12ad0fc76459c6546e4b16033327c27f0aebbe2f4ed271276e4a6"
+    },
+    {
+      "file": "reverse-case/evidence/E-003.md",
+      "bytes": 821,
+      "sha256": "8f789b63742e3a575417ffcfb1107f87e3bdbb6e7bc57af87b15f49fd2559c54"
+    },
+    {
+      "file": "reverse-case/evidence/E-004.md",
+      "bytes": 785,
+      "sha256": "3c9a71a101b69bd00506f5d979294405528c1db19cb7130dbbdf4189ee442584"
+    },
+    {
+      "file": "reverse-case/evidence/E-005.md",
+      "bytes": 803,
+      "sha256": "a8d5348b7aeff0abe2d5209800c787ea639a76ef7fdd537ed53410de5fa6f3bd"
+    },
+    {
+      "file": "reverse-case/evidence/E-006.md",
+      "bytes": 816,
+      "sha256": "994a60da1f9cc9526e010ac9c8f6fcd5da85e038b5a4a3e205a026bbbcce52bf"
+    },
+    {
+      "file": "reverse-case/evidence/E-007.md",
+      "bytes": 822,
+      "sha256": "f60716bf2b047abc587f8620336773a150018d1c202233d30a2b04aedc917042"
+    },
+    {
+      "file": "reverse-case/evidence/header-comparison.json",
+      "bytes": 1654,
+      "sha256": "8e28483bf2d971a012cc56eb0da0192963c3e86bf8dbfdac3ff9479292fbb8aa"
+    },
+    {
+      "file": "reverse-case/evidence/imports.json",
+      "bytes": 35667,
+      "sha256": "181ad3226df7591036a740d552f08dd7f7f3c5ab3f4919e5c63cc99a058a75c7"
+    },
+    {
+      "file": "reverse-case/evidence/independent-header.json",
+      "bytes": 813,
+      "sha256": "8b85aa9a78cc481cc5e725f6cbc3e998e2b3e219222a69805b48918527103837"
+    },
+    {
+      "file": "reverse-case/evidence/manifest-binding.json",
+      "bytes": 734,
+      "sha256": "c75801c75bd6404b859ba5d21b6ff50db793a5764381f7eba35049795e330f6f"
+    },
+    {
+      "file": "reverse-case/evidence/pe-analysis.json",
+      "bytes": 44209,
+      "sha256": "5b13c78ecd1b13124ea70e42e025f900116a355c65a57b933c849e3abdfed324"
+    },
+    {
+      "file": "reverse-case/evidence/reference-observation.json",
+      "bytes": 1408,
+      "sha256": "de481722e7820734c501109981c535ca49b2cbd83348bd5d4c9ed9e833531145"
+    },
+    {
+      "file": "reverse-case/evidence/selected-strings.json",
+      "bytes": 876,
+      "sha256": "924cdc3b4d4cbc9727d193392f6fc7b72921fb8a5028f5a26f9953f31bbf8a91"
+    },
+    {
+      "file": "reverse-case/scope.md",
+      "bytes": 1894,
+      "sha256": "5937cb705a251365e017973b6121d266f0cbc02590f1d2b43a0dd1d1a452e0cd"
+    },
+    {
+      "file": "reverse-case/timeline.md",
+      "bytes": 3650,
+      "sha256": "e01c3813ca04d9756e5075248341774b9adadb6e71cd493d741415f9b57402b5"
+    },
+    {
+      "file": "reverse-case/workitems.md",
+      "bytes": 1562,
+      "sha256": "8bcc4478547477d18e59d35c7db3d64ff6a8f9a434c9600d564cddd55641d82d"
+    },
+    {
+      "file": "reverse-case/report/case-review.json",
+      "bytes": 1416,
+      "sha256": "b37df88da1da882349cd7fb524d60d211df07227dd023b22ae62c273ea19e2d2"
+    },
+    {
+      "file": "reverse-case/report/case-review.md",
+      "bytes": 782,
+      "sha256": "f2c37d979401875f4bff12f03c6a9372a6cc88b59ffa3a456d7b1ef07909181f"
+    },
+    {
+      "file": "reverse-case/report/analysis-flow.mmd",
+      "bytes": 616,
+      "sha256": "f09f02acd287388fd8fe72e952ef5c2b916130ce6ac9d218659eed242f3994b4"
+    },
+    {
+      "file": "reverse-case/report/diagram-render-receipt.json",
+      "bytes": 581,
+      "sha256": "0117eccd5078def282a110b1d035d1bccc41f3140b9acdc184092468d8dacb3d"
+    },
+    {
+      "file": "plugin-deliverables/XY-Switch-installation-and-recovery.docx",
+      "bytes": 40291,
+      "sha256": "52d63761e1c61a973601627aae306a1d6bd736ade874f5f8792686897435b22d"
+    },
+    {
+      "file": "plugin-deliverables/XY-Switch-package-checksums.pdf",
+      "bytes": 75800,
+      "sha256": "27a41f115f1d4f862400eb72cebb76145f246feff148b0a91e64adf04a0c570d"
+    },
+    {
+      "file": "plugin-deliverables/XY-Switch-package-sizes.xlsx",
+      "bytes": 5071,
+      "sha256": "edda047b61513857856e0af65885880a87e331cbbd9e769c247f323041f567c2"
+    },
+    {
+      "file": "plugin-deliverables/XY-Switch-three-platform-acceptance.pptx",
+      "bytes": 34983,
+      "sha256": "442a108abec7a40189c059caff0bb5da4d4226836b317b9340b37064eacafc39"
+    },
+    {
+      "file": "manifests/windows-x64.json",
+      "bytes": 568,
+      "sha256": "4938679477d4bf5598007089b69b2f550b768d9ba583987fc45f0ac746319a3f"
+    },
+    {
+      "file": "manifests/linux-x64.json",
+      "bytes": 566,
+      "sha256": "1dbcbfdb4a90972e570c7aba938be971f5acbccafe649d8ba7ecd80863124f6c"
+    },
+    {
+      "file": "manifests/macos-universal.json",
+      "bytes": 579,
+      "sha256": "250536a76379d3711414c5392d6740c3af625bd90bfa867b3f27a7b9c1586e89"
+    },
+    {
+      "file": "source.json",
+      "bytes": 925,
+      "sha256": "e497ecfee94b6bd8cb893332e2f06f3ff07ac4f58cb3ad6bf53cf61fba0f0773"
+    },
+    {
+      "file": "plugin-receipts/docx-authoring-receipt.json",
+      "bytes": 637,
+      "sha256": "fce4fdf0952634e4be521cd485010ece4cb42cb4179caf0fdab3765d8d003bda"
+    },
+    {
+      "file": "plugin-receipts/pdf-authoring-receipt.json",
+      "bytes": 612,
+      "sha256": "0b151353c3fb7f268c6b50198dded99cdd4ee2e89b835b4d94cff6df49bb5a2e"
+    },
+    {
+      "file": "plugin-receipts/xlsx-authoring-receipt.json",
+      "bytes": 1682,
+      "sha256": "ceeb3111c4a3bd228b25d025a6e3ed3ba271fb29fb5980e67f6408789771f74f"
+    },
+    {
+      "file": "plugin-receipts/pptx-authoring-receipt.json",
+      "bytes": 6174,
+      "sha256": "601862b44b30585e5042e2ebc60c19c258f120f2dea2a6b67453bcdf82f36c9a"
+    },
+    {
+      "file": "plugin-receipts/template-acceptance-receipt.json",
+      "bytes": 2532,
+      "sha256": "996d5d72d816177f3bdc5b9460d5977c5a253556f0c3909ba1fbf229fbf5f007"
+    },
+    {
+      "file": "plugin-receipts/template-create-result.json",
+      "bytes": 624,
+      "sha256": "ba5d496b269abfda00b2339aee45ab99495e9c50b8cdcf0bbe5c83f1d3972879"
+    },
+    {
+      "file": "plugin-receipts/reverse-skill-business-receipt.json",
+      "bytes": 1915,
+      "sha256": "b57901a6961bdba3c093ecf4e3cc91a557eac7362aa8750d9d586901bb2aaa7e"
+    },
+    {
+      "file": "runs/run-41419299553-status.json",
+      "bytes": 5607,
+      "sha256": "29abca9084d2b44d6e8cebe04d8dc6dc998a5ac8ffca09f21d71118aac8bb1fa"
+    },
+    {
+      "file": "runs/run-41452499188-status.json",
+      "bytes": 6839,
+      "sha256": "ee739b8f660dbdd854b9725f1dada52f6164ce55025703ffc48116ff28e991b4"
+    },
+    {
+      "file": "qa/docx/page-1.png",
+      "bytes": 278173,
+      "sha256": "0dcf376c33f53a8d5df1a6181decda2827f42b6e3b25113dbb3a7ef8c30d8873"
+    },
+    {
+      "file": "qa/docx/page-2.png",
+      "bytes": 336556,
+      "sha256": "520b601ae2e84c15af35b9c2267245bba927736a3e1ec305462353d35cd7abde"
+    },
+    {
+      "file": "qa/pdf/page-1.png",
+      "bytes": 112538,
+      "sha256": "10322333c1db03cf5a088da2643712833dc55a67e762bc989a98e21762dcc616"
+    },
+    {
+      "file": "qa/pdf/page-2.png",
+      "bytes": 139239,
+      "sha256": "69c38038f16b3050bc4255f502f446928e56ad6717457aba4f6ded6b50a02544"
+    },
+    {
+      "file": "qa/xlsx/inspection.ndjson",
+      "bytes": 987,
+      "sha256": "4f8d0ac07a0042c954731c4f43ad25a7b75ee15ea58344e56ebea69c6afb32a6"
+    },
+    {
+      "file": "qa/xlsx/package-sizes.png",
+      "bytes": 124464,
+      "sha256": "0da5bc3998534b175164fecb642d0a71ae05b2f1a4f7989fcd299b6a4eba626a"
+    },
+    {
+      "file": "qa/pptx/validation.json",
+      "bytes": 4593,
+      "sha256": "5ea2546c1e70e3133dbe2e4e5479a0621b56956019fca8109d297ebd938997df"
+    },
+    {
+      "file": "qa/pptx/slide-1.png",
+      "bytes": 35316,
+      "sha256": "a14f578708fb47f99fbfb3756cdce58c33979341653652f408292f6367609b3e"
+    },
+    {
+      "file": "qa/pptx/slide-2.png",
+      "bytes": 68004,
+      "sha256": "26f9d7d6a1b107cae72fbaa87e87fef482421e9a8bb90ef4356d5a4b05a45177"
+    },
+    {
+      "file": "qa/pptx/slide-3.png",
+      "bytes": 79819,
+      "sha256": "9ec9eb0c313a8bba56af94ad359738c7e7cf69f4938faf9fe3e922351a29d6c2"
+    },
+    {
+      "file": "qa/pptx/slide-4.png",
+      "bytes": 70074,
+      "sha256": "58fac0727d822707f40e4f3a1aebd648e0f165e3b8514513ea8719b90c9a6cfd"
+    },
+    {
+      "file": "qa/pptx/slide-5.png",
+      "bytes": 83753,
+      "sha256": "778bf8ba178bd2f96906b4835eff241b5dab63be18a93b0eaae846a4b460a358"
+    },
+    {
+      "file": "reverse-case/report/2026-11-02_reverse-xy-switch-installer-report.md",
+      "bytes": 11775,
+      "sha256": "62944af47e4517ccf8e9c0fb8b080c506dcd6b0dfed078e7b2827e85771671f5"
+    }
+  ],
+  "reproductionScripts": [
+    {
+      "file": "scripts/native-acceptance/inspect-pe.py",
+      "bytes": 14076,
+      "sha256": "c44899bd13215811586f8e657da9597b0afc17660c17083d629ec359ee155864"
+    },
+    {
+      "file": "scripts/native-acceptance/inspect-header.ps1",
+      "bytes": 3568,
+      "sha256": "32702231ed2561fcc3e124df3e5bcfe1f28b109561023bbe869fb502ba85ac9a"
+    }
+  ],
+  "nativeEvidenceSelection": "Original provenance metadata, individual check results and installer observations are selected from the four hashed CI result files. Credential values and raw HTTP authorization are excluded.",
+  "referenceArchiveBoundary": "Original Microsoft/NSIS snapshots are retained locally and hashed in reverse-case/evidence/reference-observation.json; the public archive includes the source URLs, hashes and observations."
+}

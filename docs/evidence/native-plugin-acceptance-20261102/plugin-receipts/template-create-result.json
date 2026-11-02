@@ -1,0 +1,9 @@
+{
+  "plugin": "template-creator",
+  "operation": "create",
+  "isolatedHome": "E:\\XY switch\\workspaces\\session-favorites-20261029\\artifacts\\native-plugin-acceptance-20261102\\plugin-business\\work\\template-home",
+  "exitCode": 0,
+  "stdout": "{\"displayName\":\"XY Switch 安装恢复验收\",\"kind\":\"document\",\"skillName\":\"artifact-template-xy-switch\",\"skillPath\":\"E:\\\\XY switch\\\\workspaces\\\\session-favorites-20261029\\\\artifacts\\\\native-plugin-acceptance-20261102\\\\plugin-business\\\\work\\\\template-home\\\\skills\\\\artifact-template-xy-switch\"}\n",
+  "stderr": "",
+  "chargedApiCalls": 0
+}

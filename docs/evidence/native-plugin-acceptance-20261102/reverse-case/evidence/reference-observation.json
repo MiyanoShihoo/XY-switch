@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "observedAt": "2026-11-02T15:07:31.554Z",
+  "targetAccess": "offline; reference-document fetches only",
+  "references": [
+    {
+      "title": "Microsoft PE Format",
+      "url": "https://learn.microsoft.com/en-us/windows/win32/debug/pe-format",
+      "localFile": "notes/references/microsoft-pe-format.html",
+      "bytes": 282126,
+      "sha256": "780fb2a0916bfdb8240a541605827149d4bd94efd15339a7d35ea06d5586b8aa",
+      "retrieval": "HTTP 200; full response saved; relevant PE and certificate table sections inspected"
+    },
+    {
+      "title": "NSIS fileform.h",
+      "url": "https://raw.githubusercontent.com/NSIS-Dev/nsis/master/Source/exehead/fileform.h",
+      "localFile": "notes/references/nsis-fileform.h",
+      "bytes": 22190,
+      "sha256": "750f008fabd57be46b6df362b06d69b8c75190bc75efddfb0b154e53f0157370",
+      "retrieval": "full source saved; firstheader definition at lines 227-246 inspected"
+    }
+  ],
+  "interpretations": {
+    "peMachine": "0x014c identifies the PE shell as I386; payload architecture is outside this observation",
+    "firstheader": "Seven 32-bit words: flags, signature, three identifying words, header length, and length including firstheader and optional CRC",
+    "certificateDirectory": "Index 4 uses file offsets; zero address and size are a static directory observation, not signature verification"
+  },
+  "chargedApiCalls": 0
+}

@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "plugin": "reverse-skill",
+  "operation": "offline-static-pe-analysis",
+  "passed": true,
+  "verifiedAt": "2026-11-02T15:35:22.491Z",
+  "sourceCommit": "fe4946bd2fcd4c27a7432aeadb5a656e0e6e676b",
+  "harnessCommit": "0279977f314913d72e0b85a187ccd17217ae95ed",
+  "sourceRun": 41419299553,
+  "acceptanceRun": 41452499188,
+  "sample": "XY-Switch-1.2.0-windows-x64-setup.exe",
+  "sampleSha256": "6371977825a2d914b7d3d5124ba6d2fff6924e7db1406af39be27b23eac92869",
+  "sampleExecuted": false,
+  "chargedApiCalls": 0,
+  "independentObservations": [
+    "Python hashlib/struct/re",
+    "PowerShell Get-FileHash/.NET BitConverter"
+  ],
+  "independentComparisonCount": 10,
+  "validatedFindings": 2,
+  "candidateFindings": 3,
+  "evidenceCount": 7,
+  "workitemsDone": 6,
+  "strictReview": {
+    "status": "PASS",
+    "generatedAt": "2026-11-02T15:20:15.403188+00:00",
+    "summary": {
+      "errors": 0,
+      "warnings": 0,
+      "evidence": 7,
+      "workitems": 6,
+      "timeline_events": 6,
+      "findings": 5,
+      "paths": 1
+    },
+    "receipt": "xy-switch-installer/report/case-review.json"
+  },
+  "diagram": {
+    "editableSource": "xy-switch-installer/report/analysis-flow.mmd",
+    "svgExportExitCode": 1,
+    "svgGenerated": false,
+    "reason": "mmdc is not available"
+  },
+  "timelineHistory": {
+    "beforeBytes": 401,
+    "afterBytes": 3650,
+    "beforeSha256": "efa83724a4deed661d7683fc5fb146b901a477ae2c46b754d6bf40ddcd64929a",
+    "afterSha256": "e01c3813ca04d9756e5075248341774b9adadb6e71cd493d741415f9b57402b5",
+    "priorBytePrefixPreserved": true,
+    "priorTextPrefixPreserved": true,
+    "verifiedAt": "2026-11-02T15:35:22.491Z"
+  },
+  "limitations": [
+    "Installer shell only; compressed application payload not decoded",
+    "Imports and strings derive from the same parser; not independent behavior evidence",
+    "Production signature verification not performed"
+  ]
+}

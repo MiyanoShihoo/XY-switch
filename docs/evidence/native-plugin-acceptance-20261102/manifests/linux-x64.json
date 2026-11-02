@@ -1,0 +1,21 @@
+{
+  "version": "1.2.0",
+  "platform": "linux",
+  "architecture": "x64",
+  "builtAt": "2026-11-02T09:24:55.896Z",
+  "signatureVerification": "not-performed",
+  "files": [
+    {
+      "name": "XY-Switch-1.2.0-linux-x64.deb",
+      "format": "deb",
+      "bytes": 6989396,
+      "sha256": "5d0b68edee914e5c50ac3313fdbf30bde70e9698577363ca0f13331790a35b3e"
+    },
+    {
+      "name": "XY-Switch-1.2.0-linux-x64.AppImage",
+      "format": "appimage",
+      "bytes": 85002744,
+      "sha256": "75bb16d3e9b222803e161a3e1452db4264920f8fd8719d1e1ebe16965f85bcbe"
+    }
+  ]
+}

@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "verifiedAt": "2026-11-02T15:07:31.554Z",
+  "method": "Scalar comparison of independent Python and PowerShell byte-inspection outputs",
+  "comparisons": [
+    {
+      "field": "sha256",
+      "python": "6371977825a2d914b7d3d5124ba6d2fff6924e7db1406af39be27b23eac92869",
+      "powershell": "6371977825a2d914b7d3d5124ba6d2fff6924e7db1406af39be27b23eac92869",
+      "matched": true
+    },
+    {
+      "field": "bytes",
+      "python": 5275657,
+      "powershell": 5275657,
+      "matched": true
+    },
+    {
+      "field": "peHeaderOffset",
+      "python": 216,
+      "powershell": 216,
+      "matched": true
+    },
+    {
+      "field": "machine",
+      "python": "0x014c",
+      "powershell": "0x014c",
+      "matched": true
+    },
+    {
+      "field": "optionalHeaderMagic",
+      "python": "0x010b",
+      "powershell": "0x010b",
+      "matched": true
+    },
+    {
+      "field": "sectionCount",
+      "python": 5,
+      "powershell": 5,
+      "matched": true
+    },
+    {
+      "field": "overlayOffset",
+      "python": 54272,
+      "powershell": 54272,
+      "matched": true
+    },
+    {
+      "field": "overlayBytes",
+      "python": 5221385,
+      "powershell": 5221385,
+      "matched": true
+    },
+    {
+      "field": "nsisFirstHeaderOffset",
+      "python": 54272,
+      "powershell": 54272,
+      "matched": true
+    },
+    {
+      "field": "firstHeaderHex",
+      "python": "00000000efbeadde4e756c6c736f6674496e73747c30010009ac4f00",
+      "powershell": "00000000efbeadde4e756c6c736f6674496e73747c30010009ac4f00",
+      "matched": true
+    }
+  ],
+  "passed": true,
+  "sampleExecuted": false,
+  "chargedApiCalls": 0
+}
