@@ -37,6 +37,25 @@ export function selectNativeArtifacts(artifacts) {
     return [platform, { id: artifact.id, name, digest: artifact.digest, size: artifact.size_in_bytes }];
   }));
 }
+export async function setNativeInterfaceLanguage(client) {
+  const languageSelector = '#settings-panel-general select:has(option[value="zh-CN"])';
+  await client.waitFor('Boolean(document.querySelector(".xy-shell-nav-item[data-view=settings]"))');
+  await client.click('.xy-shell-nav-item[data-view="settings"]');
+  await client.waitFor('Boolean(document.querySelector("#settings-tab-general"))');
+  await client.click('#settings-tab-general');
+  await client.waitFor('Boolean(document.querySelector(' + JSON.stringify(languageSelector) + '))');
+  const current = await client.evaluate('document.querySelector(' + JSON.stringify(languageSelector) + ').value');
+  const selected = language => 'document.querySelector(' + JSON.stringify(languageSelector) + ')?.value === ' + JSON.stringify(language) + ' && !document.querySelector(' + JSON.stringify(languageSelector) + ')?.disabled && document.documentElement.lang === ' + JSON.stringify(language);
+  if (current === 'zh-CN') {
+    await client.fill(languageSelector, 'en');
+    await client.waitFor(selected('en'), 60_000);
+  }
+  await client.fill(languageSelector, 'zh-CN');
+  await client.waitFor(selected('zh-CN'), 60_000);
+  assert.equal(await client.evaluate('window.__TAURI_INTERNALS__.invoke("get_interface_language")'), 'zh-CN');
+  await client.click('.xy-shell-nav-item[data-view="providers"]');
+  await client.waitFor('document.documentElement.lang === "zh-CN" && Boolean(document.querySelector(".provider-workspace"))', 60_000);
+}
 export async function waitForNativePage(client, { timeoutMs = 60_000, intervalMs = 150 } = {}) {
   assert(Number.isSafeInteger(timeoutMs) && timeoutMs > 0);
   assert(Number.isSafeInteger(intervalMs) && intervalMs >= 0);

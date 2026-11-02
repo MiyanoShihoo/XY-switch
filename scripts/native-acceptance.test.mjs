@@ -6,13 +6,53 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { decryptSync, msiInstalledExecutable, nativeArtifactNames, packageInput, requireDisposableRunner, safeFilename, selectNativeArtifacts, sha256, waitForNativePage } from './native-acceptance/lib.mjs';
+import { runInNewContext } from 'node:vm';
+import { decryptSync, msiInstalledExecutable, nativeArtifactNames, packageInput, requireDisposableRunner, safeFilename, selectNativeArtifacts, setNativeInterfaceLanguage, sha256, waitForNativePage } from './native-acceptance/lib.mjs';
 import { connect, isNativeRendererRequest } from './workspace-qa/cdp.mjs';
 
 test('packaged CDP allows only native renderer and IPC origins and refuses ordinary workstations', async () => {
   for (const value of ['http://tauri.localhost/', 'http://ipc.localhost/app_platform', 'about:blank', 'data:image/png,test']) assert.equal(isNativeRendererRequest(value), true);
   for (const value of ['http://tauri.localhost.evil/', 'https://tauri.localhost/', 'http://ipc.localhost:1234/', 'http://127.0.0.1:1234/', 'http://user@tauri.localhost/', 'not a URL']) assert.equal(isNativeRendererRequest(value), false);
   if (process.env.GITHUB_ACTIONS !== 'true' || process.platform !== 'win32' || process.env.RUNNER_ENVIRONMENT !== 'github-hosted') await assert.rejects(connect('http://127.0.0.1:1', { native: true }), /Native CDP/);
+});
+
+test('native language selection uses GUI transitions and verifies persisted state', async () => {
+  for (const initial of ['en', 'zh-CN']) {
+    let screen = 'providers', persisted = 'en', pending, changes = 0;
+    const control = { value: initial, disabled: false };
+    const document = {
+      documentElement: { lang: initial },
+      querySelector(selector) {
+        if (selector === '#settings-panel-general select:has(option[value="zh-CN"])') return screen === 'settings' ? control : null;
+        if (selector === '#settings-tab-general') return screen === 'settings' ? {} : null;
+        if (selector === '.xy-shell-nav-item[data-view=settings]') return {};
+        if (selector === '.provider-workspace') return screen === 'providers' ? {} : null;
+        throw new Error('Unsupported or language-dependent selector: ' + selector);
+      },
+    };
+    const client = {
+      evaluate: expression => runInNewContext(expression, { document, window: { __TAURI_INTERNALS__: { invoke: command => { assert.equal(command, 'get_interface_language'); return persisted; } } } }),
+      async waitFor(expression) {
+        if (pending) { await pending(); pending = undefined; }
+        assert.equal(Boolean(await this.evaluate(expression)), true, expression);
+      },
+      async click(selector) {
+        if (selector === '.xy-shell-nav-item[data-view="settings"]') screen = 'settings';
+        else if (selector === '.xy-shell-nav-item[data-view="providers"]') screen = 'providers';
+        else assert.equal(selector, '#settings-tab-general');
+      },
+      async fill(selector, value) {
+        assert.equal(selector, '#settings-panel-general select:has(option[value="zh-CN"])');
+        assert.equal(screen, 'settings'); assert.equal(control.disabled, false);
+        if (control.value === value) return;
+        control.disabled = true; changes++;
+        pending = async () => { persisted = value; control.value = value; document.documentElement.lang = value; control.disabled = false; };
+      },
+    };
+    await setNativeInterfaceLanguage(client);
+    assert.equal(persisted, 'zh-CN'); assert.equal(screen, 'providers');
+    assert.equal(changes, initial === 'zh-CN' ? 2 : 1);
+  }
 });
 
 const secret = 'synthetic native test passphrase';

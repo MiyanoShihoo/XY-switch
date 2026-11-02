@@ -8,7 +8,7 @@ import { parseArgs, promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { connect } from '../workspace-qa/cdp.mjs';
-import { msiInstalledExecutable, packageInput, requireDisposableRunner, sha256, waitForNativePage } from './lib.mjs';
+import { msiInstalledExecutable, packageInput, requireDisposableRunner, setNativeInterfaceLanguage, sha256, waitForNativePage } from './lib.mjs';
 
 requireDisposableRunner();
 const run = promisify(execFile);
@@ -73,15 +73,11 @@ async function launch(name, legacy = false) {
     try { client = await connect(`http://127.0.0.1:${args.port}`, { native: true }); } catch { await delay(500); }
   }
   assert(client, 'No packaged native WebView'); await waitForNativePage(client);
-  if (!legacy) {
-    await invoke('set_interface_language', { preference: 'zh-CN', resolvedLanguage: 'zh-CN' });
-    await client.evaluate('localStorage.setItem("xy-switch:language","zh-CN")'); await client.call('Page.reload');
-    await client.waitFor('document.documentElement.lang === "zh-CN" && Boolean(document.querySelector(".provider-workspace"))', 60_000);
-  }
+  if (!legacy) await setNativeInterfaceLanguage(client);
   await client.screenshot(join(output, name + '.png'));
 }
 async function routing() {
-  await client.click('.xy-shell-nav-item[title="设置"]');
+  await client.click('.xy-shell-nav-item[data-view="settings"]');
   await client.waitFor('Boolean(document.querySelector("#settings-tab-routing"))'); await client.click('#settings-tab-routing');
   await client.waitFor('Boolean(document.querySelector(".settings-takeover"))');
 }
