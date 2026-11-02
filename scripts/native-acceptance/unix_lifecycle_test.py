@@ -175,6 +175,25 @@ class CredentialTests(unittest.TestCase):
         self.assertFalse(vault.default_captured)
         self.assertFalse(vault.created)
 
+    def test_macos_successful_command_cannot_hide_unpersisted_default(self):
+        with tempfile.TemporaryDirectory() as directory:
+            vault = CredentialVault("macos", directory, set())
+            calls = []
+
+            def run(arguments, **_kwargs):
+                calls.append(arguments)
+                if arguments[1] == "default-keychain" and "-s" not in arguments:
+                    return subprocess.CompletedProcess(arguments, 1, "", "security: SecKeychainCopyDomainDefault user: A default keychain could not be found.\n")
+                return subprocess.CompletedProcess(arguments, 0, "", "")
+
+            with patch("unix_packages.require_runner"), patch("unix_packages.run", side_effect=run):
+                with self.assertRaisesRegex(RuntimeError, "not persisted"):
+                    vault.start()
+                self.assertTrue(vault.created)
+                vault.restore()
+            self.assertTrue(vault.restored)
+            self.assertTrue(any(arguments[1] == "delete-keychain" for arguments in calls))
+
 
 class UpstreamTests(unittest.TestCase):
     def test_validation_errors_are_evidence_and_server_stops(self):

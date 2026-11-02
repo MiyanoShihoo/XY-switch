@@ -158,6 +158,10 @@ class CredentialVault:
             run(["security", "unlock-keychain", "-p", password, self.keychain])
             run(["security", "default-keychain", "-d", "user", "-s", self.keychain])
             run(["security", "list-keychains", "-d", "user", "-s", self.keychain])
+            if self.default_keychain() != str(self.keychain.resolve()):
+                raise RuntimeError("Isolated macOS default keychain was not persisted for new processes")
+            if shlex.split(run(["security", "list-keychains", "-d", "user"]).stdout) != [str(self.keychain.resolve())]:
+                raise RuntimeError("Isolated macOS keychain search list was not persisted for new processes")
 
     @staticmethod
     def default_keychain():

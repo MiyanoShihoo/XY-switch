@@ -3,7 +3,7 @@ import { execFile, spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
 import { access, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
-import { join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { parseArgs, promisify } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
 import { connect } from '../workspace-qa/cdp.mjs';
@@ -188,7 +188,8 @@ try {
       for (let attempt = 0; attempt < 60 && await exists(executable); attempt++) await delay(500);
       assert.equal(await exists(executable), false); currentInstaller = undefined;
     });
-    const archivedData = join(temporary, format + '-app-data'); assert(!relative(temporary, archivedData).startsWith('..'));
+    const archivedData = resolve(appData + '-' + basename(temporary) + '-' + format);
+    assert.equal(dirname(archivedData), dirname(appData)); assert.equal(await exists(archivedData), false);
     await rename(appData, archivedData);
   }
 } catch (error) { results.push({ name: activeStep, passed: false, error: scrub(error.stack) }); process.exitCode = 1; }

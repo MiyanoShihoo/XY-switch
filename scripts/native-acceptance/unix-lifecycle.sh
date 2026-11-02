@@ -28,6 +28,7 @@ if [[ "$platform" == linux ]]; then
       exec python3 "$@"
     ' -- "$driver" linux "$output/package-input.json" "$previous" "$output" "$temporary"
 else
+  mkdir -p "$temporary/home/Library/Preferences" "$temporary/home/Library/Keychains"
   swiftc scripts/native-acceptance/macos-gui.swift -o "$temporary/macos-gui"
   env HOME="$temporary/home" CFFIXED_USER_HOME="$temporary/home" CODEX_HOME="$temporary/codex" \
     TMPDIR="$temporary/tmp" python3 "$driver" macos "$output/package-input.json" "$previous" "$output" "$temporary"
