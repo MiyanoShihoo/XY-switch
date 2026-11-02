@@ -412,6 +412,7 @@ pub struct Database {
     connection: Arc<Mutex<Connection>>,
     pub(crate) shadow: Arc<crate::shadow_audit_runtime::ShadowAuditRuntime>,
     pub(crate) verification: Arc<crate::model_verification::VerificationRuntime>,
+    pub(crate) tasks: Arc<crate::governance::tasks::TaskRuntime>,
 }
 
 
@@ -574,12 +575,13 @@ impl Database {
         ).map_err(|error| error.to_string())?;
         crate::governance::init(&connection)?;
         crate::encrypted_sync::store::init(&connection)?;
+        let tasks = crate::governance::tasks::TaskRuntime::acquire(path, &connection)?;
         let connection = Arc::new(Mutex::new(connection));
         let shadow = Arc::new(crate::shadow_audit_runtime::ShadowAuditRuntime::new(
             Arc::downgrade(&connection),
         ));
         let verification = crate::model_verification::VerificationRuntime::new(Arc::downgrade(&connection));
-        Ok(Self { connection, shadow, verification })
+        Ok(Self { connection, shadow, verification, tasks })
     }
 
     pub fn list_prompts(&self) -> Result<Vec<Prompt>, String> {
@@ -833,6 +835,7 @@ impl Database {
             )
             .map_err(|error| error.to_string())?;
         let event_id = transaction.last_insert_rowid();
+        crate::governance::tasks::attach_event_on(&transaction, event_id, &event.provider_id, event.diagnostics.as_ref())?;
         // Diagnostic probes are independent observations, not health checks.
         // In particular they must not change health timestamps, latency or circuits.
         if !event.affects_health || event.route.starts_with("model_probe/") {
@@ -870,6 +873,7 @@ impl Database {
         ).map_err(|error|error.to_string())?;
         if updated != 1 {return Err(format!("request event {event_id} not found"));}
         crate::model_pricing::save_snapshot(&transaction, event_id, price.as_ref())?;
+        crate::governance::tasks::settle_event_on(&transaction, event_id, usage, price.as_ref().and_then(|value| value.total))?;
         transaction.commit().map_err(|error| error.to_string())?;
         drop(connection);
         if let Some(audit) = &usage.audit {

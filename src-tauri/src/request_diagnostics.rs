@@ -7,9 +7,17 @@ use serde::{Deserialize, Serialize};
 pub struct RequestDiagnostics {
     pub failure_stage: Option<String>,
     pub failure_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub budget_reason: Option<String>,
     pub send_attempts: u32,
     pub upstream_response_received: bool,
     pub attempts: Vec<RequestAttempt>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task: Option<crate::governance::tasks::TaskSummary>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task_request_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attempt_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -173,7 +181,11 @@ impl Database {
                 ).map_err(|error| error.to_string())?;
             }
         }
-        transaction.commit().map_err(|error| error.to_string())
+        let cancelled_task = crate::governance::tasks::fail_event_on(&transaction, event_id, code)?;
+        transaction.commit().map_err(|error| error.to_string())?;
+        drop(connection);
+        if let Some(task) = cancelled_task { crate::governance::tasks::notify_cancel(self, &task); }
+        Ok(())
     }
 }
 

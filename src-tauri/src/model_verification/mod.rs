@@ -10,6 +10,7 @@ mod tests;
 mod types;
 pub use engine::usage_total;
 pub use runtime::{VerificationRuntime, now_ms};
+pub(crate) use runtime::Reservation;
 pub use types::*;
 
 use crate::{credential_store, database::Database, proxy};

@@ -1,9 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import { t } from "../i18n/language";
-import type { AccessPolicy, AccessTokenInfo, BudgetPolicy, BudgetStatus, ConfigVersion, GovernanceEvent, GovernanceOverview, IssuedAccessToken, MonitorPolicy, MountBackup, MountClient, MountPreview, MountRoot, SyntheticRun, VersionPreview } from "../types/governance";
+import type { AccessPolicy, AccessTokenInfo, BudgetPolicy, BudgetStatus, ConfigVersion, GovernanceEvent, GovernanceOverview, IssuedAccessToken, MonitorPolicy, MountBackup, MountClient, MountPreview, MountRoot, ProxyTask, ProxyTaskDetail, SyntheticRun, VersionPreview } from "../types/governance";
 
 export const defaultAccessPolicy: AccessPolicy = { requireToken: false, requestsPerMinute: 120, maxInFlight: 8 };
-export const defaultBudgetPolicy: BudgetPolicy = { enabled: false, dailyTokens: 100000, dailyMicrousd: 1000000, inputReservation: 4096, maxOutputTokens: 512 };
+export const defaultBudgetPolicy: BudgetPolicy = { enabled: false, dailyTokens: 100000, dailyMicrousd: 1000000, inputReservation: 4096, maxOutputTokens: 512, taskMaxAttempts: 12, taskMaxMicrousd: 250000 };
 export const defaultMonitorPolicy: MonitorPolicy = { enabled: false, providerId: "", model: "", mode: "chat", intervalMinutes: 30, maxRunsPerDay: 10 };
 export const governanceNative = () => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 async function read<T>(command: string, fallback: T): Promise<T> {
@@ -21,6 +21,9 @@ export const issueAccessToken = (label: string, scope: "proxy" | "monitor", days
 export const revokeAccessToken = (id: string, confirmed: boolean) => write<void>("revoke_access_token", { id, confirmed });
 export const loadHardBudget = () => read<BudgetStatus>("get_hard_budget", { policy: defaultBudgetPolicy, dayUtc: Math.floor(Date.now() / 86400000), reservedTokens: 0, reservedMicrousd: 0, attempts: 0 });
 export const saveHardBudget = (policy: BudgetPolicy, confirmed: boolean) => write<void>("save_hard_budget", { policy, confirmed });
+export const listProxyTasks = () => read<ProxyTask[]>("list_proxy_tasks", []);
+export const loadProxyTask = (id: string): Promise<ProxyTaskDetail | null> => governanceNative() ? invoke<ProxyTaskDetail>("get_proxy_task", { id }) : Promise.resolve(null);
+export const cancelProxyTask = (id: string, confirmed: boolean) => write<void>("cancel_proxy_task", { id, confirmed });
 export const loadMonitorPolicy = () => read<MonitorPolicy>("get_synthetic_monitor", defaultMonitorPolicy);
 export const saveMonitorPolicy = (policy: MonitorPolicy, confirmation: string) => write<void>("save_synthetic_monitor", { policy, confirmation });
 export const runSyntheticCheck = (policy: MonitorPolicy, confirmation: string) => write<SyntheticRun>("run_synthetic_check", { policy, confirmation });

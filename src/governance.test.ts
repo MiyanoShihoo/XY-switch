@@ -3,6 +3,7 @@ import serviceSource from "./lib/governance-service.ts?raw";
 import commandRegistry from "../src-tauri/src/lib.rs?raw";
 import accessSource from "../src-tauri/src/governance/access.rs?raw";
 import budgetSource from "../src-tauri/src/governance/budget.rs?raw";
+import taskSource from "../src-tauri/src/governance/tasks.rs?raw";
 import monitorSource from "../src-tauri/src/governance/monitor.rs?raw";
 import versionsSource from "../src-tauri/src/governance/versions.rs?raw";
 import mountsSource from "../src-tauri/src/governance/mounts.rs?raw";
@@ -50,6 +51,24 @@ describe("governance IPC never simulates a privileged success", () => {
     invoke.mockRejectedValueOnce(new Error("unavailable"));
     await expect(service.loadHardBudget()).rejects.toThrow("unavailable");
   });
+  it("keeps task limits and cancellation confirmation intact across native IPC", async () => {
+    const task = { id: "task-one", attempts: 3, reservedMicrousd: 1, committedMicrousd: 2 };
+    invoke.mockResolvedValueOnce([task]);
+    expect(await service.listProxyTasks()).toEqual([task]);
+    expect(invoke).toHaveBeenLastCalledWith("list_proxy_tasks");
+    invoke.mockResolvedValueOnce({ task, attempts: [] });
+    expect(await service.loadProxyTask(task.id)).toEqual({ task, attempts: [] });
+    expect(invoke).toHaveBeenLastCalledWith("get_proxy_task", { id: task.id });
+    await service.cancelProxyTask(task.id, false);
+    expect(invoke).toHaveBeenLastCalledWith("cancel_proxy_task", { id: task.id, confirmed: false });
+    await service.cancelProxyTask(task.id, true);
+    expect(invoke).toHaveBeenLastCalledWith("cancel_proxy_task", { id: task.id, confirmed: true });
+    const policy = { ...service.defaultBudgetPolicy, taskMaxAttempts: 0, taskMaxMicrousd: 1 };
+    await service.saveHardBudget(policy, true);
+    expect(invoke).toHaveBeenLastCalledWith("save_hard_budget", { policy, confirmed: true });
+    invoke.mockRejectedValueOnce(new Error("task_store_unavailable"));
+    await expect(service.loadProxyTask(task.id)).rejects.toThrow("task_store_unavailable");
+  });
   it("passes the exact preview hashes and explicit confirmation to rollback", async () => {
     await service.applyConfigRollback(preview,"ROLLBACK");
     expect(invoke).toHaveBeenLastCalledWith("apply_config_rollback",{id:"v1",expectedCurrentHash:"current",targetHash:"target",confirmation:"ROLLBACK"});
@@ -72,6 +91,8 @@ describe("governance IPC never simulates a privileged success", () => {
     vi.stubGlobal("window",{});
     expect(await service.loadGovernanceOverview()).toBeNull();
     expect(await service.listSyntheticRuns()).toEqual([]);
+    expect(await service.listProxyTasks()).toEqual([]);
+    expect(await service.loadProxyTask("task-one")).toBeNull();
     const p=await service.loadAccessPolicy(); p.requireToken=true;
     expect((await service.loadAccessPolicy()).requireToken).toBe(false);
     const writes = [
@@ -79,6 +100,7 @@ describe("governance IPC never simulates a privileged success", () => {
       () => service.issueAccessToken("Test","proxy",1),
       () => service.revokeAccessToken("id",true),
       () => service.saveHardBudget(service.defaultBudgetPolicy,true),
+      () => service.cancelProxyTask("task-one", true),
       () => service.saveMonitorPolicy(service.defaultMonitorPolicy,"ALLOW PAID CHECKS"),
       () => service.runSyntheticCheck(service.defaultMonitorPolicy,"ALLOW PAID CHECKS"),
       () => service.createConfigVersion("Test"), () => service.previewConfigRollback("id"),
@@ -93,9 +115,10 @@ describe("governance IPC never simulates a privileged success", () => {
   it("registers all governance commands and blocks mobile mutation entrypoints", () => {
     const source=serviceSource;
     const registry=commandRegistry;
-    const sources: Record<string, string> = {access:accessSource,budget:budgetSource,monitor:monitorSource,versions:versionsSource,mounts:mountsSource};
+    const sources: Record<string, string> = {access:accessSource,budget:budgetSource,tasks:taskSource,monitor:monitorSource,versions:versionsSource,mounts:mountsSource};
     for (const match of source.matchAll(/(?:read|write)<[^\n]*?>\("([a-z_]+)"/g)) expect(registry,match[1]).toContain("::"+match[1]+",");
-    for (const [file,names] of Object.entries({access:["save_access_policy","create_access_token","revoke_access_token"],budget:["save_hard_budget"],monitor:["save_synthetic_monitor","run_synthetic_check"],versions:["create_config_version","apply_config_rollback","delete_config_version"],mounts:["choose_mount_root","apply_explicit_mount","delete_mount_backup"]})) {
+    expect(registry).toContain("tasks::get_proxy_task,");
+    for (const [file,names] of Object.entries({access:["save_access_policy","create_access_token","revoke_access_token"],budget:["save_hard_budget"],tasks:["cancel_proxy_task"],monitor:["save_synthetic_monitor","run_synthetic_check"],versions:["create_config_version","apply_config_rollback","delete_config_version"],mounts:["choose_mount_root","apply_explicit_mount","delete_mount_backup"]})) {
       const rust=sources[file].replaceAll("\r\n","\n");
       for (const name of names) expect(new RegExp("pub (?:async )?fn "+name+"\\([\\s\\S]*?\\)\\s*->[^\\n]+\\{\\n\\s*crate::platform::require_desktop").test(rust),name).toBe(true);
     }

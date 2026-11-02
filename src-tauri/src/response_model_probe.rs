@@ -7,11 +7,35 @@ use crate::{
 };
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
+use std::future::Future;
+use std::pin::Pin;
+use std::task::Poll;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::State;
 
 const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 static PROBE_SLOTS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(2);
+
+struct ProbeReservationGuard {
+    database: Database,
+    reservation: crate::model_verification::Reservation,
+    finished: bool,
+}
+impl ProbeReservationGuard {
+    fn settle(&mut self, billed: Option<u64>, outcome: &str) -> Result<(), String> {
+        self.database.verification.settle(&self.reservation, billed, outcome)?;
+        self.finished = true;
+        self.database.verification.note_probe(self.reservation.anomaly_id, self.reservation.capture.generation, outcome, billed);
+        Ok(())
+    }
+}
+impl Drop for ProbeReservationGuard {
+    fn drop(&mut self) {
+        if !self.finished && let Err(error) = self.settle(None, "cancelled") {
+            tracing::warn!(%error, "failed to settle interrupted model probe");
+        }
+    }
+}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -67,35 +91,25 @@ fn ensure_active(db:&Database)->Result<(),String>{
     Ok(())
 }
 
-async fn guarded_probe(db:&Database,provider:&Provider,key:&str,model:&str,anomaly:i64)->Result<ProbeResult,String>{
+async fn guarded_probe(db: &Database, provider: &Provider, key: &str, model: &str, anomaly: i64) -> Result<ProbeResult, String> {
     ensure_active(db)?;
-    let protocol=proxy::response_model_protocol(provider)?;
-    let capture=db.verification.capture(provider,key,protocol,model).ok_or("verification_disabled_or_invalid_route")?;
-    let generation=capture.generation;
-    if let Err(error)=proxy::check_model_probe_cost(provider,model) {
-        db.verification.note_skipped_probe(anomaly,generation,&error);
-        return Err(error);
-    }
-    let _slot=PROBE_SLOTS.try_acquire().map_err(|_|{db.verification.note_skipped_probe(anomaly,generation,"probe_global_busy");"probe_global_busy"})?;
-    let reservation=match db.verification.reserve(capture,anomaly,crate::model_verification::now_ms()) {
-        Ok(r)=>r,Err(error)=>{db.verification.note_skipped_probe(anomaly,generation,&error);return Err(error);}
-    };
-    let result=async {
-        let current=db.get_provider(&provider.id)?.ok_or("provider_missing")?;
-        let current_capture=db.verification.capture(&current,key,proxy::response_model_protocol(&current)?,model).ok_or("route_changed")?;
-        if current_capture.context_key!=reservation.capture.context_key {return Err("route_changed".into());}
-        let client=crate::network::client_builder().connect_timeout(Duration::from_secs(reservation.settings.timeout_seconds.min(10)))
-            .timeout(Duration::from_secs(reservation.settings.timeout_seconds)).redirect(reqwest::redirect::Policy::none())
-            .retry(reqwest::retry::never())
-            .build().map_err(|_|"probe_client_unavailable")?;
-        db.verification.mark_running(&reservation)?;
-        db.verification.note_probe(reservation.anomaly_id,generation,"running",None);
-        perform_probe(db,&client,provider,key,model,Some(reservation.capture.clone()),reservation.settings.max_output_tokens,Some(reservation.cancellation.clone())).await
+    let protocol = proxy::response_model_protocol(provider)?;
+    let capture = db.verification.capture(provider, key, protocol, model).ok_or("verification_disabled_or_invalid_route")?;
+    let generation = capture.generation;
+    let result = async {
+        proxy::check_model_probe_cost(provider, model)?;
+        let _slot = PROBE_SLOTS.try_acquire().map_err(|_| "probe_global_busy")?;
+        let current = db.get_provider(&provider.id)?.ok_or("provider_missing")?;
+        let current_capture = db.verification.capture(&current, key, proxy::response_model_protocol(&current)?, model).ok_or("route_changed")?;
+        if current_capture.context_key != capture.context_key { return Err("route_changed".into()); }
+        let settings = db.verification.settings()?;
+        let context = crate::governance::tasks::Context::from_event(db, anomaly)?;
+        let client = crate::network::client_builder().connect_timeout(Duration::from_secs(settings.timeout_seconds.min(10)))
+            .timeout(Duration::from_secs(settings.timeout_seconds)).redirect(reqwest::redirect::Policy::none())
+            .retry(reqwest::retry::never()).build().map_err(|_| "probe_client_unavailable")?;
+        perform_probe(db, &client, provider, key, model, Some(capture.clone()), settings.max_output_tokens, &context, Some(anomaly)).await
     }.await;
-    let billed=result.as_ref().ok().and_then(|r|crate::model_verification::usage_total(&r.audit.observation));
-    let outcome=if result.as_ref().is_ok_and(|r|r.success){"completed"}else if !db.verification.valid(&reservation.capture){"cancelled"}else{"failed_or_unknown"};
-    db.verification.settle(&reservation,billed,outcome)?;
-    db.verification.note_probe(reservation.anomaly_id,generation,outcome,billed);
+    if let Err(error) = &result { db.verification.note_skipped_probe(anomaly, generation, error); }
     result
 }
 
@@ -106,7 +120,9 @@ async fn cancelled(receiver:&mut Option<tokio::sync::watch::Receiver<u64>>){
 #[cfg(test)]
 async fn run_probe(db:&Database,client:&reqwest::Client,provider:&Provider,key:&str,model:&str)->Result<ProbeResult,String>{
     let capture=db.verification.capture(provider,key,proxy::response_model_protocol(provider)?,model);
-    perform_probe(db,client,provider,key,model,capture,8,None).await
+    let identity = crate::governance::tasks::Identity::from_request(&axum::http::HeaderMap::new(), b"{}", "model_probe", true)?;
+    let context = crate::governance::tasks::Context::new(db, identity, Default::default())?;
+    perform_probe(db,client,provider,key,model,capture,8,&context,None).await
 }
 
 fn network_message(error: &reqwest::Error) -> String {
@@ -146,53 +162,111 @@ async fn perform_probe(
     model: &str,
     capture: Option<crate::model_verification::Capture>,
     output_limit: u32,
-    mut cancellation: Option<tokio::sync::watch::Receiver<u64>>,
+    context: &crate::governance::tasks::Context,
+    anomaly: Option<i64>,
 ) -> Result<ProbeResult, String> {
     let mut prepared = proxy::prepare_bounded_model_probe(client, provider, key, model, output_limit)?;
-    // The global persisted admission gate covers manual and automatic probes too.
-    // Reserve before send, and retain it on cancellation, errors or unknown usage.
-    crate::governance::budget::reserve(db, provider, &mut prepared.payload, prepared.protocol, "model_probe")?;
-    prepared.request = prepared.request.json(&prepared.payload);
+    prepared.observation.verification_capture = capture.clone();
+    prepared.observation.verification_active = true;
+    let mut builder = Some(prepared.request);
+    let mut dispatch: Option<Pin<Box<dyn Future<Output = Result<reqwest::Response, reqwest::Error>> + Send>>> = None;
+    let mut attempt_id = None;
+    let mut reservation: Option<ProbeReservationGuard> = None;
+    let mut cancellation = anomaly.map(|_| db.verification.cancellation());
+    let mut task_guard = crate::governance::tasks::RunGuard::new(db.clone(), context.clone());
+    let started = Instant::now();
+    let created_at = SystemTime::now().duration_since(UNIX_EPOCH).map_err(|_| "系统时间无效")?
+        .as_millis().min(i64::MAX as u128) as i64;
+    let sent = tokio::select! {
+        biased;
+        _ = context.connection.cancelled() => None,
+        _ = context.signal.cancelled() => None,
+        _ = cancelled(&mut cancellation) => None,
+        result = futures_util::future::poll_fn(|poll_context| {
+            if let Some(dispatch) = dispatch.as_mut() { return dispatch.as_mut().poll(poll_context).map(Ok); }
+            let mut gate = match anomaly.map(|anomaly| db.verification.probe_admission(
+                capture.clone().ok_or("verification_disabled_or_invalid_route")?, anomaly)).transpose() {
+                Ok(gate) => gate,
+                Err(error) => return Poll::Ready(Err(error)),
+            };
+            let result = crate::governance::tasks::admit_and_start_on(
+                db, context, provider, &mut prepared.payload, prepared.protocol, "model_probe",
+                |payload| builder.take().ok_or("probe_already_started")?.json(payload).build().map_err(|_| "request_build".into()),
+                |connection| gate.as_ref().map(|gate| gate.reserve_on(connection)).transpose(),
+                |request, id, _ordinal, reserved| {
+                    attempt_id = Some(id);
+                    reservation = reserved.map(|reservation| ProbeReservationGuard { database: db.clone(), reservation, finished: false });
+                    dispatch = Some(Box::pin(client.execute(request)));
+                    dispatch.as_mut().expect("dispatch was initialized").as_mut().poll(poll_context)
+                },
+            );
+            match result {
+                Ok(result) => {
+                    if let Some(gate) = gate.as_mut() { gate.record_started(); }
+                    drop(gate);
+                    if let Some(reservation) = &reservation {
+                        db.verification.note_probe(reservation.reservation.anomaly_id, reservation.reservation.capture.generation, "running", None);
+                    }
+                    result.map(Ok)
+                }
+                Err(error) => Poll::Ready(Err(error.reason)),
+            }
+        }) => Some(result),
+    };
+    let sent = match sent {
+        Some(Ok(result)) => Some(result),
+        Some(Err(reason)) => { task_guard.finish(); return Err(reason); }
+        None => None,
+    };
+    let Some(attempt_id) = attempt_id else {
+        task_guard.finish();
+        return Err(if context.signal.is_cancelled() || context.connection.is_cancelled() { "task_cancelled" } else { "active_probing_disabled" }.into());
+    };
     prepared.observation.max_tokens = prepared.payload.get("max_completion_tokens")
         .or_else(|| prepared.payload.get("max_tokens")).or_else(|| prepared.payload.get("max_output_tokens"))
-        .and_then(serde_json::Value::as_u64);
-    prepared.observation.verification_capture=capture;
-    prepared.observation.verification_active=true;
-    let started = Instant::now();
-    let created_at = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|_| "系统时间无效")?
-        .as_millis()
-        .min(i64::MAX as u128) as i64;
+        .or_else(|| prepared.payload.pointer("/generationConfig/maxOutputTokens")).and_then(serde_json::Value::as_u64);
     let mut collector = Collector::new(prepared.format, prepared.observation);
     let mut http_status = None;
     let mut streaming = false;
     let mut received_bytes = 0usize;
     let mut error_message = None;
-    let sent=tokio::select! { biased; _=cancelled(&mut cancellation)=>None, result=prepared.request.send()=>Some(result) };
+    let mut failure_code = None;
+    let mut failure_stage = "upstream_send";
+    let cancellation_code = || if context.signal.is_cancelled() || context.connection.is_cancelled() { "request_cancelled" } else { "probe_cancelled" };
     match sent {
-        None => error_message=Some("验证设置已更改，复核已取消；已发送请求仍可能计费".into()),
-        Some(Err(error)) => error_message = Some(network_message(&error)),
+        None => {
+            failure_code = Some(cancellation_code());
+            error_message = Some("任务或验证设置已更改，复核已取消；已发送请求仍可能计费".into());
+        }
+        Some(Err(error)) => {
+            failure_code = Some(if error.is_timeout() { "timeout" } else { "request" });
+            error_message = Some(network_message(&error));
+        }
         Some(Ok(response)) => {
             collector.capture_headers(response.headers());
             let status = response.status();
             http_status = Some(status.as_u16());
-            streaming = status.is_success()
-                && response
-                    .headers()
-                    .get(reqwest::header::CONTENT_TYPE)
-                    .and_then(|value| value.to_str().ok())
-                    .is_some_and(|value| value.to_ascii_lowercase().contains("text/event-stream"));
+            crate::governance::tasks::finish_attempt(db, &attempt_id,
+                if status.is_success() { "response_pending" } else { "http_error" }, http_status,
+                (!status.is_success()).then_some("upstream_status"))?;
+            failure_stage = "response_read";
+            streaming = status.is_success() && response.headers().get(reqwest::header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok()).is_some_and(|value| value.to_ascii_lowercase().contains("text/event-stream"));
             let mut stream = Box::pin(response.bytes_stream());
             let mut buffer = Vec::new();
             let mut clean_eof = true;
             loop {
-                let chunk=tokio::select! { biased; _=cancelled(&mut cancellation)=>{
-                    error_message=Some("验证设置已更改，复核已取消；已发送请求仍可能计费".into());clean_eof=false;None
-                }, chunk=stream.next()=>chunk };
-                let Some(chunk)=chunk else {break;};
+                let chunk = tokio::select! {
+                    biased;
+                    _ = context.connection.cancelled() => { failure_code = Some("request_cancelled"); clean_eof = false; None }
+                    _ = context.signal.cancelled() => { failure_code = Some("request_cancelled"); clean_eof = false; None }
+                    _ = cancelled(&mut cancellation) => { failure_code = Some("probe_cancelled"); clean_eof = false; None }
+                    chunk = stream.next() => chunk,
+                };
+                let Some(chunk) = chunk else { break; };
                 match chunk {
                     Err(error) => {
+                        failure_code = Some(if error.is_timeout() { "timeout" } else { "stream_interrupted" });
                         error_message = Some(network_message(&error));
                         clean_eof = false;
                         break;
@@ -200,25 +274,23 @@ async fn perform_probe(
                     Ok(bytes) => {
                         received_bytes = received_bytes.saturating_add(bytes.len());
                         if received_bytes > MAX_RESPONSE_BYTES {
-                            error_message = Some(
-                                "本次响应超过 2 MiB 探测上限，已停止读取并保留部分证据".into(),
-                            );
+                            failure_code = Some("response_too_large");
+                            error_message = Some("本次响应超过 2 MiB 探测上限，已停止读取并保留部分证据".into());
                             clean_eof = false;
                             break;
                         }
                         if streaming {
-                            collector.push_sse(
-                                &mut buffer,
-                                &bytes,
-                                started.elapsed().as_millis().min(u64::MAX as u128) as u64,
-                            );
-                        } else {
-                            buffer.extend_from_slice(&bytes);
-                        }
+                            collector.push_sse(&mut buffer, &bytes, started.elapsed().as_millis().min(u64::MAX as u128) as u64);
+                        } else { buffer.extend_from_slice(&bytes); }
                     }
                 }
             }
+            if matches!(failure_code, Some("request_cancelled" | "probe_cancelled")) {
+                error_message = Some("任务或验证设置已更改，复核已取消；已发送请求仍可能计费".into());
+            }
             if !status.is_success() {
+                failure_code = Some("upstream_status");
+                failure_stage = "upstream_http";
                 error_message = Some(http_message(status.as_u16(), &buffer));
             } else if streaming {
                 collector.finish_stream(clean_eof && buffer.is_empty());
@@ -226,8 +298,9 @@ async fn perform_probe(
                 match serde_json::from_slice(&buffer) {
                     Ok(body) => collector = collector.capture_non_stream(&body),
                     Err(_) => {
-                        error_message =
-                            Some("上游响应不是有效的 JSON / SSE，本次无法判断模型".into())
+                        failure_code = Some("invalid_upstream_response");
+                        failure_stage = "response_conversion";
+                        error_message = Some("上游响应不是有效的 JSON / SSE，本次无法判断模型".into());
                     }
                 }
             }
@@ -236,51 +309,46 @@ async fn perform_probe(
     let usage = collector.request_usage(&prepared.model);
     let mut audit = usage.audit.clone().ok_or("本次探测证据未生成")?;
     if error_message.is_none() && !audit.observation.complete {
-        error_message = Some(
-            "本次响应未完整结束（可能达到输出上限或缺少终止帧）；仅保留已收到的模型线索".into(),
-        );
+        failure_code = Some("stream_interrupted");
+        error_message = Some("本次响应未完整结束（可能达到输出上限或缺少终止帧）；仅保留已收到的模型线索".into());
     }
     let success = error_message.is_none();
+    if let Some(code) = failure_code {
+        crate::governance::tasks::finish_attempt(db, &attempt_id,
+            if matches!(code, "request_cancelled" | "probe_cancelled") { "cancelled" } else if code == "timeout" { "timeout" } else { "interrupted" },
+            http_status, Some(code))?;
+    }
+    let mut diagnostics = crate::request_diagnostics::RequestDiagnostics {
+        send_attempts: 1, upstream_response_received: http_status.is_some(),
+        attempt_id: Some(attempt_id), task_request_id: Some(context.request_id.clone()),
+        task: Some(crate::governance::tasks::summary(db, &context.identity.id)?),
+        attempts: vec![crate::request_diagnostics::RequestAttempt { status_code: http_status, error_kind: failure_code.map(str::to_owned) }],
+        ..Default::default()
+    };
+    if let Some(code) = failure_code { diagnostics.fail(failure_stage, code); }
     let latency_ms = started.elapsed().as_millis().min(i64::MAX as u128) as i64;
     let record = db.record_request(&RequestEvent {
-        provider_id: provider.id.clone(),
-        route: format!("model_probe/{}", prepared.protocol),
-        status_code: http_status,
-        success,
-        affects_health: false,
-        diagnostics: None,
-        latency_ms,
-        retry_count: 0,
-        error_kind: error_message.clone(),
-        model: usage.model.clone(),
-        input_tokens: usage.input_tokens,
-        output_tokens: usage.output_tokens,
-        cache_read_tokens: usage.cache_read_tokens,
-        cache_creation_tokens: usage.cache_creation_tokens,
-        cost: usage.cost,
-        price_source: usage.price_source.clone(),
-        price_version: usage.price_version.clone(),
-        created_at,
+        provider_id: provider.id.clone(), route: format!("model_probe/{}", prepared.protocol),
+        status_code: http_status, success, affects_health: false, diagnostics: Some(diagnostics),
+        latency_ms, retry_count: 0, error_kind: failure_code.map(str::to_owned), model: usage.model.clone(),
+        input_tokens: usage.input_tokens, output_tokens: usage.output_tokens,
+        cache_read_tokens: usage.cache_read_tokens, cache_creation_tokens: usage.cache_creation_tokens,
+        cost: usage.cost, price_source: usage.price_source.clone(), price_version: usage.price_version.clone(), created_at,
     })?;
     db.update_request_usage(record.event_id, &usage)?;
-    if let Some(verified)=db.verification.process(record.event_id,audit.observation.clone(),"active")? {audit=verified;}
+    task_guard.finish();
+    if let Some(reservation) = &mut reservation {
+        let billed = crate::model_verification::usage_total(&audit.observation);
+        let outcome = if success { "completed" } else if matches!(failure_code, Some("request_cancelled" | "probe_cancelled")) { "cancelled" } else { "failed_or_unknown" };
+        reservation.settle(billed, outcome)?;
+    }
+    if let Some(verified) = db.verification.process(record.event_id, audit.observation.clone(), "active")? { audit = verified; }
     Ok(ProbeResult {
-        request_id: record.event_id.to_string(),
-        provider_id: provider.id.clone(),
-        protocol: prepared.protocol.into(),
-        created_at,
-        http_status,
-        latency_ms,
-        success,
-        streaming,
-        received_bytes,
-        input_tokens: usage.input_tokens,
-        output_tokens: usage.output_tokens,
-        cache_read_tokens: usage.cache_read_tokens,
-        cache_creation_tokens: usage.cache_creation_tokens,
-        total_cost_usd: usage.cost,
-        audit,
-        error_message,
+        request_id: record.event_id.to_string(), provider_id: provider.id.clone(), protocol: prepared.protocol.into(),
+        created_at, http_status, latency_ms, success, streaming, received_bytes,
+        input_tokens: usage.input_tokens, output_tokens: usage.output_tokens,
+        cache_read_tokens: usage.cache_read_tokens, cache_creation_tokens: usage.cache_creation_tokens,
+        total_cost_usd: usage.cost, audit, error_message,
     })
 }
 

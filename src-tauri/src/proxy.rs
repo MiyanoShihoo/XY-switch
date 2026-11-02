@@ -9,7 +9,8 @@ use crate::{
 use axum::{
     Json, Router,
     body::{Body, Bytes},
-    extract::{DefaultBodyLimit, Path, State},
+    extract::{ConnectInfo, DefaultBodyLimit, Path, State},
+    Extension,
     http::{StatusCode, header},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -18,8 +19,11 @@ use futures_util::TryStreamExt;
 use serde::Serialize;
 use serde_json::{Map, Value, json};
 use std::{
+    future::Future,
     io,
+    pin::Pin,
     sync::Arc,
+    task::Poll,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -954,6 +958,7 @@ struct ForwardProgress {
     event_id: Option<i64>,
     recorded: bool,
     started: Instant,
+    task_context: Option<crate::governance::tasks::Context>,
 }
 
 impl ForwardProgress {
@@ -965,6 +970,7 @@ impl ForwardProgress {
             event_id: None,
             recorded: false,
             started: Instant::now(),
+            task_context: None,
         }
     }
 
@@ -986,6 +992,10 @@ impl ForwardProgress {
         error_kind: Option<&str>,
         affects_health: bool,
     ) -> Option<RequestRecordResult> {
+        if let Some(context) = &self.task_context {
+            self.diagnostics.task = crate::governance::tasks::summary(database, &context.identity.id).ok();
+            self.diagnostics.task_request_id = Some(context.request_id.clone());
+        }
         if let Some(code) = error_kind { self.diagnostics.fail(self.stage, code); }
         let result = record_request(database, RequestRecord {
             provider_id: self.provider_id.as_deref(), protocol, status, latency_ms, retry_count,
@@ -998,13 +1008,16 @@ impl ForwardProgress {
 
     fn record_error(&mut self, database: &Database, protocol: ClientProtocol, error: &ProxyError) {
         let stage = error.stage.unwrap_or(self.stage);
+        if matches!(error.code, "budget_rejected" | "task_identity_invalid") {
+            self.diagnostics.budget_reason = Some(error.message.split(':').next().unwrap_or("budget_rejected").to_owned());
+        }
         if !self.recorded {
             self.stage = stage;
             self.record(database, protocol, Some(error.status), self.started.elapsed().as_millis() as i64,
                 self.diagnostics.send_attempts.saturating_sub(1) as usize, Some(error.code), false);
-        } else if matches!(stage, "response_read" | "response_conversion")
+        } else if matches!(stage, "response_read" | "response_conversion" | "client_response")
             && let Some(event_id) = self.event_id
-            && let Err(failure) = database.mark_request_failed(event_id, stage, error.code, stage == "response_read" || error.code == "invalid_upstream_response")
+            && let Err(failure) = database.mark_request_failed(event_id, stage, error.code, error.code != "request_cancelled" && (stage == "response_read" || error.code == "invalid_upstream_response"))
         {
             tracing::warn!(%failure, event_id, "failed to record response failure");
         }
@@ -1331,11 +1344,40 @@ async fn forward(
     headers: axum::http::HeaderMap,
     body: Bytes,
     operation: Option<String>,
+    scope: crate::governance::tasks::TaskScope,
+    connection: crate::governance::tasks::Cancellation,
 ) -> Result<Response, ProxyError> {
     let mut progress = ForwardProgress::new();
-    let result = forward_inner(&state, protocol, headers, body, operation, &mut progress).await;
-    if let Err(error) = &result { progress.record_error(&state.database, protocol, error); }
-    result
+    let context = crate::governance::tasks::Identity::from_request(&headers, &body, &scope.0,
+        headers.contains_key("x-xy-diagnostic-provider"))
+        .map_err(|reason| ProxyError::new(StatusCode::BAD_REQUEST, "task_identity_invalid", reason).at_stage("task_identity"))
+        .and_then(|identity| crate::governance::tasks::Context::new(&state.database, identity, connection)
+            .map_err(|reason| {
+                let _ = crate::governance::event(&state.database, "budget_rejected", &reason);
+                ProxyError::new(StatusCode::PAYMENT_REQUIRED, "budget_rejected", reason).at_stage("budget")
+            }));
+    let context = match context {
+        Ok(context) => context,
+        Err(error) => { progress.record_error(&state.database, protocol, &error); return Err(error); }
+    };
+    progress.task_context = Some(context.clone());
+    let mut guard = crate::governance::tasks::RunGuard::new(state.database.clone(), context.clone());
+    let result = tokio::select! {
+        biased;
+        _ = context.connection.cancelled() => Err(ProxyError::new(StatusCode::REQUEST_TIMEOUT,
+            "request_cancelled", "The client disconnected; the task was cancelled.").at_stage("client_response")),
+        _ = context.signal.cancelled() => Err(ProxyError::new(StatusCode::REQUEST_TIMEOUT,
+            "request_cancelled", "The task was cancelled.").at_stage("client_response")),
+        result = forward_inner(&state, protocol, headers, body, operation, &mut progress) => result,
+    };
+    match result {
+        Ok(response) => Ok(crate::proxy_connection::track_response(response, guard)),
+        Err(error) => {
+            progress.record_error(&state.database, protocol, &error);
+            if error.code != "request_cancelled" { guard.finish(); }
+            Err(error)
+        }
+    }
 }
 
 async fn forward_inner(
@@ -1528,28 +1570,49 @@ async fn forward_inner(
         let mut retry_count = 0usize;
         loop {
             progress.stage = "budget";
-            crate::governance::budget::reserve(&state.database, &provider, &mut prepared.payload, prepared.upstream.shadow_protocol(), if diagnostic.is_some() { "synthetic" } else { "proxy" })
-                .map_err(|e| ProxyError::new(StatusCode::PAYMENT_REQUIRED, "budget_rejected", e))?;
-            // Audit the cap actually dispatched, including any budget clamp.
+            let context = progress.task_context.clone().ok_or_else(|| ProxyError::new(
+                StatusCode::INTERNAL_SERVER_ERROR, "task_state_unavailable", "Task context is unavailable."))?;
+            let started = Instant::now();
+            let mut dispatch: Option<Pin<Box<dyn Future<Output = Result<reqwest::Response, reqwest::Error>> + Send>>> = None;
+            let result = futures_util::future::poll_fn(|poll_context| {
+                if let Some(dispatch) = dispatch.as_mut() {
+                    return dispatch.as_mut().poll(poll_context).map(Ok);
+                }
+                match crate::governance::tasks::admit_and_start(
+                    &state.database, &context, &provider, &mut prepared.payload,
+                    prepared.upstream.shadow_protocol(), if diagnostic.is_some() { "synthetic" } else { "proxy" },
+                    |payload| request_builder(&state.client, &provider, &api_key, prepared.url.clone(), payload, prepared.upstream)
+                        .build().map_err(|error| error.to_string()),
+                    |request, attempt_id, _ordinal| {
+                        progress.stage = "upstream_send";
+                        progress.diagnostics.send_attempts += 1;
+                        progress.diagnostics.attempt_id = Some(attempt_id);
+                        dispatch = Some(Box::pin(state.client.execute(request)));
+                        dispatch.as_mut().expect("dispatch was initialized").as_mut().poll(poll_context)
+                    },
+                ) {
+                    Ok(result) => result.map(Ok),
+                    Err(error) => Poll::Ready(Err(error)),
+                }
+            }).await.map_err(|error| {
+                if error.code == "budget_rejected" {
+                    progress.diagnostics.send_attempts = 0;
+                    progress.diagnostics.attempts.clear();
+                    progress.diagnostics.attempt_id = None;
+                    let _ = crate::governance::event(&state.database, "budget_rejected", &error.reason);
+                }
+                let (status, stage) = match error.code {
+                    "request_build" => (StatusCode::BAD_REQUEST, "provider_configuration"),
+                    "request_cancelled" => (StatusCode::REQUEST_TIMEOUT, "client_response"),
+                    _ => (StatusCode::PAYMENT_REQUIRED, "budget"),
+                };
+                ProxyError::new(status, error.code, error.reason).at_stage(stage)
+            })?;
             prepared.audit.max_tokens = if prepared.payload["n"].as_u64().unwrap_or(1) > 1 { None } else {
                 prepared.payload.get("max_completion_tokens").or_else(|| prepared.payload.get("max_tokens"))
                     .or_else(|| prepared.payload.get("max_output_tokens"))
                     .or_else(|| prepared.payload.pointer("/generationConfig/maxOutputTokens")).and_then(Value::as_u64)
             };
-            let started = Instant::now();
-            progress.stage = "provider_configuration";
-            let request = request_builder(
-                &state.client,
-                &provider,
-                &api_key,
-                prepared.url.clone(),
-                &prepared.payload,
-                prepared.upstream,
-            )
-            .build().map_err(|error| ProxyError::new(StatusCode::BAD_REQUEST, "request_build", error.to_string()))?;
-            progress.stage = "upstream_send";
-            progress.diagnostics.send_attempts += 1;
-            let result = state.client.execute(request).await;
             let latency_ms = started.elapsed().as_millis() as i64;
             if (provider_index > 0 || retry_count > 0)
                 && let Some(capture) = shadow.as_mut()
@@ -1559,10 +1622,18 @@ async fn forward_inner(
             match result {
                 Ok(upstream) => {
                     let status = upstream.status();
+                    if let Some(id) = &progress.diagnostics.attempt_id {
+                        crate::governance::tasks::finish_attempt(&state.database, id,
+                            if status.is_success() { "response_pending" } else { "http_error" },
+                            Some(status.as_u16()), (!status.is_success()).then_some("upstream_status"))
+                            .map_err(|error| ProxyError::new(StatusCode::INTERNAL_SERVER_ERROR, "task_store_unavailable", error))?;
+                    }
                     progress.diagnostics.upstream_response_received = true;
                     progress.diagnostics.attempts.push(RequestAttempt { status_code: Some(status.as_u16()), error_kind: (!status.is_success()).then(|| "upstream_status".to_owned()) });
                     if is_retryable(status) && retry_count < 2 && diagnostic.is_none() {
                         retry_count += 1;
+                        #[cfg(test)]
+                        state.database.tasks.pause_retry().await;
                         tokio::time::sleep(Duration::from_millis(
                             RETRY_BASE_DELAY_MS * retry_count as u64,
                         ))
@@ -1634,9 +1705,15 @@ async fn forward_inner(
                 }
                 Err(error) => {
                     let error_kind = if error.is_timeout() { "timeout" } else if error.is_connect() { "connect" } else { "request" };
+                    if let Some(id) = &progress.diagnostics.attempt_id {
+                        crate::governance::tasks::finish_attempt(&state.database, id, error_kind, None, Some(error_kind))
+                            .map_err(|failure| ProxyError::new(StatusCode::INTERNAL_SERVER_ERROR, "task_store_unavailable", failure))?;
+                    }
                     progress.diagnostics.attempts.push(RequestAttempt { status_code: None, error_kind: Some(error_kind.to_owned()) });
                     if retry_count < 2 && diagnostic.is_none() {
                         retry_count += 1;
+                        #[cfg(test)]
+                        state.database.tasks.pause_retry().await;
                         tokio::time::sleep(Duration::from_millis(
                             RETRY_BASE_DELAY_MS * retry_count as u64,
                         ))
@@ -1687,26 +1764,35 @@ async fn forward_inner(
 
 async fn chat_completions(
     State(state): State<ProxyState>,
+    Extension(scope): Extension<crate::governance::tasks::TaskScope>,
+    connection: Option<Extension<ConnectInfo<crate::governance::tasks::Cancellation>>>,
     headers: axum::http::HeaderMap,
     body: Bytes,
 ) -> Result<Response, ProxyError> {
-    forward(state, ClientProtocol::Chat, headers, body, None).await
+    forward(state, ClientProtocol::Chat, headers, body, None, scope,
+        connection.map(|Extension(ConnectInfo(signal))| signal).unwrap_or_default()).await
 }
 
 async fn responses(
     State(state): State<ProxyState>,
+    Extension(scope): Extension<crate::governance::tasks::TaskScope>,
+    connection: Option<Extension<ConnectInfo<crate::governance::tasks::Cancellation>>>,
     headers: axum::http::HeaderMap,
     body: Bytes,
 ) -> Result<Response, ProxyError> {
-    forward(state, ClientProtocol::Responses, headers, body, None).await
+    forward(state, ClientProtocol::Responses, headers, body, None, scope,
+        connection.map(|Extension(ConnectInfo(signal))| signal).unwrap_or_default()).await
 }
 
 async fn messages(
     State(state): State<ProxyState>,
+    Extension(scope): Extension<crate::governance::tasks::TaskScope>,
+    connection: Option<Extension<ConnectInfo<crate::governance::tasks::Cancellation>>>,
     headers: axum::http::HeaderMap,
     body: Bytes,
 ) -> Result<Response, ProxyError> {
-    forward(state, ClientProtocol::Anthropic, headers, body, None).await
+    forward(state, ClientProtocol::Anthropic, headers, body, None, scope,
+        connection.map(|Extension(ConnectInfo(signal))| signal).unwrap_or_default()).await
 }
 
 fn gemini_operation(operation: &str) -> Result<(&str, bool), ProxyError> {
@@ -1719,6 +1805,8 @@ fn gemini_operation(operation: &str) -> Result<(&str, bool), ProxyError> {
 
 async fn gemini_generate(
     State(state): State<ProxyState>,
+    Extension(scope): Extension<crate::governance::tasks::TaskScope>,
+    connection: Option<Extension<ConnectInfo<crate::governance::tasks::Cancellation>>>,
     Path(operation): Path<String>,
     headers: axum::http::HeaderMap,
     body: Bytes,
@@ -1729,6 +1817,8 @@ async fn gemini_generate(
         headers,
         body,
         Some(operation),
+        scope,
+        connection.map(|Extension(ConnectInfo(signal))| signal).unwrap_or_default(),
     )
     .await
 }
@@ -1828,7 +1918,8 @@ pub async fn serve(
     let addr = listener.local_addr()?;
     let state = ProxyState::new(database, Some(addr)).map_err(io::Error::other)?;
     tracing::info!(%addr, targets = ?route_targets, "local proxy listening");
-    axum::serve(listener, router_with_targets(state, &route_targets)).await
+    axum::serve(crate::proxy_connection::CancelListener(listener),
+        router_with_targets(state, &route_targets).into_make_service_with_connect_info::<crate::governance::tasks::Cancellation>()).await
 }
 
 #[cfg(test)]

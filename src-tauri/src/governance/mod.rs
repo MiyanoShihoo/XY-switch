@@ -2,6 +2,7 @@ pub mod access;
 pub mod budget;
 pub mod monitor;
 pub mod mounts;
+pub mod tasks;
 pub mod versions;
 
 use crate::database::Database;
@@ -42,7 +43,7 @@ pub fn init(conn: &Connection) -> Result<(), String> {
         )
         .map_err(|e| e.to_string())?;
     }
-    Ok(())
+    tasks::init(conn)
 }
 pub fn load<T: serde::de::DeserializeOwned + Default>(
     db: &Database,

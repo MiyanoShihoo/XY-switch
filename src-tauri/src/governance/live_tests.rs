@@ -257,7 +257,7 @@ async fn governance_live_acceptance_from_one_shot_pipe() -> Result<(), String> {
     // upstream invoice. The gateway reports extra input beyond the visible prompt; reserve
     // 8,192 input tokens per call. Six calls reserve 49,280 tokens / 49,408 microUSD.
     let policy = budget::BudgetPolicy { enabled:true, daily_tokens:50_000,
-        daily_microusd:60_000, input_reservation:8192, max_output_tokens:48 };
+        daily_microusd:60_000, input_reservation:8192, max_output_tokens:48, ..Default::default() };
     governance::save(&db, budget::KEY, &policy)?;
     {
         let c = db.conn(); let c = c.lock().map_err(|_| "Database lock")?;

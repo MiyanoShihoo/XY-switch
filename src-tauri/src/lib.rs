@@ -17,6 +17,7 @@ mod preferences;
 mod interface_language;
 mod platform;
 mod proxy;
+mod proxy_connection;
 mod proxy_manager;
 mod proxy_request_guard;
 mod request_diagnostics;
@@ -243,6 +244,9 @@ pub fn run() {
             governance::access::revoke_access_token,
             governance::budget::get_hard_budget,
             governance::budget::save_hard_budget,
+            governance::tasks::list_proxy_tasks,
+            governance::tasks::get_proxy_task,
+            governance::tasks::cancel_proxy_task,
             encrypted_sync::load_session_favorites,
             encrypted_sync::set_session_favorite,
             encrypted_sync::preview_sync_export,

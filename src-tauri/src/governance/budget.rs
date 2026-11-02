@@ -13,7 +13,13 @@ pub struct BudgetPolicy {
     pub daily_microusd: i64,
     pub input_reservation: i64,
     pub max_output_tokens: i64,
+    #[serde(default = "default_task_attempts")]
+    pub task_max_attempts: i64,
+    #[serde(default = "default_task_microusd")]
+    pub task_max_microusd: i64,
 }
+fn default_task_attempts() -> i64 { 12 }
+fn default_task_microusd() -> i64 { 250000 }
 impl Default for BudgetPolicy {
     fn default() -> Self {
         Self {
@@ -22,6 +28,8 @@ impl Default for BudgetPolicy {
             daily_microusd: 1000000,
             input_reservation: 4096,
             max_output_tokens: 512,
+            task_max_attempts: default_task_attempts(),
+            task_max_microusd: default_task_microusd(),
         }
     }
 }
@@ -31,6 +39,8 @@ impl BudgetPolicy {
             || !(0..=1000000000000).contains(&self.daily_microusd)
             || !(256..=1000000).contains(&self.input_reservation)
             || !(1..=128000).contains(&self.max_output_tokens)
+            || !(0..=10000).contains(&self.task_max_attempts)
+            || !(0..=1000000000000).contains(&self.task_max_microusd)
         {
             return Err("Invalid hard budget limits".into());
         }
@@ -261,63 +271,89 @@ fn reserve_inner(
 ) -> Result<(), String> {
     let c = db.conn();
     let mut c = c.lock().map_err(|_| "budget_database_unavailable")?;
-    let tx = c.transaction().map_err(|_| "budget_database_unavailable")?;
-    let raw: Option<String> = tx
-        .query_row("SELECT value FROM app_settings WHERE key=?1", [KEY], |r| {
-            r.get(0)
-        })
-        .optional()
+    let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(|_| "budget_database_unavailable")?;
-    let p: BudgetPolicy = raw
-        .map(|s| serde_json::from_str(&s).map_err(|_| "budget_policy_invalid"))
-        .transpose()?
-        .unwrap_or_default();
-    p.validate()?;
-    if !p.enabled {
-        return if source == "synthetic" {
-            Err("synthetic_budget_required".into())
-        } else {
-            Ok(())
-        };
+    let policy = policy_on(&tx)?;
+    let Some(reservation) = quote_on(&tx, &policy, payload, format, source)? else {
+        return Ok(());
+    };
+    check_daily_on(&tx, &policy, &reservation)?;
+    save_reservation_on(&tx, &uuid::Uuid::new_v4().to_string(), provider, payload, source, &reservation)?;
+    tx.commit().map_err(|_| "budget_ledger_unavailable".into())
+}
+
+pub(super) struct Reservation {
+    pub tokens: i64,
+    pub microusd: i64,
+}
+
+pub(super) fn policy_on(c: &Connection) -> Result<BudgetPolicy, String> {
+    let raw: Option<String> = c.query_row(
+        "SELECT value FROM app_settings WHERE key=?1", [KEY], |row| row.get(0),
+    ).optional().map_err(|_| "budget_database_unavailable")?;
+    let policy: BudgetPolicy = raw.map(|value| serde_json::from_str(&value)
+        .map_err(|_| "budget_policy_invalid")).transpose()?.unwrap_or_default();
+    policy.validate()?;
+    Ok(policy)
+}
+
+pub(super) fn quote_on(
+    c: &Connection,
+    policy: &BudgetPolicy,
+    payload: &mut Value,
+    format: &str,
+    source: &str,
+) -> Result<Option<Reservation>, String> {
+    if !policy.enabled {
+        return if source == "synthetic" { Err("synthetic_budget_required".into()) } else { Ok(None) };
     }
-    let requested = bound_payload(payload, format, &p)?;
-    let model = payload
-        .get("model")
-        .and_then(Value::as_str)
-        .ok_or("budget_model_missing")?;
-    // Only an exact, explicitly saved price can authorize spend. No fuzzy/reference fallback.
-    let rate:Option<(f64,f64,Option<f64>,Option<f64>)>=tx.query_row("SELECT input_per_million,output_per_million,cache_read_per_million,cache_creation_per_million FROM model_pricing WHERE id=?1 AND source='custom'",[model],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).optional().map_err(|_|"budget_pricing_unavailable")?;
+    let requested = bound_payload(payload, format, policy)?;
+    let model = payload.get("model").and_then(Value::as_str).ok_or("budget_model_missing")?;
+    let rate: Option<(f64, f64, Option<f64>, Option<f64>)> = c.query_row(
+        "SELECT input_per_million,output_per_million,cache_read_per_million,cache_creation_per_million FROM model_pricing WHERE id=?1 AND source='custom'",
+        [model], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+    ).optional().map_err(|_| "budget_pricing_unavailable")?;
     let (input, output, read, write) = rate.ok_or("budget_exact_custom_price_required")?;
     let rates = [input, output, read.unwrap_or(input), write.unwrap_or(input)];
-    if rates.iter().any(|r| !r.is_finite() || *r < 0.0) {
+    if rates.iter().any(|rate| !rate.is_finite() || *rate < 0.0) {
         return Err("budget_invalid_price".into());
     }
     let input_rate = input.max(read.unwrap_or(input)).max(write.unwrap_or(input));
-    let cost = (p.input_reservation as f64 * input_rate + requested as f64 * output).ceil();
-    if !cost.is_finite() || cost > i64::MAX as f64 {
-        return Err("budget_cost_overflow".into());
-    }
-    let cost = cost as i64;
-    let tokens = p
-        .input_reservation
-        .checked_add(requested)
-        .ok_or("budget_overflow")?;
+    let cost = (policy.input_reservation as f64 * input_rate + requested as f64 * output).ceil();
+    if !cost.is_finite() || cost > i64::MAX as f64 { return Err("budget_cost_overflow".into()); }
+    let tokens = policy.input_reservation.checked_add(requested).ok_or("budget_overflow")?;
+    Ok(Some(Reservation { tokens, microusd: cost as i64 }))
+}
+
+pub(super) fn check_daily_on(c: &Connection, policy: &BudgetPolicy, reservation: &Reservation) -> Result<(), String> {
     let day = now() / 86400;
-    let (used_tokens,used_cost):(i64,i64)=tx.query_row("SELECT COALESCE(SUM(tokens),0),COALESCE(SUM(cost_microusd),0) FROM budget_ledger WHERE day=?1",[day],|r|Ok((r.get(0)?,r.get(1)?))).map_err(|_|"budget_ledger_unavailable")?;
-    if used_tokens
-        .checked_add(tokens)
-        .is_none_or(|v| v > p.daily_tokens)
-    {
+    let (used_tokens, used_cost): (i64, i64) = c.query_row(
+        "SELECT COALESCE(SUM(tokens),0),COALESCE(SUM(cost_microusd),0) FROM budget_ledger WHERE day=?1",
+        [day], |row| Ok((row.get(0)?, row.get(1)?)),
+    ).map_err(|_| "budget_ledger_unavailable")?;
+    if used_tokens.checked_add(reservation.tokens).is_none_or(|value| value > policy.daily_tokens) {
         return Err("hard_token_budget_exhausted".into());
     }
-    if used_cost
-        .checked_add(cost)
-        .is_none_or(|v| v > p.daily_microusd)
-    {
+    if used_cost.checked_add(reservation.microusd).is_none_or(|value| value > policy.daily_microusd) {
         return Err("hard_cost_budget_exhausted".into());
     }
-    tx.execute("INSERT INTO budget_ledger(id,day,provider_id,model,tokens,cost_microusd,source,created_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",params![uuid::Uuid::new_v4().to_string(),day,provider.id,model,tokens,cost,source,now()]).map_err(|_|"budget_ledger_unavailable")?;
-    tx.commit().map_err(|_| "budget_ledger_unavailable".into())
+    Ok(())
+}
+
+pub(super) fn save_reservation_on(
+    c: &Connection,
+    id: &str,
+    provider: &Provider,
+    payload: &Value,
+    source: &str,
+    reservation: &Reservation,
+) -> Result<(), String> {
+    let model = payload.get("model").and_then(Value::as_str).ok_or("budget_model_missing")?;
+    c.execute(
+        "INSERT INTO budget_ledger(id,day,provider_id,model,tokens,cost_microusd,source,created_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",
+        params![id, now() / 86400, provider.id, model, reservation.tokens, reservation.microusd, source, now()],
+    ).map_err(|_| "budget_ledger_unavailable")?;
+    Ok(())
 }
 pub fn status(db: &Database) -> Result<BudgetStatus, String> {
     let policy: BudgetPolicy = load(db, KEY)?;

@@ -1,5 +1,7 @@
 import { t } from "../../i18n/language";
 import type { RequestDiagnostics, UsageLogEntry } from "../../types/usage";
+import { TaskSummaryView } from "../governance/TaskPanel";
+import { budgetReasonLabel } from "../governance/task-format";
 
 const stages: Record<string, string> = {
   provider_selection: "选择供应商",
@@ -8,6 +10,7 @@ const stages: Record<string, string> = {
   request_conversion: "转换请求",
   tool_bridge: "处理工具协议",
   budget: "预算检查",
+  task_identity: "任务身份检查",
   upstream_send: "连接与发送",
   upstream_http: "上游 HTTP",
   response_read: "读取响应",
@@ -38,6 +41,7 @@ const reasons: Record<string, string> = {
   invalid_request: "无法转换请求或供应商配置。",
   request_build: "供应商请求配置无效。",
   request: "上游请求未能完成。",
+  request_cancelled: "任务已取消，后续重试已阻断。",
   upstream_unavailable: "没有供应商能够完成请求。",
 };
 
@@ -59,11 +63,15 @@ export function RequestDiagnosticsPanel({ diagnostics, errorCode }: { diagnostic
         <dt>{t("发送尝试次数")}</dt><dd>{diagnostics.sendAttempts}</dd>
         <dt>{t("收到过上游 HTTP 响应")}</dt><dd>{diagnostics.upstreamResponseReceived ? t("是") : t("否")}</dd>
         {diagnostics.failureStage && <><dt>{t("失败原因")}</dt><dd>{reason(errorCode, diagnostics.failureReason)}</dd></>}
+        {diagnostics.budgetReason && <><dt>{t("预算拒绝原因")}</dt><dd>{budgetReasonLabel(diagnostics.budgetReason)}</dd></>}
+        {diagnostics.taskRequestId && <><dt>{t("客户端请求标识")}</dt><dd><code>{diagnostics.taskRequestId}</code></dd></>}
+        {diagnostics.attemptId && <><dt>{t("发送标识")}</dt><dd><code>{diagnostics.attemptId}</code></dd></>}
       </dl>
       {diagnostics.attempts.length > 0 && <details><summary>{t("每次发送的结果")}</summary><ol>{diagnostics.attempts.map((attempt, index) => <li key={index}>
         <span>{t("尝试")} {index + 1}{" · "}{attempt.statusCode === null ? t("未取得 HTTP") : "HTTP " + attempt.statusCode}</span>
         {attempt.errorKind && <span className="usage-cell-note">{reason(attempt.errorKind)}</span>}
       </li>)}</ol></details>}
+      {diagnostics.task && <details><summary>{t("任务累计与上限（记录快照）")}</summary><p className="muted">{t("此处显示记录生成时的任务快照；最新累计和状态请查看硬预算中的最近任务。")}</p><TaskSummaryView task={diagnostics.task} /></details>}
     </>}
   </section>;
 }

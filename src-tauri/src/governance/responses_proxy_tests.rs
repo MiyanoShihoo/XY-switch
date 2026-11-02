@@ -143,7 +143,9 @@ impl ResponsesFixture {
             local_addr: Some(address),
         };
         let proxy_task = tokio::spawn(async move {
-            axum::serve(listener, router_with_targets(state, &["codex".into()]))
+            axum::serve(crate::proxy_connection::CancelListener(listener),
+                router_with_targets(state, &["codex".into()])
+                    .into_make_service_with_connect_info::<crate::governance::tasks::Cancellation>())
                 .await
                 .unwrap();
         });
@@ -156,9 +158,13 @@ impl ResponsesFixture {
         }
     }
     fn request(&self, payload: &Value) -> reqwest::RequestBuilder {
-        crate::network::test_client()
+        let request = crate::network::test_client()
             .post(&self.endpoint)
-            .json(payload)
+            .json(payload);
+        let metadata = &payload["client_metadata"];
+        let has_turn = metadata["session_id"].as_str().or(metadata["thread_id"].as_str()).is_some()
+            && metadata["root_turn_id"].as_str().or(metadata["turn_id"].as_str()).is_some();
+        if has_turn { request } else { request.header("x-xy-task-id", uuid::Uuid::new_v4().to_string()) }
     }
     fn calls(&self) -> usize {
         self.captured.lock().unwrap().len()

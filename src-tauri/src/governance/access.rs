@@ -179,7 +179,7 @@ fn denial(status: StatusCode, code: &str) -> Response {
     )
         .into_response()
 }
-pub async fn protect(State(s): State<AccessState>, request: Request<Body>, next: Next) -> Response {
+pub async fn protect(State(s): State<AccessState>, mut request: Request<Body>, next: Next) -> Response {
     if request.method() == axum::http::Method::GET && request.uri().path() == "/health" {
         return next.run(request).await;
     }
@@ -252,6 +252,9 @@ pub async fn protect(State(s): State<AccessState>, request: Request<Body>, next:
     let Ok(permit) = s.slots.clone().try_acquire_owned() else {
         return denial(StatusCode::TOO_MANY_REQUESTS, "local_concurrency_limited");
     };
+    let task_scope = if scope.is_some() { tokens.first().map(|value| digest(value.as_bytes())).unwrap_or_default() }
+        else { "local_loopback".into() };
+    request.extensions_mut().insert(super::tasks::TaskScope(task_scope));
     let response = next.run(request).await;
     let (parts, body) = response.into_parts();
     let stream = body.into_data_stream().map(move |chunk| {

@@ -97,6 +97,14 @@ pub fn reserve(
     let tx = conn
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(|_| "budget_storage_unavailable")?;
+    let reservation = reserve_on(&tx, capture, settings, anomaly, now)?;
+    tx.commit().map_err(|_| "budget_storage_unavailable")?;
+    Ok(reservation)
+}
+
+pub(super) fn reserve_on(
+    tx: &Connection, capture: &Capture, settings: &VerificationSettings, anomaly: i64, now: i64,
+) -> Result<(String, u64), String> {
     let text: String = tx
         .query_row(
             "SELECT evidence_json FROM verification_samples WHERE event_id=?1",
@@ -149,7 +157,6 @@ pub fn reserve(
     }
     let id = uuid::Uuid::new_v4().to_string();
     tx.execute("INSERT INTO verification_probes(id,anomaly_id,provider_id,model,context_key,day,created_at,state,reserved_tokens,budget_tokens) VALUES(?1,?2,?3,?4,?5,?6,?7,'reserved',?8,?8)",params![id,anomaly,capture.provider_id,capture.requested_model,capture.context_key,now.div_euclid(DAY_MS),now,reserved]).map_err(|_| "budget_storage_unavailable")?;
-    tx.commit().map_err(|_| "budget_storage_unavailable")?;
     Ok((id, reserved))
 }
 

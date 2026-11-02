@@ -3,8 +3,11 @@ import type { RequestSummary } from "./provider";
 export interface AccessPolicy { requireToken: boolean; requestsPerMinute: number; maxInFlight: number; }
 export interface AccessTokenInfo { id: string; label: string; scope: "proxy" | "monitor"; createdAt: number; expiresAt: number; revoked: boolean; }
 export interface IssuedAccessToken { token: string; info: AccessTokenInfo; }
-export interface BudgetPolicy { enabled: boolean; dailyTokens: number; dailyMicrousd: number; inputReservation: number; maxOutputTokens: number; }
+export interface BudgetPolicy { enabled: boolean; dailyTokens: number; dailyMicrousd: number; inputReservation: number; maxOutputTokens: number; taskMaxAttempts: number; taskMaxMicrousd: number; }
 export interface BudgetStatus { policy: BudgetPolicy; dayUtc: number; reservedTokens: number; reservedMicrousd: number; attempts: number; }
+export interface ProxyTask { id: string; identitySource: string; maxAttempts: number | null; maxMicrousd: number | null; attempts: number; reservedMicrousd: number; committedMicrousd: number; knownMicrousd: number; unknownCostAttempts: number; unreservedAttempts: number; activeAttempts: number; cancelled: boolean; createdAt: number; updatedAt: number; }
+export interface ProxyAttempt { id: string; requestId: string; ordinal: number; providerId: string; model: string; route: string; reservedTokens: number | null; reservedMicrousd: number | null; status: string; statusCode: number | null; errorKind: string | null; eventId: number | null; inputTokens: number | null; outputTokens: number | null; actualMicrousd: number | null; usageState: string; costState: string; startedAt: number; finishedAt: number | null; }
+export interface ProxyTaskDetail { task: ProxyTask; attempts: ProxyAttempt[]; }
 export type CheckMode = "chat" | "stream" | "tools" | "responses" | "anthropic" | "gemini";
 export interface MonitorPolicy { enabled: boolean; providerId: string; model: string; mode: CheckMode; intervalMinutes: number; maxRunsPerDay: number; }
 export interface CheckEvidence { httpStatus: number | null; reportedModel: string | null; inputTokens: number | null; outputTokens: number | null; totalTokens: number | null; }

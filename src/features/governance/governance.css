@@ -39,4 +39,8 @@
 .gov-diff-lines [data-kind="remove"] { color: var(--xy-ds-danger); background: color-mix(in srgb, var(--xy-ds-danger) 9%, transparent); }
 .gov-diff-lines [data-kind="add"] { color: var(--xy-ds-success); background: color-mix(in srgb, var(--xy-ds-success) 9%, transparent); }
 .gov-diff-lines [data-kind="fold"] { color: var(--xy-ds-text-muted); font-style: italic; }
+.gov-task-detail { display: grid; gap: 12px; min-width: 0; }
+.gov-task-detail h3 { margin: 0; font-size: 14px; }
+.gov-task-attempts { display: grid; gap: 16px; margin: 0; padding-left: 24px; min-width: 0; }
+.gov-task-detail dd { overflow-wrap: anywhere; min-width: 0; }
 @media (max-width: 600px) { .gov-stats { grid-template-columns: 1fr 1fr; } .gov-actions > button { white-space: normal; } .gov-card { padding: 14px; } .gov-list > li { display: grid; grid-template-columns: minmax(0, 1fr); } }

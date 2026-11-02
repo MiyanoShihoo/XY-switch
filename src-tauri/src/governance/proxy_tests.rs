@@ -6,10 +6,10 @@ use axum::http::HeaderMap;
 use futures_util::StreamExt;
 use std::{collections::VecDeque, sync::Mutex};
 
-struct MemoryKey;
+struct MemoryKey(&'static str);
 impl ApiKeyProvider for MemoryKey {
     fn get(&self, _: &str) -> Result<Option<String>, String> {
-        Ok(Some("unit-upstream-key".into()))
+        Ok(Some(self.0.into()))
     }
 }
 #[derive(Clone)]
@@ -18,6 +18,9 @@ enum Reply {
     Error(u16),
     WrongText,
     Hold(Arc<tokio::sync::Semaphore>),
+    Wait(Arc<tokio::sync::Semaphore>),
+    MissingUsage,
+    PartialUsage,
     Redirect(String),
 }
 #[derive(Clone)]
@@ -44,6 +47,7 @@ async fn upstream(State(state): State<Mock>, headers: HeaderMap, Json(body): Jso
         Reply::Redirect(url) => return (StatusCode::TEMPORARY_REDIRECT, [(header::LOCATION, url)], "redirect").into_response(),
         _ => {}
     }
+    if let Reply::Wait(gate) = &reply { let _permit = gate.acquire().await.unwrap(); }
     if body["stream"] == true {
         let head = chunk("OK");
         let tail = terminal();
@@ -57,9 +61,12 @@ async fn upstream(State(state): State<Mock>, headers: HeaderMap, Json(body): Jso
     let tool = body.get("tools").is_some();
     let message = if tool { json!({"role":"assistant","content":null,"tool_calls":[{"id":"gov-call","type":"function","function":{"name":"xy_health_echo","arguments":"{\"value\":\"OK\"}"}}]}) }
         else { json!({"role":"assistant","content":if matches!(reply, Reply::WrongText) { "NOT OK" } else { "OK" }}) };
-    Json(json!({"id":"gov-completion","object":"chat.completion","created":0,"model":body["model"],
+    let mut response = json!({"id":"gov-completion","object":"chat.completion","created":0,"model":body["model"],
         "choices":[{"index":0,"message":message,"finish_reason":if tool {"tool_calls"} else {"stop"}}],
-        "usage":{"prompt_tokens":4,"completion_tokens":1,"total_tokens":5}})).into_response()
+        "usage":{"prompt_tokens":4,"completion_tokens":1,"total_tokens":5}});
+    if matches!(reply, Reply::MissingUsage) { response.as_object_mut().unwrap().remove("usage"); }
+    if matches!(reply, Reply::PartialUsage) { response["usage"].as_object_mut().unwrap().remove("completion_tokens"); }
+    Json(response).into_response()
 }
 struct Fixture {
     db: Database,
@@ -72,6 +79,9 @@ struct Fixture {
 impl Drop for Fixture { fn drop(&mut self) { for task in &self.tasks { task.abort(); } } }
 impl Fixture {
     async fn new(replies: Vec<Reply>, access_policy: access::AccessPolicy) -> Self {
+        Self::with_options(replies, access_policy, Duration::from_secs(5), "unit-upstream-key").await
+    }
+    async fn with_options(replies: Vec<Reply>, access_policy: access::AccessPolicy, timeout: Duration, key: &'static str) -> Self {
         let mock = Mock::default();
         mock.replies.lock().unwrap().extend(replies);
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -86,12 +96,17 @@ impl Fixture {
         let token = access::issue(&db, "Proxy test", "proxy", 1).unwrap().token;
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
-        let state = ProxyState { database: db.clone(), client: client(), api_keys: Arc::new(MemoryKey), local_addr: Some(address) };
+        let proxy_client = crate::network::client_builder().no_proxy().redirect(reqwest::redirect::Policy::none()).timeout(timeout).build().unwrap();
+        let state = ProxyState { database: db.clone(), client: proxy_client, api_keys: Arc::new(MemoryKey(key)), local_addr: Some(address) };
         let router = router_with_targets(state, &[]);
-        let proxy_task = tokio::spawn(async move { axum::serve(listener, router).await.unwrap(); });
+        let proxy_task = tokio::spawn(async move {
+            axum::serve(crate::proxy_connection::CancelListener(listener),
+                router.into_make_service_with_connect_info::<crate::governance::tasks::Cancellation>()).await.unwrap();
+        });
         Self { db, base: format!("http://{address}"), upstream_base, token, mock, tasks: vec![upstream_task, proxy_task] }
     }
-    fn post(&self) -> reqwest::RequestBuilder { client().post(format!("{}/v1/chat/completions", self.base)).bearer_auth(&self.token).json(&body()) }
+    fn post(&self) -> reqwest::RequestBuilder { self.post_task(&uuid::Uuid::new_v4().to_string()) }
+    fn post_task(&self, task: &str) -> reqwest::RequestBuilder { client().post(format!("{}/v1/chat/completions", self.base)).bearer_auth(&self.token).header("x-xy-task-id", task).json(&body()) }
     fn policy(&self, mode: &str) -> monitor::MonitorPolicy {
         monitor::MonitorPolicy { provider_id:"gov-test".into(), model:"gov-model".into(), mode:mode.into(), ..Default::default() }
     }
@@ -170,7 +185,7 @@ async fn governance_legacy_compatibility_does_not_elevate_monitor_or_unknown_loc
     for (token,status) in [(&readonly.token[..],403), ("xy_unknown",401)] {
         assert_eq!(client().post(format!("{}/v1/chat/completions",f.base)).bearer_auth(token).json(&body()).send().await.unwrap().status(),status);
     }
-    let response = client().post(format!("{}/v1/chat/completions",f.base)).json(&body()).send().await.unwrap();
+    let response = client().post(format!("{}/v1/chat/completions",f.base)).header("x-xy-task-id", "legacy-compatible-task").json(&body()).send().await.unwrap();
     assert_eq!(response.status(),200);
     response.bytes().await.unwrap();
     assert_eq!(f.calls(),1);
@@ -314,3 +329,6 @@ async fn governance_upstream_redirects_are_not_followed() {
     assert_eq!(f.calls(),1);
     assert_eq!(budget::status(&f.db).unwrap().attempts,1);
 }
+
+#[path = "task_proxy_tests.rs"]
+mod task_tests;

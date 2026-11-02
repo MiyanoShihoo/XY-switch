@@ -6,6 +6,7 @@ import { forwardingStatusLabel } from "./features/usage/RequestDiagnosticsPanel"
 import { UsagePage, UsageRequestDetails } from "./features/usage/UsagePage";
 import { setLanguagePreference, t } from "./i18n/language";
 import type { UsageLogEntry } from "./types/usage";
+import type { ProxyTask } from "./types/governance";
 
 const rejection: UsageLogEntry = {
   requestId: "unassigned:1", providerId: "", appType: "codex", model: "", source: "proxy",
@@ -66,5 +67,23 @@ describe("request forwarding evidence presentation", () => {
     const html = details({ ...rejection, errorMessage: "unknown_future_error", diagnostics: { ...rejection.diagnostics!, failureReason: "<script>untrusted()</script>" } });
     expect(html).toContain("&lt;script&gt;");
     expect(html).not.toContain("<script>");
+  });
+
+  it("labels task diagnostics as a record snapshot and explains zero-send task rejection", async () => {
+    const task: ProxyTask = { id: "task-history", identitySource: "task_header", maxAttempts: 3, maxMicrousd: 3168, attempts: 3, reservedMicrousd: 3168, committedMicrousd: 3168, knownMicrousd: 6, unknownCostAttempts: 2, unreservedAttempts: 0, activeAttempts: 0, cancelled: false, createdAt: 1_800_000_000, updatedAt: 1_800_000_001 };
+    const row = { ...rejection, statusCode: 402, errorMessage: "budget_rejected", diagnostics: { ...rejection.diagnostics!, failureStage: "budget", budgetReason: "task_attempt_budget_exhausted", taskRequestId: "client-retry", task } };
+    const html = details(row);
+    expect(html).toContain("本地拒绝 · 402");
+    expect(html).toContain("单任务总尝试上限已耗尽。");
+    expect(html).toContain("任务累计与上限（记录快照）");
+    expect(html).toContain("最新累计和状态请查看硬预算中的最近任务");
+    expect(html).toContain("任务累计尝试 / 上限</dt><dd>3 / 3");
+    expect(html).toContain("client-retry");
+    expect(html).not.toContain("HTTP 402");
+    await setLanguagePreference("en");
+    const english = details(row);
+    expect(english).toContain("Task totals and limits (record snapshot)");
+    expect(english).toContain("The total attempt limit for this task is exhausted.");
+    expect(english).not.toContain("记录快照");
   });
 });

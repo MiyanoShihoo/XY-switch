@@ -52,6 +52,10 @@ export interface UsageLogEntry {
 }
 
 export interface RequestDiagnostics {
+  budgetReason?: string | null;
+  task?: import("./governance").ProxyTask | null;
+  taskRequestId?: string | null;
+  attemptId?: string | null;
   failureStage: string | null;
   failureReason: string | null;
   sendAttempts: number;

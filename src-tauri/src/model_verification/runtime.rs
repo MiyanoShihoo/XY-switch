@@ -6,7 +6,7 @@ use crate::{
 use rusqlite::{Connection, params};
 use sha2::{Digest, Sha256};
 use std::sync::{
-    Arc, Mutex, OnceLock, Weak,
+    Arc, Mutex, MutexGuard, OnceLock, Weak,
     atomic::{AtomicBool, AtomicU64, Ordering},
     mpsc,
 };
@@ -36,10 +36,31 @@ pub struct Reservation {
     pub id: String,
     pub anomaly_id: i64,
     pub capture: Capture,
-    pub settings: VerificationSettings,
     #[cfg_attr(not(test), allow(dead_code))]
     pub reserved_tokens: u64,
     pub cancellation: tokio::sync::watch::Receiver<u64>,
+}
+
+pub(crate) struct ProbeAdmission<'a> {
+    state: MutexGuard<'a, State>,
+    cancellation: &'a tokio::sync::watch::Sender<u64>,
+    capture: Capture,
+    anomaly_id: i64,
+    monotonic: std::time::Instant,
+}
+
+impl ProbeAdmission<'_> {
+    pub(crate) fn reserve_on(&self, connection: &Connection) -> Result<Reservation, String> {
+        let (id, reserved_tokens) = store::reserve_on(connection, &self.capture, &self.state.settings, self.anomaly_id, now_ms())?;
+        connection.execute("UPDATE verification_probes SET state='running' WHERE id=?1", [&id])
+            .map_err(|_| "budget_storage_unavailable")?;
+        Ok(Reservation { id, anomaly_id: self.anomaly_id, capture: self.capture.clone(),
+            reserved_tokens, cancellation: self.cancellation.subscribe() })
+    }
+
+    pub(crate) fn record_started(&mut self) {
+        self.state.last_probe.insert((self.capture.provider_id.clone(), self.capture.requested_model.clone()), self.monotonic);
+    }
 }
 
 pub fn now_ms() -> i64 {
@@ -111,6 +132,22 @@ fn secret() -> Result<Zeroizing<String>, String> {
 }
 
 impl VerificationRuntime {
+    pub(crate) fn cancellation(&self) -> tokio::sync::watch::Receiver<u64> { self.cancel.subscribe() }
+
+    pub(crate) fn probe_admission(&self, capture: Capture, anomaly_id: i64) -> Result<ProbeAdmission<'_>, String> {
+        let state = self.state.lock().map_err(|_| "verification_unavailable")?;
+        if !state.settings.enabled || !state.settings.active_probe_enabled || state.generation != capture.generation {
+            return Err("active_probing_disabled".into());
+        }
+        let monotonic = std::time::Instant::now();
+        let scope = (capture.provider_id.clone(), capture.requested_model.clone());
+        let cooldown = std::time::Duration::from_secs(state.settings.cooldown_hours * 3600);
+        if state.last_probe.get(&scope).is_some_and(|last| monotonic.checked_duration_since(*last).is_none_or(|elapsed| elapsed < cooldown)) {
+            return Err("cooldown".into());
+        }
+        Ok(ProbeAdmission { state, cancellation: &self.cancel, capture, anomaly_id, monotonic })
+    }
+
     pub fn new(connection: Weak<Mutex<Connection>>) -> Arc<Self> {
         let loaded = (|| {
             let connection = connection.upgrade().ok_or("数据库不可用")?;
@@ -434,7 +471,6 @@ impl VerificationRuntime {
             id,
             anomaly_id: anomaly,
             capture,
-            settings: state.settings.clone(),
             reserved_tokens,
             cancellation: self.cancel.subscribe(),
         })
