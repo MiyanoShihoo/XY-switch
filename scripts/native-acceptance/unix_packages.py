@@ -137,6 +137,7 @@ class CredentialVault:
         self.keychain = self.temporary / "fixture.keychain-db"
         self.previous_default = None
         self.previous_search = None
+        self.default_captured = False
         self.created = False
         self.entries = set()
         self.restored = False
@@ -144,9 +145,10 @@ class CredentialVault:
     def start(self):
         require_runner(self.kind)
         if self.kind == "macos":
-            previous_default = shlex.split(run(["security", "default-keychain", "-d", "user"]).stdout)[0]
+            previous_default = self.default_keychain()
             previous_search = shlex.split(run(["security", "list-keychains", "-d", "user"]).stdout)
             self.previous_default, self.previous_search = previous_default, previous_search
+            self.default_captured = True
             password = secrets.token_hex(24)
             self.secrets.add(password)
             contained_path(self.temporary, self.keychain)
@@ -156,6 +158,18 @@ class CredentialVault:
             run(["security", "unlock-keychain", "-p", password, self.keychain])
             run(["security", "default-keychain", "-d", "user", "-s", self.keychain])
             run(["security", "list-keychains", "-d", "user", "-s", self.keychain])
+
+    @staticmethod
+    def default_keychain():
+        result = run(["security", "default-keychain", "-d", "user"], check=False)
+        if result.returncode:
+            if result.returncode == 1 and "SecKeychainCopyDomainDefault user: A default keychain could not be found." in result.stderr:
+                return None
+            raise RuntimeError("Cannot read original macOS default keychain: " + result.stderr.strip())
+        names = shlex.split(result.stdout)
+        if len(names) > 1:
+            raise RuntimeError("More than one macOS default keychain was returned")
+        return names[0] if names else None
 
     @staticmethod
     def account(provider_id):
@@ -204,18 +218,13 @@ class CredentialVault:
                 self.clear(provider_id)
             except Exception as error:
                 failures.append(str(error))
-        if self.kind == "macos" and self.previous_default is not None:
-            for arguments in [["security", "default-keychain", "-d", "user", "-s", self.previous_default],
-                              ["security", "list-keychains", "-d", "user", "-s", *self.previous_search]]:
+        if self.kind == "macos" and self.default_captured:
+            settings = [["security", "list-keychains", "-d", "user", "-s", *self.previous_search]]
+            if self.previous_default is not None:
+                settings.insert(0, ["security", "default-keychain", "-d", "user", "-s", self.previous_default])
+            for arguments in settings:
                 try:
                     run(arguments)
-                except Exception as error:
-                    failures.append(str(error))
-            for arguments, expected in [(["security", "default-keychain", "-d", "user"], [self.previous_default]),
-                                        (["security", "list-keychains", "-d", "user"], self.previous_search)]:
-                try:
-                    if shlex.split(run(arguments).stdout) != expected:
-                        failures.append("Original macOS keychain setting was not restored: " + arguments[1])
                 except Exception as error:
                     failures.append(str(error))
             if self.created:
@@ -223,6 +232,16 @@ class CredentialVault:
                     run(["security", "delete-keychain", contained_path(self.temporary, self.keychain)])
                 except Exception as error:
                     failures.append(str(error))
+            try:
+                if self.default_keychain() != self.previous_default:
+                    failures.append("Original macOS default keychain was not restored")
+            except Exception as error:
+                failures.append(str(error))
+            try:
+                if shlex.split(run(["security", "list-keychains", "-d", "user"]).stdout) != self.previous_search:
+                    failures.append("Original macOS keychain search list was not restored")
+            except Exception as error:
+                failures.append(str(error))
         self.restored = not failures
         if failures:
             raise RuntimeError("; ".join(failures))

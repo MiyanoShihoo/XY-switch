@@ -15,14 +15,35 @@ export function isLocalRendererRequest(value, base) {
   } catch { return false; }
 }
 
-export async function connect(endpoint = process.env.CDP_ENDPOINT ?? 'http://127.0.0.1:9231', { fresh = false } = {}) {
-  const rendererBase = process.env.APP_URL ?? 'http://127.0.0.1:1431';
-  assert(isLocalRendererRequest(rendererBase, rendererBase), 'QA renderer URL must be a local HTTP(S) origin');
+export function isNativeRendererRequest(value) {
+  try {
+    const request = new URL(value);
+    if (['data:', 'blob:', 'about:'].includes(request.protocol)) return true;
+    return request.protocol === 'http:' && ['tauri.localhost', 'ipc.localhost'].includes(request.hostname)
+      && !request.port && !request.username && !request.password;
+  } catch { return false; }
+}
+
+export async function connect(endpoint = process.env.CDP_ENDPOINT ?? 'http://127.0.0.1:9231', { fresh = false, native = false } = {}) {
+  const rendererBase = native ? 'http://tauri.localhost' : process.env.APP_URL ?? 'http://127.0.0.1:1431';
+  if (native) {
+    assert.equal(process.platform, 'win32', 'Native CDP requires Windows');
+    assert.equal(process.env.GITHUB_ACTIONS, 'true', 'Native CDP requires GitHub Actions');
+    assert.equal(process.env.RUNNER_ENVIRONMENT, 'github-hosted', 'Native CDP requires a disposable runner');
+    assert.equal(fresh, false, 'Native CDP must attach to the packaged page');
+  } else assert(isLocalRendererRequest(rendererBase, rendererBase), 'QA renderer URL must be a local HTTP(S) origin');
   const url = new URL(endpoint);
   if (!['127.0.0.1','localhost','[::1]'].includes(url.hostname)) throw new Error('QA CDP must be local');
   const pages = await fetch(endpoint+'/json').then(r=>r.json());
-  const page = fresh ? await fetch(endpoint+'/json/new?about:blank', { method: 'PUT' }).then(r=>r.json()) : pages.find(p=>p.type==='page' && (p.url==='about:blank' || p.url.startsWith(process.env.APP_URL ?? 'http://127.0.0.1:1431')));
+  const page = fresh ? await fetch(endpoint+'/json/new?about:blank', { method: 'PUT' }).then(r=>r.json()) : pages.find(p=>p.type==='page' && (p.url==='about:blank' || (native ? new URL(p.url).origin === rendererBase : p.url.startsWith(rendererBase))));
   if (!page) throw new Error('No isolated QA target at '+endpoint);
+  if (native) {
+    const debuggerUrl = new URL(page.webSocketDebuggerUrl);
+    assert.equal(url.protocol, 'http:');
+    assert.equal(debuggerUrl.protocol, 'ws:');
+    assert.equal(debuggerUrl.hostname, url.hostname);
+    assert.equal(debuggerUrl.port, url.port);
+  }
   const socket = new WebSocket(page.webSocketDebuggerUrl);
   await new Promise((resolve,reject)=>{socket.addEventListener('open',resolve,{once:true});socket.addEventListener('error',reject,{once:true});});
   let sequence=0; const pending=new Map(), exceptions=[], networkRequests=[], webSocketUrls=[];
@@ -51,8 +72,7 @@ export async function connect(endpoint = process.env.CDP_ENDPOINT ?? 'http://127
   const navigate=url=>navigateFreshDocument({call,evaluate},url);
   const snapshot=()=>evaluate('({text:document.body.innerText,controls:[...document.querySelectorAll("button,input,select,textarea,summary")].filter(e=>e.getClientRects().length).map(e=>({tag:e.tagName,text:e.textContent.slice(0,120),label:e.getAttribute("aria-label"),id:e.id,value:e.value,disabled:e.disabled})),active:document.activeElement?.outerHTML.slice(0,300),width:innerWidth,scrollWidth:document.documentElement.scrollWidth})');
   const assertLocalNetwork = () => {
-    const base = process.env.APP_URL ?? 'http://127.0.0.1:1431';
-    const external = [...networkRequests, ...webSocketUrls].filter(value => !isLocalRendererRequest(value, base));
+    const external = [...networkRequests, ...webSocketUrls].filter(value => !(native ? isNativeRendererRequest(value) : isLocalRendererRequest(value, rendererBase)));
     assert.deepEqual([...new Set(external.map(value => { try { return new URL(value).origin; } catch { return '[invalid URL]'; } }))], [], 'QA renderer attempted requests outside its exact local origin');
   };
   await call('Page.enable');await call('Runtime.enable');await call('Network.enable');

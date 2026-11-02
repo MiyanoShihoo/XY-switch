@@ -79,6 +79,13 @@ class OcrTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "coordinates"):
             read_words(header + "5\t1\t1\t1\t1\t-1\t0\t10\t10\t90\tStart\n")
 
+    def test_upscaled_ocr_preserves_native_image_coordinates(self):
+        header = "level\tpage_num\tblock_num\tpar_num\tline_num\tleft\ttop\twidth\theight\tconf\ttext\n"
+        boxes = read_words(header + "5\t1\t1\t1\t1\t40\t20\t80\t32\t90\tSettings\n", scale=2)
+        self.assertEqual((boxes[0].left, boxes[0].top, boxes[0].width, boxes[0].height), (20, 10, 40, 16))
+        with self.assertRaisesRegex(RuntimeError, "scale"):
+            read_words(header, scale=0)
+
 
 class CredentialTests(unittest.TestCase):
     def test_linux_secret_bytes_have_no_appended_newline(self):
@@ -96,6 +103,7 @@ class CredentialTests(unittest.TestCase):
             vault = CredentialVault("macos", directory, set())
             vault.previous_default = "/original/login.keychain-db"
             vault.previous_search = [vault.previous_default]
+            vault.default_captured = True
             vault.created = True
             calls = []
 
@@ -122,6 +130,49 @@ class CredentialTests(unittest.TestCase):
                 vault.start()
         self.assertIsNone(vault.previous_default)
         self.assertIsNone(vault.previous_search)
+        self.assertFalse(vault.created)
+
+    def test_macos_absent_default_is_restored_by_deleting_fixture_then_verified(self):
+        with tempfile.TemporaryDirectory() as directory:
+            vault = CredentialVault("macos", directory, set())
+            state = {"default": None, "search": ["/Library/Keychains/System.keychain"]}
+            original_search = list(state["search"])
+            calls = []
+
+            def run(arguments, **_kwargs):
+                calls.append(arguments)
+                if arguments[1] == "default-keychain":
+                    if "-s" in arguments:
+                        state["default"] = str(arguments[-1])
+                    elif state["default"] is None:
+                        return subprocess.CompletedProcess(arguments, 1, "", "security: SecKeychainCopyDomainDefault user: A default keychain could not be found.\n")
+                    else:
+                        return subprocess.CompletedProcess(arguments, 0, json.dumps(state["default"]), "")
+                elif arguments[1] == "list-keychains":
+                    if "-s" in arguments:
+                        state["search"] = [str(value) for value in arguments[arguments.index("-s") + 1:]]
+                    else:
+                        return subprocess.CompletedProcess(arguments, 0, "\n".join(json.dumps(value) for value in state["search"]), "")
+                elif arguments[1] == "delete-keychain":
+                    state["default"] = None
+                return subprocess.CompletedProcess(arguments, 0, "", "")
+
+            with patch("unix_packages.require_runner"), patch("unix_packages.run", side_effect=run):
+                vault.start()
+                self.assertIsNone(vault.previous_default)
+                self.assertTrue(vault.default_captured)
+                vault.restore()
+            self.assertEqual(state, {"default": None, "search": original_search})
+            self.assertTrue(vault.restored)
+            self.assertEqual(calls[-2][1], "default-keychain")
+            self.assertEqual(calls[-3][1], "delete-keychain")
+
+    def test_macos_other_default_keychain_errors_remain_failures(self):
+        vault = CredentialVault("macos", ".", set())
+        with patch("unix_packages.require_runner"), patch("unix_packages.run", return_value=subprocess.CompletedProcess([], 1, "", "permission denied")):
+            with self.assertRaisesRegex(RuntimeError, "permission denied"):
+                vault.start()
+        self.assertFalse(vault.default_captured)
         self.assertFalse(vault.created)
 
 

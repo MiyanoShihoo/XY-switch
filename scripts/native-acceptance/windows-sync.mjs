@@ -91,7 +91,7 @@ async function state() {
 let before, after, exported;
 try {
   for (let attempt = 0; attempt < 60 && !c; attempt++) {
-    try { c = await connect(args.endpoint); } catch (error) { if (attempt === 59) throw error; await sleep(500); }
+    try { c = await connect(args.endpoint, { native: true }); } catch (error) { if (attempt === 59) throw error; await sleep(500); }
   }
   const connection = await waitForNativePage(c);
   await writeFile(join(output, 'native-page-connection.json'), JSON.stringify({ ...connection, processId: Number(args.pid) }, null, 2));

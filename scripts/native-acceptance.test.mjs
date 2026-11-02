@@ -7,6 +7,13 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { decryptSync, nativeArtifactNames, packageInput, requireDisposableRunner, safeFilename, selectNativeArtifacts, sha256, waitForNativePage } from './native-acceptance/lib.mjs';
+import { connect, isNativeRendererRequest } from './workspace-qa/cdp.mjs';
+
+test('packaged CDP allows only native renderer and IPC origins and refuses ordinary workstations', async () => {
+  for (const value of ['http://tauri.localhost/', 'http://ipc.localhost/app_platform', 'about:blank', 'data:image/png,test']) assert.equal(isNativeRendererRequest(value), true);
+  for (const value of ['http://tauri.localhost.evil/', 'https://tauri.localhost/', 'http://ipc.localhost:1234/', 'http://127.0.0.1:1234/', 'http://user@tauri.localhost/', 'not a URL']) assert.equal(isNativeRendererRequest(value), false);
+  if (process.env.GITHUB_ACTIONS !== 'true' || process.platform !== 'win32' || process.env.RUNNER_ENVIRONMENT !== 'github-hosted') await assert.rejects(connect('http://127.0.0.1:1', { native: true }), /Native CDP/);
+});
 
 const secret = 'synthetic native test passphrase';
 function encrypt(payload) {

@@ -63,7 +63,9 @@ def normalized(value):
     return re.sub(r"[^a-z0-9]", "", value.lower())
 
 
-def read_words(tsv):
+def read_words(tsv, scale=1):
+    if not isinstance(scale, int) or scale < 1:
+        raise RuntimeError("Invalid screenshot OCR scale")
     words = []
     for row in csv.DictReader(io.StringIO(tsv), delimiter="\t"):
         if row["level"] != "5" or not row["text"].strip() or float(row["conf"]) < 25:
@@ -72,6 +74,8 @@ def read_words(tsv):
         if any(value < 0 for value in dimensions) or not dimensions[2] or not dimensions[3]:
             raise RuntimeError("Invalid screenshot text coordinates")
         line = tuple(int(row[key]) for key in ["page_num", "block_num", "par_num", "line_num"])
+        dimensions = [round(dimensions[0] / scale), round(dimensions[1] / scale),
+                      max(1, round(dimensions[2] / scale)), max(1, round(dimensions[3] / scale))]
         words.append(Word(row["text"].strip(), *dimensions, line))
     return words
 
@@ -194,8 +198,14 @@ class NativeGui:
         else:
             run(["screencapture", "-x", "-o", "-l", info["id"], image])
         width, height = png_dimensions(image)
-        text = run(["tesseract", image, "stdout", "-l", "eng", "--psm", "11", "tsv"], timeout=30).stdout
-        words = read_words(text)
+        ocr_image = self.temporary / f"ocr-{self.application.pid}-{self.sequence}.png"
+        if self.kind == "linux":
+            run(["convert", image, "-resize", "200%", ocr_image])
+        else:
+            run(["sips", "-z", height * 2, width * 2, image, "--out", ocr_image])
+        text = run(["tesseract", ocr_image, "stdout", "-l", "eng", "--psm", "11", "tsv"], timeout=30).stdout
+        image.with_suffix(".tsv").write_text(text, encoding="utf-8")
+        words = read_words(text, scale=2)
         if len(words) < 10:
             raise MissingControl("Packaged window has not rendered readable content")
         return info, image, width, height, words

@@ -58,7 +58,7 @@ async function launch(name, legacy = false) {
   for (let attempt = 0; attempt < 180 && !client; attempt++) {
     if (launchError) throw launchError;
     assert.equal(application.exitCode, null, 'Packaged application exited early');
-    try { client = await connect(`http://127.0.0.1:${args.port}`); } catch { await delay(500); }
+    try { client = await connect(`http://127.0.0.1:${args.port}`, { native: true }); } catch { await delay(500); }
   }
   assert(client, 'No packaged native WebView'); await waitForNativePage(client);
   if (!legacy) {
