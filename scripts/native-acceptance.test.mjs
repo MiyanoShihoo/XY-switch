@@ -99,6 +99,22 @@ test('Windows installer verification binds the package and previously installed 
   await assert.rejects(packageInput(root, 'windows-x64', '1.2.1'));
   await writeFile(join(path, name), Buffer.from('modified installer')); await assert.rejects(packageInput(root, 'windows-x64', '1.2.0'));
 });
+test('Windows lifecycle retains distinct NSIS and MSI installed digests from the same source build', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'xy-native-formats-')), directory = join(root, 'windows-x64'); await mkdir(directory);
+  const files = [];
+  for (const [format, digest] of [['nsis', 'a'.repeat(64)], ['msi', 'b'.repeat(64)]]) {
+    const name = 'installer.' + format, data = Buffer.from('synthetic ' + format);
+    files.push({ name, format, bytes: data.length, sha256: sha256(data) });
+    await writeFile(join(directory, name), data);
+    await writeFile(join(directory, 'native-' + format + '-payload-check.json'), JSON.stringify({ installedSha256: digest }));
+  }
+  await writeFile(join(directory, 'manifest.json'), JSON.stringify({ version: '1.2.0', files }));
+  const input = await packageInput(root, 'windows-x64', '1.2.0');
+  assert.deepEqual(input.installedSha256ByFormat, { nsis: 'a'.repeat(64), msi: 'b'.repeat(64) });
+  assert.equal(input.installedSha256, input.installedSha256ByFormat.nsis);
+  await writeFile(join(directory, 'native-msi-payload-check.json'), JSON.stringify({ installedSha256: 'invalid' }));
+  await assert.rejects(packageInput(root, 'windows-x64', '1.2.0'));
+});
 test('artifact extraction rejects traversal, links, duplicate paths and Windows aliases', async () => {
   const root = await mkdtemp(join(tmpdir(), 'xy-native-zip-'));
   const cli = fileURLToPath(new URL('./native-acceptance/extract-artifact.mjs', import.meta.url));

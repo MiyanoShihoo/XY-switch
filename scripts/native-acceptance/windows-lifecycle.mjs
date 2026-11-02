@@ -109,11 +109,13 @@ try {
     });
     await step(format + '-upgrade-and-preserve-config', async () => {
       await installer(fresh.path, format); currentInstaller = fresh.path;
-      assert.equal(sha256(await readFile(executable)), input.installedSha256);
+      const installedSha256 = sha256(await readFile(executable));
+      assert.equal(installedSha256, input.installedSha256ByFormat[format]);
       await launch(format + '-v' + version);
       const saved = (await invoke('list_providers')).find(value => value.id === provider.id); assert(saved);
       for (const name of ['name', 'endpoint', 'model', 'enabled']) assert.equal(saved[name], provider[name]);
       assert((await invoke('list_prompts')).some(value => value.id === prompt.id && value.content === prompt.content));
+      return { format, installedSha256, fullBinarySha256Matched: true };
     });
     const apiKey = randomBytes(32).toString('base64url'); secrets.add(apiKey);
     let received = 0, authorizationMatched = false;
@@ -209,5 +211,5 @@ finally {
   await stop().catch(error => { results.push({ name: 'process-cleanup', passed: false, error: scrub(error) }); process.exitCode = 1; });
   if (upstream) await new Promise(resolve => upstream.close(resolve));
   if (currentInstaller) await installer(currentFormat === 'nsis' ? join(resolve(executable, '..'), 'uninstall.exe') : currentInstaller, currentFormat, false).catch(error => { results.push({ name: 'installer-cleanup', passed: false, error: scrub(error) }); process.exitCode = 1; });
-  await writeFile(join(output, 'lifecycle-results.json'), JSON.stringify({ passed: process.exitCode !== 1, sourceCommit: process.env.NATIVE_SOURCE_COMMIT, harnessCommit: process.env.GITHUB_SHA, sourceRun: process.env.NATIVE_SOURCE_RUN, previousCommit: previous.commit, previousVersion: previous.version, currentVersion: version, installedSha256: input.installedSha256, apiCallsCharged: 0, results, scope: 'Real NSIS and MSI installation and upgrade; packaged GUI clicks and production IPC; native credential read by a forwarded request to synthetic loopback upstream; forced termination and startup restoration; export/import and reinstall' }, null, 2) + '\n');
+  await writeFile(join(output, 'lifecycle-results.json'), JSON.stringify({ passed: process.exitCode !== 1, sourceCommit: process.env.NATIVE_SOURCE_COMMIT, harnessCommit: process.env.GITHUB_SHA, sourceRun: process.env.NATIVE_SOURCE_RUN, previousCommit: previous.commit, previousVersion: previous.version, currentVersion: version, installedSha256: input.installedSha256, installedSha256ByFormat: input.installedSha256ByFormat, apiCallsCharged: 0, results, scope: 'Real NSIS and MSI installation and upgrade; packaged GUI clicks and production IPC; native credential read by a forwarded request to synthetic loopback upstream; forced termination and startup restoration; export/import and reinstall' }, null, 2) + '\n');
 }

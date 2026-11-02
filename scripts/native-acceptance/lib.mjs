@@ -110,9 +110,14 @@ export async function packageInput(root, platform, version) {
     if (platform === 'windows-x64') {
       const nsis = result.files.filter(file => file.format === 'nsis');
       assert.equal(nsis.length, 1);
-      const original = JSON.parse((await readFile(join(directory, 'native-nsis-payload-check.json'), 'utf8')).replace(/^\uFEFF/, ''));
-      assert.match(original.installedSha256, /^[0-9a-f]{64}$/);
-      Object.assign(result, { installer: nsis[0].path, installerSha256: nsis[0].sha256, installedSha256: original.installedSha256 });
+      const installedSha256ByFormat = {};
+      for (const file of result.files.filter(file => ['nsis', 'msi'].includes(file.format))) {
+        assert(!Object.hasOwn(installedSha256ByFormat, file.format), 'Duplicate Windows installer format');
+        const original = JSON.parse((await readFile(join(directory, 'native-' + file.format + '-payload-check.json'), 'utf8')).replace(/^\uFEFF/, ''));
+        assert.match(original.installedSha256, /^[0-9a-f]{64}$/);
+        installedSha256ByFormat[file.format] = original.installedSha256;
+      }
+      Object.assign(result, { installer: nsis[0].path, installerSha256: nsis[0].sha256, installedSha256: installedSha256ByFormat.nsis, installedSha256ByFormat });
     }
     return result;
   }
