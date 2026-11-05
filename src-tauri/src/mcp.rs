@@ -13,13 +13,21 @@ use std::{
 };
 use toml_edit::{Array, DocumentMut, Item, Table, Value as TomlValue, value};
 
-const MCP_APPS: [McpApp; 4] = [
+const MCP_APPS: [McpApp; 5] = [
     McpApp::Claude,
     McpApp::Codex,
     McpApp::Gemini,
     McpApp::OpenCode,
+    McpApp::ClaudeDesktop,
 ];
 type FileSnapshot = (PathBuf, Option<Vec<u8>>);
+
+pub(crate) fn require_user_managed_server(id: &str) -> Result<(), String> {
+    if id.trim().starts_with("xy-shared-") {
+        return Err("共享插件连接请在共享插件服务中管理。".into());
+    }
+    Ok(())
+}
 
 enum McpEntryChange<'a> {
     Mount(&'a McpServer),
@@ -55,15 +63,17 @@ enum McpApp {
     Codex,
     Gemini,
     OpenCode,
+    ClaudeDesktop,
 }
 
 impl McpApp {
     fn parse(value: &str) -> Result<Self, String> {
         match value.to_ascii_lowercase().as_str() {
-            "claude" => Ok(Self::Claude),
-            "codex" => Ok(Self::Codex),
+            "claude" | "claude-code" => Ok(Self::Claude),
+            "codex" | "codex-cli" | "codex-desktop" => Ok(Self::Codex),
             "gemini" => Ok(Self::Gemini),
-            "opencode" => Ok(Self::OpenCode),
+            "opencode" | "opencode-cli" | "opencode-desktop" => Ok(Self::OpenCode),
+            "claude-desktop" => Ok(Self::ClaudeDesktop),
             _ => Err(format!("不支持的 MCP 应用：{value}")),
         }
     }
@@ -74,6 +84,7 @@ impl McpApp {
             Self::Codex => "codex",
             Self::Gemini => "gemini",
             Self::OpenCode => "opencode",
+            Self::ClaudeDesktop => "claude-desktop",
         }
     }
 
@@ -83,6 +94,7 @@ impl McpApp {
             Self::Codex => "Codex",
             Self::Gemini => "Gemini CLI",
             Self::OpenCode => "OpenCode",
+            Self::ClaudeDesktop => "Claude Desktop",
         }
     }
 }
@@ -118,6 +130,7 @@ pub struct McpAppStatus {
     pub label: String,
     pub installed: bool,
     pub config_path: String,
+    pub last_error: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -157,7 +170,9 @@ pub struct McpManager {
     database: Database,
     home_dir: PathBuf,
     codex_dir: PathBuf,
+    client_targets: crate::client_config::ClientTargets,
     operation_lock: Arc<Mutex<()>>,
+    config_locks: crate::client_config::ClientConfigLocks,
     credentials: Arc<dyn McpCredentialStore>,
 }
 
@@ -166,15 +181,27 @@ impl McpManager {
         let codex_dir = home_dir.join(".codex");
         Self {
             database,
+            client_targets: crate::client_config::ClientTargets::for_home(&home_dir),
             home_dir,
             codex_dir,
             operation_lock: Arc::new(Mutex::new(())),
+            config_locks: crate::client_config::ClientConfigLocks::default(),
             credentials: Arc::new(WindowsMcpCredentialStore),
         }
     }
 
     pub fn with_codex_home(mut self, directory: PathBuf) -> Self {
         self.codex_dir = directory;
+        self
+    }
+
+    pub fn with_client_targets(mut self, targets: crate::client_config::ClientTargets) -> Self {
+        self.client_targets = targets;
+        self
+    }
+
+    pub fn with_config_locks(mut self, locks: crate::client_config::ClientConfigLocks) -> Self {
+        self.config_locks = locks;
         self
     }
 
@@ -187,9 +214,11 @@ impl McpManager {
         let codex_dir = home_dir.join(".codex");
         Self {
             database,
+            client_targets: crate::client_config::ClientTargets::for_home(&home_dir),
             home_dir,
             codex_dir,
             operation_lock: Arc::new(Mutex::new(())),
+            config_locks: crate::client_config::ClientConfigLocks::default(),
             credentials,
         }
     }
@@ -212,12 +241,14 @@ impl McpManager {
                     label: app.label().to_string(),
                     installed: self.is_installed(app),
                     config_path: path.display().to_string(),
+                    last_error: if app == McpApp::OpenCode { self.client_targets.opencode.as_ref().err().cloned() } else { None },
                 }
             })
             .collect()
     }
 
     pub fn save_server(&self, server: McpServer) -> Result<McpServer, String> {
+        let _configs = self.config_locks.acquire("*")?;
         let _guard = self.operation_lock.lock().map_err(|_| "MCP 操作锁损坏".to_string())?;
         self.save_server_inner(server)
     }
@@ -225,6 +256,8 @@ impl McpManager {
     /// Backups restore configuration, never credentials. Omitted or redacted
     /// secret fields must not erase credentials already saved on this machine.
     pub(crate) fn import_server(&self, mut server: McpServer) -> Result<McpServer, String> {
+        require_user_managed_server(&server.id)?;
+        let _configs = self.config_locks.acquire("*")?;
         let _guard = self.operation_lock.lock().map_err(|_| "MCP 操作锁损坏".to_string())?;
         validate_server(&server)?;
         server.env.clear();
@@ -326,6 +359,7 @@ impl McpManager {
     }
 
     pub fn delete_server(&self, id: &str) -> Result<(), String> {
+        let _configs = self.config_locks.acquire("*")?;
         let _guard = self
             .operation_lock
             .lock()
@@ -379,11 +413,12 @@ impl McpManager {
         app_name: &str,
         enabled: bool,
     ) -> Result<McpServer, String> {
+        let app = McpApp::parse(app_name)?;
+        let _configs = self.config_locks.acquire(app.id())?;
         let _guard = self
             .operation_lock
             .lock()
             .map_err(|_| "MCP 操作锁损坏".to_string())?;
-        let app = McpApp::parse(app_name)?;
         if enabled && !self.is_installed(app) {
             return Err(format!("未检测到 {}，不会创建应用配置目录", app.label()));
         }
@@ -407,6 +442,7 @@ impl McpManager {
     }
 
     pub fn import_from_apps(&self) -> Result<McpImportResult, String> {
+        let _configs = self.config_locks.acquire("*")?;
         let _guard = self
             .operation_lock
             .lock()
@@ -420,6 +456,7 @@ impl McpManager {
             match self.read_app_entries(app) {
                 Ok(entries) => {
                     for (id, mut server) in entries {
+                        if require_user_managed_server(&id).is_err() { continue; }
                         let enabled = server.apps.get(app.id()).copied().unwrap_or(true);
                         match self.database.get_mcp_record(&id) {
                             Ok(Some(_)) => match self.database.mcp_app_states(&id) {
@@ -623,12 +660,14 @@ impl McpManager {
             McpApp::Claude => self.home_dir.join(".claude.json"),
             McpApp::Codex => self.codex_dir.join("config.toml"),
             McpApp::Gemini => self.home_dir.join(".gemini/settings.json"),
-            McpApp::OpenCode => self.home_dir.join(".config/opencode/opencode.json"),
+            McpApp::OpenCode => self.client_targets.opencode.as_ref().map(|target| target.path.clone()).unwrap_or_else(|_| self.home_dir.join(".config/opencode/opencode.json")),
+            McpApp::ClaudeDesktop => self.client_targets.claude_desktop_mcp.clone(),
         }
     }
 
     fn is_installed(&self, app: McpApp) -> bool {
         let path = self.config_path(app);
+        if app == McpApp::OpenCode && self.client_targets.opencode.is_err() { return false; }
         path.exists()
             || match app {
                 McpApp::Claude => self.home_dir.join(".claude").exists(),
@@ -643,26 +682,32 @@ impl McpManager {
         change: McpEntryChange<'_>,
     ) -> Result<(), String> {
         let path = self.config_path(app);
+        if app == McpApp::OpenCode { self.client_targets.opencode.as_ref().map_err(Clone::clone)?; }
+        crate::client_config::regular_file(&path)?;
         if matches!(change, McpEntryChange::Mount(_)) && !self.is_installed(app) {
             return Err(format!("未检测到 {}", app.label()));
         }
         match app {
             McpApp::Codex => write_codex_entry(&path, id, change),
-            McpApp::Claude | McpApp::Gemini | McpApp::OpenCode => {
+            McpApp::Claude | McpApp::Gemini | McpApp::OpenCode | McpApp::ClaudeDesktop => {
                 let server = match change {
                     McpEntryChange::Mount(server) => Some(server),
                     McpEntryChange::Unmount | McpEntryChange::Remove => None,
                 };
-                write_json_entry(&path, app, id, server)
+                if app == McpApp::ClaudeDesktop && server.is_some_and(|server| server.transport != "stdio") {
+                    return Err("Claude Desktop 本地 MCP 需要 stdio；请通过共享运行时的本地桥接连接 HTTP 服务".into());
+                }
+                write_json_entry_schema(&path, app, id, server, self.client_targets.opencode.as_ref().ok().and_then(|target| target.schema))
             }
         }
     }
 
     fn read_app_entries(&self, app: McpApp) -> Result<BTreeMap<String, McpServer>, String> {
         let path = self.config_path(app);
+        if app == McpApp::OpenCode { self.client_targets.opencode.as_ref().map_err(Clone::clone)?; }
         match app {
             McpApp::Codex => read_codex_entries(&path),
-            McpApp::Claude | McpApp::Gemini | McpApp::OpenCode => read_json_entries(&path, app),
+            McpApp::Claude | McpApp::Gemini | McpApp::OpenCode | McpApp::ClaudeDesktop => read_json_entries(&path, app),
         }
     }
 }
@@ -746,10 +791,10 @@ pub(crate) fn validate_server(server: &McpServer) -> Result<(), String> {
 }
 
 fn read_json_root(path: &Path) -> Result<Value, String> {
+    crate::client_config::regular_file(path)?;
     match fs::read_to_string(path) {
         Ok(text) => {
-            let value: Value = serde_json::from_str(&text)
-                .map_err(|error| format!("解析 {} 失败：{error}", path.display()))?;
+            let value = crate::jsonc::parse(&text)?;
             if value.is_object() {
                 Ok(value)
             } else {
@@ -763,7 +808,7 @@ fn read_json_root(path: &Path) -> Result<Value, String> {
 
 fn json_section(app: McpApp) -> &'static str {
     match app {
-        McpApp::Claude | McpApp::Gemini => "mcpServers",
+        McpApp::Claude | McpApp::Gemini | McpApp::ClaudeDesktop => "mcpServers",
         McpApp::OpenCode => "mcp",
         McpApp::Codex => unreachable!(),
     }
@@ -775,10 +820,23 @@ fn write_json_entry(
     id: &str,
     server: Option<&McpServer>,
 ) -> Result<(), String> {
+    write_json_entry_schema(path, app, id, server, None)
+}
+
+fn write_json_entry_schema(
+    path: &Path,
+    app: McpApp,
+    id: &str,
+    server: Option<&McpServer>,
+    selected_schema: Option<crate::client_config::OpenCodeSchema>,
+) -> Result<(), String> {
     if server.is_none() && !path.exists() {
         return Ok(());
     }
     let mut root = read_json_root(path)?;
+    let opencode_v2 = app == McpApp::OpenCode && crate::client_config::detect_opencode_schema(&root, selected_schema.or_else(|| {
+        if root.get("providers").is_some() || root.pointer("/mcp/servers").is_some() { None } else { Some(crate::client_config::OpenCodeSchema::V1) }
+    }))? == crate::client_config::OpenCodeSchema::V2;
     let section = json_section(app);
     let object = root.as_object_mut().unwrap();
     if !object.get(section).is_some_and(Value::is_object) {
@@ -787,9 +845,16 @@ fn write_json_entry(
         }
         object.insert(section.to_string(), Value::Object(Map::new()));
     }
-    let entries = object[section].as_object_mut().unwrap();
+    let entries = if opencode_v2 {
+        object[section].as_object_mut().unwrap().entry("servers").or_insert_with(|| json!({})).as_object_mut().ok_or("OpenCode mcp.servers 必须是对象")?
+    } else { object[section].as_object_mut().unwrap() };
     if let Some(server) = server {
-        entries.insert(id.to_string(), server_to_json_spec(app, server));
+        let mut spec = server_to_json_spec(app, server);
+        if opencode_v2 {
+            spec.as_object_mut().unwrap().remove("enabled");
+            spec["disabled"] = json!(false);
+        }
+        entries.insert(id.to_string(), spec);
     } else {
         entries.remove(id);
     }
@@ -835,7 +900,8 @@ fn read_json_entries(path: &Path, app: McpApp) -> Result<BTreeMap<String, McpSer
         return Ok(BTreeMap::new());
     }
     let root = read_json_root(path)?;
-    let Some(entries) = root.get(json_section(app)).and_then(Value::as_object) else {
+    let section = if app == McpApp::OpenCode && root.pointer("/mcp/servers").is_some() { root.pointer("/mcp/servers") } else { root.get(json_section(app)) };
+    let Some(entries) = section.and_then(Value::as_object) else {
         return Ok(BTreeMap::new());
     };
     entries
@@ -1189,7 +1255,42 @@ mod tests {
         (manager, database, credentials)
     }
 
+    fn desktop_fixture(root: &Path) {
+        let directory = crate::client_config::config_directory(root, "Claude", false);
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(directory.join("claude_desktop_config.json"), b"{\"acceptanceKeep\":\"fixture\"}\n").unwrap();
+    }
+
     include!("mcp_regression_tests.rs");
+
+    #[test]
+    fn generated_shared_connections_are_reserved_for_shared_service_management() {
+        for id in ["xy-shared-test", " xy-shared-test ", "xy-shared-"] {
+            assert!(require_user_managed_server(id).is_err());
+        }
+        assert!(require_user_managed_server("my-xy-shared-test").is_ok());
+        let root = temp_root();
+        fs::create_dir_all(root.join(".codex")).unwrap();
+        let (manager, database, _) = test_manager(&root);
+        let mut shared = test_server("xy-shared-test");
+        shared.apps.insert("codex".into(), true);
+        manager.save_server(shared.clone()).unwrap();
+        let config = root.join(".codex/config.toml");
+        fs::write(&config, "[mcp_servers.xy-shared-test]\ncommand = 'node'\nenabled = false\n").unwrap();
+        let external = fs::read(&config).unwrap();
+        let before = database.get_mcp_record(&shared.id).unwrap().unwrap();
+        assert_eq!(manager.import_server(shared).unwrap_err(), "共享插件连接请在共享插件服务中管理。");
+        let imported = manager.import_from_apps().unwrap();
+        assert_eq!(imported.imported, 0);
+        assert!(imported.errors.is_empty());
+        assert_eq!(database.get_mcp_record("xy-shared-test").unwrap().unwrap().config_json, before.config_json);
+        assert_eq!(database.mcp_app_states("xy-shared-test").unwrap().get("codex"), Some(&true));
+        assert_eq!(fs::read(&config).unwrap(), external);
+        drop(manager);
+        drop(database);
+        assert!(root.starts_with(std::env::temp_dir()));
+        fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn validates_stdio_and_http_servers() {
@@ -1241,6 +1342,7 @@ mod tests {
     #[test]
     fn syncs_each_app_without_overwriting_unrelated_config() {
         let root = temp_root();
+        desktop_fixture(&root);
         for directory in [".claude", ".codex", ".gemini", ".config/opencode"] {
             fs::create_dir_all(root.join(directory)).unwrap();
         }
@@ -1438,6 +1540,7 @@ mod tests {
         );
     }
     fn selection_fixture(root: &Path) {
+        desktop_fixture(root);
         for directory in [".claude", ".codex", ".gemini", ".config/opencode"] {
             fs::create_dir_all(root.join(directory)).unwrap();
         }
@@ -1448,14 +1551,14 @@ mod tests {
     }
 
     #[test]
-    fn saving_explicit_selection_syncs_all_four_clients_and_persists_it() {
+    fn saving_explicit_selection_syncs_all_five_clients_and_persists_it() {
         let root = temp_root();
         selection_fixture(&root);
         let (manager, database, credentials) = test_manager(&root);
         let mut server = test_server("selection-create");
         server.apps = MCP_APPS.into_iter().map(|app| (app.id().to_string(), true)).collect();
         let saved = manager.save_server(server).unwrap();
-        assert_eq!(saved.apps.len(), 4);
+        assert_eq!(saved.apps.len(), 5);
         assert!(saved.apps.values().all(|enabled| *enabled));
         assert_eq!(database.mcp_app_states(&saved.id).unwrap(), saved.apps);
         for app in MCP_APPS {

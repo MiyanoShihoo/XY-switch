@@ -20,7 +20,16 @@ export function formatKeyValueLines(values: Record<string, string>): string {
   return Object.entries(values).map(([key, value]) => `${key}=${value}`).join("\n");
 }
 
+export function isSharedMcpServerId(id: string): boolean {
+  return id.trim().startsWith("xy-shared-");
+}
+
+export function requireUserManagedMcpServer(id: string): void {
+  if (isSharedMcpServerId(id)) throw new Error(t("共享插件连接请在共享插件服务中管理。"));
+}
+
 export function validateMcpServer(server: McpServer): string | null {
+  if (isSharedMcpServerId(server.id)) return t("共享插件连接请在共享插件服务中管理。");
   if (!/^[A-Za-z0-9._-]+$/.test(server.id.trim())) {
     return t("MCP ID 只能包含字母、数字、点、下划线和连字符");
   }

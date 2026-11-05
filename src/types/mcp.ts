@@ -1,5 +1,5 @@
 export type McpTransport = "stdio" | "http";
-export type McpApp = "claude" | "codex" | "gemini" | "opencode";
+export type McpApp = "claude" | "codex" | "gemini" | "opencode" | "claude-desktop";
 
 export interface McpServer {
   id: string;
@@ -21,6 +21,7 @@ export interface McpAppStatus {
   label: string;
   installed: boolean;
   configPath: string;
+  lastError: string | null;
 }
 
 export interface McpImportResult {

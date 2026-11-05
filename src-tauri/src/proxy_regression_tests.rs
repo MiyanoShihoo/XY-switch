@@ -685,15 +685,38 @@ async fn model_audit_real_http_preserves_native_bytes_and_distinguishes_faults_a
                 .body_overrides
                 .insert("max_tokens".into(), json!(effective_limit));
             db.save_provider(&provider).unwrap();
-            let response = client.post(format!("http://{proxy_addr}/v1/chat/completions"))
+            let sent = client.post(format!("http://{proxy_addr}/v1/chat/completions"))
                 .json(&json!({"model":"client-alias","messages":[{"role":"user","content":case}],"stream":stream,"max_tokens":1000}))
-                .send().await.unwrap();
-            assert_eq!(response.status(), StatusCode::OK);
-            assert_eq!(
-                response.text().await.unwrap(),
-                model_audit_fixture(case, stream),
-                "native bytes changed for {case}"
-            );
+                .send().await;
+            if stream && matches!(case, "truncated" | "malformed" | "error") {
+                use futures_util::StreamExt;
+                match sent {
+                    Err(error) => assert!(error.is_request(), "unexpected transport failure for {case}: {error}"),
+                    Ok(response) => {
+                        assert_eq!(response.status(), StatusCode::OK);
+                        let mut chunks = response.bytes_stream();
+                        let mut delivered = Vec::new();
+                        let mut failed = false;
+                        while let Some(chunk) = chunks.next().await {
+                            match chunk {
+                                Ok(bytes) => delivered.extend_from_slice(&bytes),
+                                Err(_) => { failed = true; break; }
+                            }
+                        }
+                        assert!(failed, "an unchecked {case} stream must fail");
+                        assert!(!String::from_utf8_lossy(&delivered).contains("你好"));
+                        assert!(!String::from_utf8_lossy(&delivered).contains("{broken"));
+                    }
+                }
+            } else {
+                let response = sent.unwrap();
+                assert_eq!(response.status(), StatusCode::OK);
+                assert_eq!(
+                    response.text().await.unwrap(),
+                    model_audit_fixture(case, stream),
+                    "native bytes changed for {case}"
+                );
+            }
             wait_for_latest_verification(&db).await;
             let connection = rusqlite::Connection::open(&path).unwrap();
             let serialized: String = connection
@@ -717,6 +740,16 @@ async fn model_audit_real_http_preserves_native_bytes_and_distinguishes_faults_a
             assert_eq!(record.observation.visible_output_bytes, Some(6));
             assert!(!serialized.contains("你好"));
             assert!(!serialized.contains("test-api-key"));
+            if stream && matches!(case, "truncated" | "malformed" | "error") {
+                let (success, diagnostics): (bool, String) = connection.query_row(
+                    "SELECT success,diagnostics_json FROM request_events ORDER BY id DESC LIMIT 1",
+                    [], |row| Ok((row.get(0)?, row.get(1)?)),
+                ).unwrap();
+                assert!(!success);
+                let diagnostics: crate::request_diagnostics::RequestDiagnostics = serde_json::from_str(&diagnostics).unwrap();
+                assert_eq!(diagnostics.failure_stage.as_deref(), Some("response_privacy"));
+                assert!(diagnostics.upstream_response_received);
+            }
             match case {
                 "fault" => {
                     for expected in [

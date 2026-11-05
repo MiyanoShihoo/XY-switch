@@ -5,3 +5,14 @@
 .mcp-app span { display: grid; gap: var(--xy-ds-space-1); font-size: 12px; }
 .mcp-app small { font-size: 10px; color: var(--xy-ds-text-muted); }
 @media (max-width: 1000px) { .mcp-record { grid-template-columns: minmax(0, 1fr) 232px 68px; gap: var(--xy-ds-space-3); } }
+.shared-mcp-panel .section-card__header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--xy-ds-space-3); }
+.shared-mcp-panel .section-card__body, .shared-mcp-review { display: grid; gap: var(--xy-ds-space-3); }
+.shared-mcp-panel .key-values dd { overflow-wrap: anywhere; }
+.shared-mcp-status, .shared-mcp-register { display: flex; align-items: center; gap: var(--xy-ds-space-3); }
+.shared-mcp-register { align-items: end; flex-wrap: wrap; }
+.shared-mcp-register .xy-ui-field { flex: 1; min-width: 220px; }
+.shared-mcp-connection { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: var(--xy-ds-space-3); padding-block: var(--xy-ds-space-3); border-bottom: 1px solid var(--xy-ds-border-subtle); }
+.shared-mcp-connection strong { overflow-wrap: anywhere; }
+.shared-mcp-checkbox { display: flex; gap: var(--xy-ds-space-2); align-items: flex-start; }
+.shared-mcp-checkbox input { margin-top: 3px; }
+@media (max-width: 600px) { .shared-mcp-connection { grid-template-columns: minmax(0, 1fr) auto; } .shared-mcp-connection > div { grid-column: 1 / -1; } }

@@ -6,6 +6,8 @@ const previewStatuses: AppTakeoverStatus[] = [
   { app: "claude", label: "Claude Code", configPaths: ["~/.claude/settings.json"], installed: false, active: false, lastError: null },
   { app: "codex", label: "Codex", configPaths: ["~/.codex/config.toml"], installed: false, active: false, lastError: null },
   { app: "gemini", label: "Gemini CLI", configPaths: ["~/.gemini/.env", "~/.gemini/settings.json"], installed: false, active: false, lastError: null },
+  { app: "opencode", label: "OpenCode", configPaths: ["~/.config/opencode/opencode.json"], installed: false, active: false, lastError: null },
+  { app: "claude-desktop-3p", label: "Claude Desktop 3P", configPaths: [], installed: false, active: false, lastError: null },
 ];
 
 function isDesktopRuntime(): boolean {
@@ -21,6 +23,6 @@ export async function setAppTakeoverEnabled(
   app: ManagedApp,
   enabled: boolean,
 ): Promise<AppTakeoverStatus> {
-  if (!isDesktopRuntime()) throw new Error(t("浏览器预览模式不能修改 CLI 配置"));
+  if (!isDesktopRuntime()) throw new Error(t("浏览器预览模式不能修改客户端配置"));
   return invoke<AppTakeoverStatus>("set_app_takeover_enabled", { app, enabled });
 }

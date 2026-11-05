@@ -21,6 +21,40 @@ const details = (row: UsageLogEntry) => renderToStaticMarkup(createElement(Usage
 afterEach(async () => { await setLanguagePreference("system"); });
 
 describe("request forwarding evidence presentation", () => {
+  it("shows zero-send privacy rejection with count-only diagnostics in both languages", async () => {
+    const row = { ...rejection, statusCode: 422, errorMessage: "privacy_sensitive_structure", diagnostics: { ...rejection.diagnostics!, failureStage: "privacy", privacy: { secretRedactions: 2, personalRedactions: 1, protectedFields: 1, uninspectedAttachments: 0 } } };
+    const html = details(row);
+    expect(html).toContain("本地拒绝 · 422");
+    expect(html).toContain("隐私检查计数");
+    expect(html).toContain("凭据替换数</dt><dd>2</dd>");
+    expect(html).toContain("可执行字段或结构字段含有敏感信息，发送已阻止。");
+    expect(html).toContain("不保存匹配到的正文");
+    expect(html).not.toContain("HTTP 422");
+    await setLanguagePreference("en");
+    const english = details(row);
+    expect(english).toContain("Privacy inspection counts");
+    expect(english).toContain("sending was blocked");
+    expect(english).not.toContain("隐私检查");
+  });
+  it("explains response privacy stops while preserving the actual upstream evidence", async () => {
+    const row = { ...rejection, statusCode: 200, errorMessage: "privacy_response_sensitive_structure", diagnostics: {
+      ...rejection.diagnostics!, failureStage: "response_privacy", sendAttempts: 1, upstreamResponseReceived: true,
+      privacy: { secretRedactions: 1, personalRedactions: 0, protectedFields: 1, uninspectedAttachments: 0 },
+    } };
+    const chinese = details(row);
+    expect(chinese).toContain("响应隐私检查");
+    expect(chinese).toContain("已停止返回");
+    expect(chinese).toContain("HTTP 200 · 未完成");
+    expect(chinese).not.toContain("发送已阻止");
+    await setLanguagePreference("en");
+    for (const code of ["privacy_response_attachment_uninspected", "privacy_response_scan_limit", "privacy_response_scan_failed"]) {
+      expect(details({ ...row, errorMessage: code })).toContain("delivery was stopped");
+    }
+    const english = details(row);
+    expect(english).toContain("Response privacy inspection");
+    expect(english).toContain("delivery was stopped");
+    expect(english).not.toContain("privacy_response_sensitive_structure");
+  });
   it("shows local rejection in the production log table without claiming an upstream HTTP response", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity, staleTime: Infinity } } });
     client.setQueryData(["usage", { dateRange: "today" }, 0], {

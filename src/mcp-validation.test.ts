@@ -12,7 +12,7 @@ const server: McpServer = {
   url: null,
   env: {},
   headers: {},
-  apps: { claude: false, codex: false, gemini: false, opencode: false },
+  apps: { claude: false, codex: false, gemini: false, opencode: false, "claude-desktop": false },
   builtIn: false,
   secretsConfigured: false,
 };
@@ -36,5 +36,10 @@ describe("MCP validation", () => {
     expect(validateMcpServer({ ...server, command: "" })).toContain("命令");
     expect(validateMcpServer({ ...server, transport: "http", command: null, url: "https://example.com/mcp" })).toBeNull();
     expect(validateMcpServer({ ...server, transport: "http", command: null, url: "file:///tmp/mcp" })).toContain("URL");
+  });
+
+  it("reserves generated shared connections even when the ID has surrounding whitespace", () => {
+    expect(validateMcpServer({ ...server, id: " xy-shared-example " })).toContain("共享插件服务");
+    expect(validateMcpServer({ ...server, id: "my-xy-shared-example" })).toBeNull();
   });
 });

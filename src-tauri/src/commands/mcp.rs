@@ -18,12 +18,14 @@ pub fn save_mcp_server(
     manager: State<'_, McpManager>,
     server: McpServer,
 ) -> Result<McpServer, String> {
+    crate::mcp::require_user_managed_server(&server.id)?;
     manager.save_server(server)
 }
 
 #[cfg_attr(target_os = "android", tauri::command(async))]
 #[cfg_attr(not(target_os = "android"), tauri::command)]
 pub fn delete_mcp_server(manager: State<'_, McpManager>, id: String) -> Result<(), String> {
+    crate::mcp::require_user_managed_server(&id)?;
     manager.delete_server(&id)
 }
 
@@ -34,6 +36,7 @@ pub fn set_mcp_app_enabled(
     app: String,
     enabled: bool,
 ) -> Result<McpServer, String> {
+    crate::mcp::require_user_managed_server(&server_id)?;
     crate::platform::require_desktop("MCP 客户端同步")?;
     manager.set_app_enabled(&server_id, &app, enabled)
 }

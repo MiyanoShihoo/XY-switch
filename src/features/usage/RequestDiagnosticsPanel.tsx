@@ -2,6 +2,7 @@ import { t } from "../../i18n/language";
 import type { RequestDiagnostics, UsageLogEntry } from "../../types/usage";
 import { TaskSummaryView } from "../governance/TaskPanel";
 import { budgetReasonLabel } from "../governance/task-format";
+import { privacyBlockMessage } from "../../lib/privacy-service";
 
 const stages: Record<string, string> = {
   provider_selection: "选择供应商",
@@ -11,10 +12,12 @@ const stages: Record<string, string> = {
   tool_bridge: "处理工具协议",
   budget: "预算检查",
   task_identity: "任务身份检查",
+  privacy: "隐私检查",
   upstream_send: "连接与发送",
   upstream_http: "上游 HTTP",
   response_read: "读取响应",
   response_conversion: "转换响应",
+  response_privacy: "响应隐私检查",
   response_stream: "响应流",
   client_response: "客户端接收",
 };
@@ -51,6 +54,7 @@ export function forwardingStatusLabel(row: UsageLogEntry): string {
 }
 
 function reason(code: string | null | undefined, fallback?: string | null): string {
+  if (code?.startsWith("privacy_")) return privacyBlockMessage(code);
   return code && reasons[code] ? t(reasons[code]) : fallback || t("未知");
 }
 
@@ -67,6 +71,12 @@ export function RequestDiagnosticsPanel({ diagnostics, errorCode }: { diagnostic
         {diagnostics.taskRequestId && <><dt>{t("客户端请求标识")}</dt><dd><code>{diagnostics.taskRequestId}</code></dd></>}
         {diagnostics.attemptId && <><dt>{t("发送标识")}</dt><dd><code>{diagnostics.attemptId}</code></dd></>}
       </dl>
+      {diagnostics.privacy && <details><summary>{t("隐私检查计数")}</summary><dl className="key-values">
+        <dt>{t("凭据替换数")}</dt><dd>{diagnostics.privacy.secretRedactions}</dd>
+        <dt>{t("个人信息替换数")}</dt><dd>{diagnostics.privacy.personalRedactions}</dd>
+        <dt>{t("敏感结构字段数")}</dt><dd>{diagnostics.privacy.protectedFields}</dd>
+        <dt>{t("未检查附件数")}</dt><dd>{diagnostics.privacy.uninspectedAttachments}</dd>
+      </dl><p className="muted">{t("请求诊断只记录计数和原因，不保存匹配到的正文。")}</p></details>}
       {diagnostics.attempts.length > 0 && <details><summary>{t("每次发送的结果")}</summary><ol>{diagnostics.attempts.map((attempt, index) => <li key={index}>
         <span>{t("尝试")} {index + 1}{" · "}{attempt.statusCode === null ? t("未取得 HTTP") : "HTTP " + attempt.statusCode}</span>
         {attempt.errorKind && <span className="usage-cell-note">{reason(attempt.errorKind)}</span>}

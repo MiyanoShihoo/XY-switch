@@ -1,0 +1,5 @@
+{
+  "extends": "../../tsconfig.app.json",
+  "compilerOptions": { "types": ["vite/client"] },
+  "include": ["../../src/types/marketplace.ts", "../../src/lib/marketplace-service.ts", "../../src/features/marketplace/MarketplacePage.tsx", "../../src/marketplace.test.tsx"]
+}

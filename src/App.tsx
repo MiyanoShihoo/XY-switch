@@ -9,6 +9,10 @@ import { ProvidersPage } from "./features/providers/ProvidersPage";
 import { ProviderConfigurationPage } from "./features/providers/ProviderConfigurationPage";
 import { ProviderDiagnosticsPage } from "./features/providers/ProviderDiagnosticsPage";
 import { McpPage } from "./features/mcp/McpPage";
+import { ClientConnectionsPage } from "./features/clients/ClientConnectionsPage";
+import { AccountsPage } from "./features/accounts/AccountsPage";
+import { PluginsPage } from "./features/plugins/PluginsPage";
+import { MarketplacePage } from "./features/marketplace/MarketplacePage";
 import { PromptsPage } from "./features/prompts/PromptsPage";
 import { SkillsPage } from "./features/skills/SkillsPage";
 import { SessionsPage } from "./features/sessions/SessionsPage";
@@ -85,6 +89,10 @@ export default function App() {
     {activeView === "provider-detail" && <ProviderConfigurationPage key={route.providerId} controller={providers} providerId={route.providerId ?? ""} onBack={() => navigate("providers")} onDiagnostics={id => navigate("diagnostics", id)} onRuntimeChanged={refreshRuntime} />}
     {activeView === "diagnostics" && <ProviderDiagnosticsPage controller={providers} providerId={route.providerId} onSelect={id => navigate("diagnostics", id)} onConfigure={id => navigate("provider-detail", id)} onProviders={() => navigate("providers")} />}
     {activeView === "mcp" && <McpPage />}
+    {activeView === "clients" && (platform.data?.mobile ? <p className="workspace-route-notice">{t("请在桌面端管理原生客户端登录和配置。")}</p> : <ClientConnectionsPage onNavigate={navigate} />)}
+    {activeView === "accounts" && (platform.data?.mobile ? <p className="workspace-route-notice">{t("请在桌面端管理授权账号池。")}</p> : <AccountsPage />)}
+    {activeView === "plugins" && (platform.data?.mobile ? <p className="workspace-route-notice">{t("请在桌面端安装和执行本地插件。")}</p> : <PluginsPage />)}
+    {activeView === "marketplace" && <MarketplacePage />}
     {activeView === "prompts" && <PromptsPage />}
     {activeView === "skills" && (platform.data?.mobile ? <p className="workspace-route-notice">{t("移动端不支持扫描桌面 Skills 目录，请在 Windows、macOS 或 Linux 端导入。")}</p> : <SkillsPage />)}
     {activeView === "sessions" && (platform.data?.mobile ? <p className="workspace-route-notice">{t("移动端无法读取其他应用的本机会话目录，请在对应桌面端查看。")}</p> : <SessionsPage />)}

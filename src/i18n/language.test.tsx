@@ -174,7 +174,7 @@ describe("interface language", () => {
       expect(html.match(/class="xy-shell-nav-item"/g)).toHaveLength(navigation.length);
       for (const item of navigation) expect(html).toContain(`title="${language.t(item.label).replaceAll("&", "&amp;")}"`);
     }
-    expect(navigation.map(item => item.view)).toEqual(["providers", "mcp", "prompts", "skills", "diagnostics", "sessions", "usage", "governance", "settings"]);
+    expect(navigation.map(item => item.view)).toEqual(["providers", "clients", "accounts", "plugins", "marketplace", "mcp", "prompts", "skills", "diagnostics", "sessions", "usage", "governance", "settings"]);
   });
   it("localizes notifications in either direction while preserving opaque user values", async () => {
     const language = await import("./language");

@@ -34,6 +34,7 @@ pub(crate) mod audit_capture {
         output_sha: Sha256,
         shadow_output_plain: bool,
         final_usage_seen: bool,
+        privacy: Option<crate::privacy::ResponsePrivacy>,
     }
 
     fn number(value: &Value, paths: &[&str]) -> Option<u64> {
@@ -78,13 +79,21 @@ pub(crate) mod audit_capture {
                 output_sha: Sha256::new(),
                 shadow_output_plain: true,
                 final_usage_seen: false,
+                privacy: None,
             }
+        }
+
+        fn with_privacy(mut self, privacy: Option<crate::privacy::ResponsePrivacy>) -> Self {
+            self.privacy = privacy;
+            self
         }
 
         pub(crate) fn capture_headers(&mut self, headers: &reqwest::header::HeaderMap) {
             if self.observation.verification_capture.as_ref().is_some_and(|c| c.store_diagnostic_ids) {
                 self.observation.provider_request_id = ["x-request-id", "request-id", "x-goog-request-id"]
-                    .iter().find_map(|key| headers.get(*key).and_then(|v| v.to_str().ok()).and_then(crate::model_verification::safe_id));
+                    .iter().find_map(|key| headers.get(*key).filter(|value| self.privacy.as_ref()
+                        .is_none_or(|privacy| privacy.safe_header(value).is_some()))
+                        .and_then(|v| v.to_str().ok()).and_then(crate::model_verification::safe_id));
             }
         }
 
@@ -489,6 +498,18 @@ pub(crate) mod audit_capture {
                 self.invalid = true;
                 return;
             };
+            let value = if self.privacy.is_some() {
+                for path in ["/usage", "/message/usage", "/response/usage", "/usageMetadata"] {
+                    self.usage(value.pointer(path).unwrap_or(&Value::Null));
+                }
+                match self.privacy.as_ref().unwrap().inspect(value) {
+                    Ok(checked) => {
+                        self.invalid |= checked.blocked_code.is_some();
+                        checked.redacted
+                    }
+                    Err(_) => { self.invalid = true; return; }
+                }
+            } else { value };
             if value.get("error").is_some_and(|v| !v.is_null()) {
                 self.invalid = true;
                 return;
@@ -811,9 +832,26 @@ pub(crate) mod audit_capture {
     where
         S: Stream<Item = Result<Bytes, reqwest::Error>> + Send + 'static,
     {
+        observe_stream_with_privacy(upstream, format, observation, model, database, event_id, started, shadow, None)
+    }
+
+    pub(crate) fn observe_stream_with_privacy<S>(
+        upstream: S,
+        format: UpstreamFormat,
+        observation: Observation,
+        model: String,
+        database: crate::database::Database,
+        event_id: Option<i64>,
+        started: Instant,
+        shadow: Option<ShadowCapture>,
+        privacy: Option<crate::privacy::ResponsePrivacy>,
+    ) -> impl Stream<Item = Result<Bytes, reqwest::Error>> + Send
+    where
+        S: Stream<Item = Result<Bytes, reqwest::Error>> + Send + 'static,
+    {
         let state = Observed {
             upstream: Box::pin(upstream),
-            collector: Collector::new(format, observation),
+            collector: Collector::new(format, observation).with_privacy(privacy),
             buffer: Vec::new(),
             started,
             database,
@@ -855,6 +893,42 @@ pub(crate) mod audit_capture {
     #[cfg(test)]
     mod tests {
         use super::*;
+
+        #[test]
+        fn privacy_audit_capture_checks_model_and_diagnostic_ids_in_each_protocol() {
+            let secret = "unit-upstream-key";
+            for (format, value) in [
+                (UpstreamFormat::OpenAi, json!({"id":secret,"model":secret,"choices":[{"index":0,"delta":{"content":"ordinary text"},"finish_reason":"stop"}],"usage":{"prompt_tokens":4,"completion_tokens":1}})),
+                (UpstreamFormat::Responses, json!({"type":"response.completed","response":{"id":secret,"model":secret,"status":"completed","output":[],"usage":{"input_tokens":4,"output_tokens":1}}})),
+                (UpstreamFormat::Anthropic, json!({"type":"message_start","message":{"id":secret,"model":secret,"content":[],"usage":{"input_tokens":4,"output_tokens":1}}})),
+                (UpstreamFormat::Gemini, json!({"responseId":secret,"modelVersion":secret,"candidates":[{"index":0,"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":4,"candidatesTokenCount":1}})),
+            ] {
+                let capture = crate::model_verification::Capture {
+                    provider_id: "privacy-audit-fixture".into(), requested_model: "expected".into(),
+                    protocol: "fixture".into(), credential_fingerprint: "fingerprint".into(),
+                    context_key: "context".into(), generation: 0, store_diagnostic_ids: true,
+                };
+                let mut collector = Collector::new(format, Observation {
+                    requested_model: Some("expected".into()), forwarded_model: Some("expected".into()),
+                    verification_capture: Some(capture), ..Default::default()
+                }).with_privacy(Some(crate::privacy::ResponsePrivacy::new(Default::default(), &[secret])));
+                let mut headers = reqwest::header::HeaderMap::new();
+                headers.insert("x-request-id", reqwest::header::HeaderValue::from_static("unit-upstream-key"));
+                collector.capture_headers(&headers);
+                collector.frame(format!("data: {value}").as_bytes(), 1);
+                collector.finish_stream(true);
+                assert!(collector.observation.parse_invalid);
+                assert_eq!(collector.observation.input_tokens, Some(4));
+                assert_eq!(collector.observation.output_tokens, Some(1));
+                assert!(collector.observation.upstream_model.is_none());
+                assert!(collector.observation.upstream_models.is_empty());
+                assert!(collector.observation.response_id.is_none());
+                assert!(collector.observation.provider_request_id.is_none());
+                let usage = collector.request_usage("expected");
+                assert_eq!(usage.model.as_deref(), Some("expected"));
+                assert!(!serde_json::to_string(usage.audit.as_ref().unwrap()).unwrap().contains(secret));
+            }
+        }
 
         #[test]
         fn response_model_declarations_are_bounded_and_never_inherited() {

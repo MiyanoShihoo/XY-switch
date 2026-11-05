@@ -1,7 +1,8 @@
 use crate::{
+    accounts::{AccountAuthorization, AccountError, AccountKind, AccountOutcome, AccountPool, AccountSelection, AccountStatus, OutcomeKind, SelectionContext, SelectionMode},
     adapters, credential_store,
     database::{Database, Provider, RequestRecordResult, RequestUsage},
-    preferences,
+    preferences, privacy,
     request_diagnostics::{RequestAttempt, RequestDiagnostics},
     streaming::{self, ClientFormat, UpstreamFormat},
     xai_responses,
@@ -15,7 +16,7 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post},
 };
-use futures_util::TryStreamExt;
+use futures_util::StreamExt;
 use serde::Serialize;
 use serde_json::{Map, Value, json};
 use std::{
@@ -101,14 +102,18 @@ enum ResponseTransform {
 
 trait ApiKeyProvider: Send + Sync {
     fn get(&self, provider_id: &str) -> Result<Option<String>, String>;
+
+    fn account_pool(&self) -> Option<&AccountPool> { None }
 }
 
-struct WindowsApiKeyProvider;
+struct WindowsApiKeyProvider { accounts: AccountPool }
 
 impl ApiKeyProvider for WindowsApiKeyProvider {
     fn get(&self, provider_id: &str) -> Result<Option<String>, String> {
         credential_store::get_api_key(provider_id)
     }
+
+    fn account_pool(&self) -> Option<&AccountPool> { Some(&self.accounts) }
 }
 
 #[derive(Clone)]
@@ -131,10 +136,11 @@ impl ProxyState {
             .timeout(timeout)
             .build()
             .map_err(|error| format!("failed to create HTTP client: {error}"))?;
+        let accounts = AccountPool::new(database.clone()).map_err(|error| error.to_string())?;
         Ok(Self {
             database,
             client,
-            api_keys: Arc::new(WindowsApiKeyProvider),
+            api_keys: Arc::new(WindowsApiKeyProvider { accounts }),
             local_addr,
         })
     }
@@ -159,7 +165,7 @@ impl ProxyError {
         Self {
             status,
             code,
-            message: message.into(),
+            message: privacy::redact_diagnostic(&message.into()),
             stage: None,
         }
     }
@@ -954,6 +960,7 @@ fn record_request(database: &Database, record: RequestRecord<'_>) -> Option<Requ
 struct ForwardProgress {
     provider_id: Option<String>,
     diagnostics: RequestDiagnostics,
+    base_privacy: Option<privacy::PrivacyReport>,
     stage: &'static str,
     event_id: Option<i64>,
     recorded: bool,
@@ -966,6 +973,7 @@ impl ForwardProgress {
         Self {
             provider_id: None,
             diagnostics: RequestDiagnostics::default(),
+            base_privacy: None,
             stage: "provider_selection",
             event_id: None,
             recorded: false,
@@ -976,7 +984,7 @@ impl ForwardProgress {
 
     fn begin_provider(&mut self, provider_id: &str) {
         self.provider_id = Some(provider_id.to_owned());
-        self.diagnostics = RequestDiagnostics::default();
+        self.diagnostics = RequestDiagnostics { privacy: self.base_privacy.clone(), ..Default::default() };
         self.stage = "provider_configuration";
         self.event_id = None;
         self.recorded = false;
@@ -1015,7 +1023,7 @@ impl ForwardProgress {
             self.stage = stage;
             self.record(database, protocol, Some(error.status), self.started.elapsed().as_millis() as i64,
                 self.diagnostics.send_attempts.saturating_sub(1) as usize, Some(error.code), false);
-        } else if matches!(stage, "response_read" | "response_conversion" | "client_response")
+        } else if matches!(stage, "response_read" | "response_conversion" | "response_privacy" | "client_response")
             && let Some(event_id) = self.event_id
             && let Err(failure) = database.mark_request_failed(event_id, stage, error.code, error.code != "request_cancelled" && (stage == "response_read" || error.code == "invalid_upstream_response"))
         {
@@ -1032,16 +1040,33 @@ fn request_builder(
     payload: &Value,
     upstream: EffectiveUpstream,
 ) -> reqwest::RequestBuilder {
+    request_builder_authorized(client, provider, api_key, upstream_url, payload, upstream, false)
+}
+
+fn request_builder_authorized(
+    client: &reqwest::Client,
+    provider: &Provider,
+    secret: &str,
+    upstream_url: reqwest::Url,
+    payload: &Value,
+    upstream: EffectiveUpstream,
+    oauth: bool,
+) -> reqwest::RequestBuilder {
     let mut request = client
         .post(upstream_url)
         .header(header::ACCEPT, "application/json, text/event-stream");
-    request = match upstream {
+    request = if oauth {
+        let request = request.bearer_auth(secret);
+        if upstream == EffectiveUpstream::Anthropic {
+            request.header("anthropic-version", "2023-06-01")
+        } else { request }
+    } else { match upstream {
         EffectiveUpstream::Anthropic => request
-            .header("x-api-key", api_key)
+            .header("x-api-key", secret)
             .header("anthropic-version", "2023-06-01"),
-        EffectiveUpstream::Gemini => request.header("x-goog-api-key", api_key),
-        _ => request.bearer_auth(api_key),
-    };
+        EffectiveUpstream::Gemini => request.header("x-goog-api-key", secret),
+        _ => request.bearer_auth(secret),
+    }};
     if !provider.advanced.custom_user_agent.is_empty() {
         request = request.header(
             header::USER_AGENT,
@@ -1062,17 +1087,139 @@ fn request_builder(
     request.header("x-xy-switch-loopback", "1").json(payload)
 }
 
-async fn buffered_failure(upstream: reqwest::Response) -> Result<Response, ProxyError> {
-    let status = upstream.status();
-    let content_type = upstream.headers().get(header::CONTENT_TYPE).cloned();
-    let request_id = upstream.headers().get("x-request-id").cloned();
-    let body = upstream.bytes().await.map_err(|error| {
-        ProxyError::new(StatusCode::BAD_GATEWAY, "response_error", error.to_string())
-    })?;
-    let mut response = Response::builder().status(status);
-    if let Some(content_type) = content_type {
-        response = response.header(header::CONTENT_TYPE, content_type);
+fn account_proxy_error(error: AccountError) -> ProxyError {
+    let (status, code, stage) = match error {
+        AccountError::Cancelled => (StatusCode::REQUEST_TIMEOUT, "request_cancelled", "client_response"),
+        AccountError::NoEligibleAccount => (StatusCode::SERVICE_UNAVAILABLE, "account_no_eligible_account", "account_selection"),
+        AccountError::CredentialMissing | AccountError::CredentialStoreUnavailable =>
+            (StatusCode::SERVICE_UNAVAILABLE, "account_credential_unavailable", "credentials"),
+        AccountError::LoginRequired | AccountError::Revoked | AccountError::AuthorizationRequired =>
+            (StatusCode::UNAUTHORIZED, "account_authorization_required", "account_selection"),
+        AccountError::DestinationApprovalRequired =>
+            (StatusCode::UNAUTHORIZED, "account_destination_authorization_required", "account_selection"),
+        AccountError::RefreshFailed | AccountError::RefreshNotConfigured | AccountError::RefreshRateLimited =>
+            (StatusCode::SERVICE_UNAVAILABLE, "account_refresh_unavailable", "account_refresh"),
+        AccountError::StaleSelection | AccountError::RevisionConflict | AccountError::AlreadyDispatched =>
+            (StatusCode::CONFLICT, "account_selection_stale", "account_selection"),
+        _ => (StatusCode::SERVICE_UNAVAILABLE, "account_pool_unavailable", "account_selection"),
+    };
+    ProxyError::new(status, code, crate::request_diagnostics::failure_reason(code)).at_stage(stage)
+}
+
+fn admission_proxy_error(error: crate::governance::tasks::AdmissionError) -> ProxyError {
+    let (status, stage) = match error.code {
+        "request_build" => (StatusCode::BAD_REQUEST, "provider_configuration"),
+        "request_cancelled" => (StatusCode::REQUEST_TIMEOUT, "client_response"),
+        _ => (StatusCode::PAYMENT_REQUIRED, "budget"),
+    };
+    ProxyError::new(status, error.code, error.reason).at_stage(stage)
+}
+
+async fn select_proxy_account(pool: &AccountPool, context: &SelectionContext) -> Result<AccountSelection, ProxyError> {
+    match pool.select(context) {
+        Ok(selection) => Ok(selection),
+        Err(AccountError::NoEligibleAccount) => {
+            for candidate in pool.refresh_candidates(context).map_err(account_proxy_error)? {
+                match pool.refresh_if_needed(&candidate.id, &context.cancellation).await {
+                    Ok(_) => if let Ok(selection) = pool.select(context) { return Ok(selection); },
+                    Err(AccountError::Cancelled) => return Err(account_proxy_error(AccountError::Cancelled)),
+                    Err(_) => {}
+                }
+            }
+            pool.select(context).map_err(account_proxy_error)
+        }
+        Err(error) => Err(account_proxy_error(error)),
     }
+}
+
+fn account_pool_can_retry(pool: &AccountPool, provider_id: &str, model: &str) -> Result<bool, ProxyError> {
+    let policy = pool.policy(provider_id).map_err(account_proxy_error)?;
+    Ok(pool.list().map_err(account_proxy_error)?.iter().any(|account| {
+        account.provider_id == provider_id && account.kind != AccountKind::NativeManaged
+            && matches!(account.status, AccountStatus::Available | AccountStatus::RefreshRequired)
+            && (account.available_models.is_empty() || account.available_models.iter().any(|available| available == model))
+            && (policy.mode != SelectionMode::Fixed || policy.fixed_account_id.as_deref() == Some(account.id.as_str()))
+    }))
+}
+
+struct AccountDispatchGuard {
+    pool: AccountPool,
+    selection: AccountSelection,
+    finished: bool,
+}
+
+impl AccountDispatchGuard {
+    fn complete(&mut self, outcome: AccountOutcome) -> Result<(), ProxyError> {
+        self.pool.record_outcome(&self.selection, outcome).map_err(account_proxy_error)?;
+        self.finished = true;
+        Ok(())
+    }
+}
+
+impl Drop for AccountDispatchGuard {
+    fn drop(&mut self) {
+        if !self.finished {
+            let _ = self.pool.record_outcome(&self.selection, AccountOutcome {
+                kind: OutcomeKind::Cancelled, retry_after_seconds: None, quota: None,
+            });
+        }
+    }
+}
+
+fn response_privacy_error(code: &'static str) -> ProxyError {
+    let code = privacy::response_code(code);
+    ProxyError::new(StatusCode::BAD_GATEWAY, code, crate::request_diagnostics::failure_reason(code))
+        .at_stage("response_privacy")
+}
+
+async fn read_response_bounded(upstream: reqwest::Response) -> Result<Bytes, ProxyError> {
+    if upstream.content_length().is_some_and(|length| length > privacy::MAX_RESPONSE_BYTES as u64) {
+        return Err(response_privacy_error("privacy_scan_limit"));
+    }
+    let mut stream = upstream.bytes_stream();
+    let mut body = Vec::new();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|_| ProxyError::new(StatusCode::BAD_GATEWAY, "response_error", "The provider response could not be read."))?;
+        if chunk.len() > privacy::MAX_RESPONSE_BYTES.saturating_sub(body.len()) {
+            return Err(response_privacy_error("privacy_scan_limit"));
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(Bytes::from(body))
+}
+
+fn inspect_response_privacy(database: &Database, event_id: Option<i64>, context: &privacy::ResponsePrivacy, body: Value) -> Result<Value, ProxyError> {
+    finish_response_inspection(database, event_id, context.inspect(body).map_err(response_privacy_error))
+}
+
+fn finish_response_inspection(database: &Database, event_id: Option<i64>, checked: Result<privacy::PrivacyInspection, ProxyError>) -> Result<Value, ProxyError> {
+    let (report, blocked) = match &checked {
+        Ok(checked) => (checked.report.clone(), checked.blocked_code.map(privacy::response_code)),
+        Err(error) => (Default::default(), Some(error.code)),
+    };
+    database.update_response_privacy(event_id, &report, blocked)
+        .map_err(|_| response_privacy_error("privacy_scan_failed"))?;
+    let checked = checked?;
+    if let Some(code) = checked.blocked_code { return Err(response_privacy_error(code)); }
+    Ok(checked.redacted)
+}
+
+async fn buffered_failure(database: &Database, event_id: Option<i64>, context: &privacy::ResponsePrivacy, upstream: reqwest::Response) -> Result<Response, ProxyError> {
+    let status = upstream.status();
+    let request_id = upstream.headers().get("x-request-id").and_then(|value| context.safe_header(value));
+    let bytes = read_response_bounded(upstream).await.map_err(|error| {
+        if error.stage == Some("response_privacy") {
+            let _ = database.update_response_privacy(event_id, &Default::default(), Some(error.code));
+        }
+        error
+    })?;
+    let is_json = serde_json::from_slice::<Value>(&bytes).is_ok();
+    let body = serde_json::from_slice::<Value>(&bytes).unwrap_or_else(|_| Value::String(String::from_utf8_lossy(&bytes).into_owned()));
+    let protected = inspect_response_privacy(database, event_id, context, body)?;
+    let body = if is_json { serde_json::to_vec(&protected).map_err(|_| response_privacy_error("privacy_scan_failed"))? }
+        else { protected.as_str().unwrap_or_default().as_bytes().to_vec() };
+    let mut response = Response::builder().status(status).header(header::CONTENT_TYPE,
+        if is_json { "application/json" } else { "text/plain; charset=utf-8" });
     if let Some(request_id) = request_id {
         response = response.header("x-request-id", request_id);
     }
@@ -1176,21 +1323,26 @@ async fn finalize_upstream(
     shadow: Option<crate::shadow_audit_runtime::ShadowCapture>,
     upstream: reqwest::Response,
     tool_bridge: crate::tool_bridge::ToolBridge,
+    privacy_context: privacy::ResponsePrivacy,
 ) -> Result<Response, ProxyError> {
     let status = upstream.status();
     let mut observation = observation;
     if observation.verification_capture.as_ref().is_some_and(|c|c.store_diagnostic_ids) {
         observation.provider_request_id = ["x-request-id","request-id","x-goog-request-id"].iter()
-            .find_map(|key|upstream.headers().get(*key).and_then(|v|v.to_str().ok()).and_then(crate::model_verification::safe_id));
+            .find_map(|key|upstream.headers().get(*key).and_then(|value| privacy_context.safe_header(value))
+                .and_then(|value| value.to_str().ok().and_then(crate::model_verification::safe_id)));
     }
-    let request_id = upstream.headers().get("x-request-id").cloned();
+    let request_id = upstream.headers().get("x-request-id").and_then(|value| privacy_context.safe_header(value));
     let upstream_format = upstream_kind.audit_format();
+    if !status.is_success() {
+        return buffered_failure(&database, event_id, &privacy_context, upstream).await;
+    }
     if stream
         && status.is_success()
         && let Some((upstream_format, client_format)) = stream_formats(transform)
     {
         let transformed = streaming::transform_with_tools(
-            streaming::audit_capture::observe_stream_with_shadow(
+            streaming::audit_capture::observe_stream_with_privacy(
                 upstream.bytes_stream(),
                 upstream_format,
                 observation,
@@ -1199,6 +1351,7 @@ async fn finalize_upstream(
                 event_id,
                 started,
                 shadow,
+                Some(privacy_context.clone()),
             ),
             upstream_format,
             client_format,
@@ -1207,6 +1360,7 @@ async fn finalize_upstream(
             None,
             None,
         );
+        let protected = privacy::response_stream::protect(transformed, client_format, privacy_context, database, event_id);
         let mut response = Response::builder()
             .status(status)
             .header(header::CONTENT_TYPE, "text/event-stream")
@@ -1215,14 +1369,13 @@ async fn finalize_upstream(
             response = response.header("x-request-id", request_id);
         }
         return response
-            .body(Body::from_stream(transformed))
+            .body(Body::from_stream(protected))
             .map_err(|error| {
                 ProxyError::new(StatusCode::BAD_GATEWAY, "response_error", error.to_string())
             });
     }
     if !stream && status.is_success() {
-        let content_type = upstream.headers().get(header::CONTENT_TYPE).cloned();
-        let bytes = match upstream.bytes().await {
+        let bytes = match read_response_bounded(upstream).await {
             Ok(bytes) => bytes,
             Err(error) => {
                 persist_non_stream_usage(
@@ -1234,36 +1387,36 @@ async fn finalize_upstream(
                     observation,
                     shadow,
                 );
-                return Err(ProxyError::new(
-                    StatusCode::BAD_GATEWAY,
-                    "response_error",
-                    error.to_string(),
-                ));
+                if error.stage == Some("response_privacy") {
+                    database.update_response_privacy(event_id, &Default::default(), Some(error.code))
+                        .map_err(|_| response_privacy_error("privacy_scan_failed"))?;
+                }
+                return Err(error);
             }
         };
         match serde_json::from_slice::<Value>(&bytes) {
             Ok(upstream_body) => {
+                let checked = privacy_context.inspect(upstream_body).map_err(response_privacy_error);
                 persist_non_stream_usage(
                     &database,
                     event_id,
-                    &upstream_body,
+                    &checked.as_ref().map(|inspection| inspection.redacted.clone()).unwrap_or(Value::Null),
                     &model,
                     upstream_format,
                     observation,
                     shadow,
                 );
-                if transform != ResponseTransform::None {
-                    let mut body = transform_response(transform, upstream_body, &model);
-                    tool_bridge
-                        .restore_response(&mut body)
-                        .map_err(|error| ProxyError::new(StatusCode::BAD_GATEWAY, "response_conversion", error).at_stage("response_conversion"))?;
-                    let mut response = Json(body).into_response();
-                    *response.status_mut() = status;
-                    if let Some(request_id) = request_id {
-                        response.headers_mut().insert("x-request-id", request_id);
-                    }
-                    return Ok(response);
+                let upstream_body = finish_response_inspection(&database, event_id, checked)?;
+                let mut body = transform_response(transform, upstream_body, &model);
+                tool_bridge.restore_response(&mut body)
+                    .map_err(|error| ProxyError::new(StatusCode::BAD_GATEWAY, "response_conversion", error).at_stage("response_conversion"))?;
+                let body = inspect_response_privacy(&database, event_id, &privacy_context, body)?;
+                let mut response = Json(body).into_response();
+                *response.status_mut() = status;
+                if let Some(request_id) = request_id {
+                    response.headers_mut().insert("x-request-id", request_id);
                 }
+                return Ok(response);
             }
             Err(_) if transform != ResponseTransform::None => {
                 persist_non_stream_usage(
@@ -1303,33 +1456,37 @@ async fn finalize_upstream(
                 }
             }
         }
-        let mut response = Response::builder().status(status);
-        if let Some(content_type) = content_type {
-            response = response.header(header::CONTENT_TYPE, content_type);
-        }
+        let body = inspect_response_privacy(&database, event_id, &privacy_context,
+            Value::String(String::from_utf8_lossy(&bytes).into_owned()))?;
+        let mut response = Response::builder().status(status).header(header::CONTENT_TYPE, "text/plain; charset=utf-8");
         if let Some(request_id) = request_id {
             response = response.header("x-request-id", request_id);
         }
-        return response.body(Body::from(bytes)).map_err(|error| {
+        return response.body(Body::from(body.as_str().unwrap_or_default().to_owned())).map_err(|error| {
             ProxyError::new(StatusCode::BAD_GATEWAY, "response_error", error.to_string())
         });
     }
-    let content_type = upstream.headers().get(header::CONTENT_TYPE).cloned();
-    let stream = streaming::audit_capture::observe_stream_with_shadow(
+    let client_format = match upstream_format {
+        streaming::UpstreamFormat::OpenAi => streaming::ClientFormat::Chat,
+        streaming::UpstreamFormat::Responses => streaming::ClientFormat::Responses,
+        streaming::UpstreamFormat::Anthropic => streaming::ClientFormat::Anthropic,
+        streaming::UpstreamFormat::Gemini => streaming::ClientFormat::Gemini,
+    };
+    let stream = streaming::audit_capture::observe_stream_with_privacy(
         upstream.bytes_stream(),
         upstream_format,
         observation,
         model,
-        database,
+        database.clone(),
         event_id,
         started,
         shadow,
-    )
-    .map_err(|error| io::Error::other(error.to_string()));
-    let mut response = Response::builder().status(status);
-    if let Some(content_type) = content_type {
-        response = response.header(header::CONTENT_TYPE, content_type);
-    }
+        Some(privacy_context.clone()),
+    );
+    let stream = privacy::response_stream::protect(stream, client_format, privacy_context, database, event_id);
+    let mut response = Response::builder().status(status)
+        .header(header::CONTENT_TYPE, "text/event-stream")
+        .header(header::CACHE_CONTROL, "no-cache");
     if let Some(request_id) = request_id {
         response = response.header("x-request-id", request_id);
     }
@@ -1378,6 +1535,141 @@ async fn forward(
             Err(error)
         }
     }
+}
+
+fn inspect_request_privacy(
+    payload: Value,
+    settings: &privacy::PrivacySettings,
+    known_secrets: &[&str],
+    progress: &mut ForwardProgress,
+) -> Result<Value, ProxyError> {
+    progress.stage = "privacy";
+    let checked = privacy::inspect(payload, settings, known_secrets).map_err(privacy_error)?;
+    progress.diagnostics.privacy.get_or_insert_with(Default::default).merge(&checked.report);
+    if let Some(code) = checked.blocked_code { return Err(privacy_error(code)); }
+    Ok(checked.redacted)
+}
+
+fn privacy_error(code: &'static str) -> ProxyError {
+    let status = if matches!(code, "privacy_policy_unavailable" | "privacy_scan_failed") {
+        StatusCode::SERVICE_UNAVAILABLE
+    } else { StatusCode::UNPROCESSABLE_ENTITY };
+    ProxyError::new(status, code, crate::request_diagnostics::failure_reason(code)).at_stage("privacy")
+}
+
+struct AccountSendResult {
+    response: Result<reqwest::Response, reqwest::Error>,
+    secret: zeroize::Zeroizing<String>,
+    client_body: Bytes,
+    privacy_settings: privacy::PrivacySettings,
+}
+
+async fn dispatch_pooled_request(
+    state: &ProxyState,
+    pool: &AccountPool,
+    provider: &Provider,
+    prepared: &mut PreparedRequest,
+    client_payload: &Value,
+    privacy_settings: &privacy::PrivacySettings,
+    context: &crate::governance::tasks::Context,
+    source: &str,
+    progress: &mut ForwardProgress,
+) -> Result<AccountSendResult, ProxyError> {
+    progress.diagnostics.attempt_id = None;
+    let attempt = crate::governance::tasks::admit_prepared_attempt(
+        &state.database, context, provider, &mut prepared.payload,
+        prepared.audit.forwarded_model.as_deref().unwrap_or(&prepared.model),
+        prepared.upstream.shadow_protocol(), source,
+    ).map_err(|error| {
+        if error.code == "budget_rejected" {
+            let _ = crate::governance::event(&state.database, "budget_rejected", &error.reason);
+        }
+        admission_proxy_error(error)
+    })?;
+    progress.diagnostics.attempt_id = Some(attempt.id.clone());
+    let result = async {
+        progress.stage = "account_selection";
+        let account_context = SelectionContext {
+            provider_id: provider.id.clone(),
+            destination: Some(provider.endpoint.clone()),
+            http_only: true,
+            model: prepared.audit.forwarded_model.as_deref().unwrap_or(&prepared.model).to_owned(),
+            task_id: context.identity.id.clone(),
+            attempt_id: attempt.id.clone(),
+            affinity_key: Some(context.identity.id.clone()),
+            cancellation: context.signal.clone(),
+        };
+        let selection = select_proxy_account(pool, &account_context).await?;
+        let mut guard = AccountDispatchGuard { pool: pool.clone(), selection, finished: false };
+        progress.stage = "credentials";
+        let authorization = pool.prepare_authorization(&guard.selection, &account_context).map_err(account_proxy_error)?;
+        let (secret, oauth) = match authorization {
+            AccountAuthorization::ApiKey(secret) => (zeroize::Zeroizing::new(secret.expose().to_owned()), false),
+            AccountAuthorization::OAuth(secret) => (zeroize::Zeroizing::new(secret.expose().to_owned()), true),
+            AccountAuthorization::NativeManaged { .. } => return Err(ProxyError::new(
+                StatusCode::UNPROCESSABLE_ENTITY, "account_native_transport_required",
+                crate::request_diagnostics::failure_reason("account_native_transport_required"),
+            ).at_stage("account_selection")),
+        };
+        let mut client_body = Bytes::new();
+        let mut effective_privacy = privacy_settings.clone();
+        let expected_secret = secret.as_str();
+        let response = pool.dispatch_with_connection_on(
+            &guard.selection, &account_context, &context.connection,
+            |connection, latest| {
+                let request = (|| {
+                    let matches = match latest {
+                        AccountAuthorization::ApiKey(latest) => !oauth && latest.expose() == expected_secret,
+                        AccountAuthorization::OAuth(latest) => oauth && latest.expose() == expected_secret,
+                        AccountAuthorization::NativeManaged { .. } => false,
+                    };
+                    if !matches { return Err(account_proxy_error(AccountError::StaleSelection)); }
+                    let latest_privacy = privacy::load_on(connection).map_err(|_| privacy_error("privacy_policy_unavailable"))?;
+                    effective_privacy.redact_personal_information |= latest_privacy.redact_personal_information;
+                    effective_privacy.block_uninspected_attachments |= latest_privacy.block_uninspected_attachments;
+                    let protected_client = inspect_request_privacy(client_payload.clone(), &effective_privacy, &[expected_secret], progress)?;
+                    client_body = Bytes::from(serde_json::to_vec(&protected_client).map_err(|_| privacy_error("privacy_scan_failed"))?);
+                    prepared.payload = inspect_request_privacy(prepared.payload.clone(), &effective_privacy, &[expected_secret], progress)?;
+                    let transport = privacy::inspect_transport(
+                        &prepared.url, &provider.advanced.header_overrides, &provider.advanced.custom_user_agent,
+                        &effective_privacy, &[expected_secret],
+                    ).map_err(privacy_error)?;
+                    progress.diagnostics.privacy.get_or_insert_with(Default::default).merge(&transport.report);
+                    if let Some(code) = transport.blocked_code { return Err(privacy_error(code)); }
+                    progress.stage = "budget";
+                    crate::governance::tasks::validate_prepared_attempt_on(
+                        connection, context, provider, &attempt, &mut prepared.payload,
+                        prepared.audit.forwarded_model.as_deref().unwrap_or(&prepared.model),
+                    ).map_err(admission_proxy_error)?;
+                    request_builder_authorized(
+                        &state.client, provider, expected_secret, prepared.url.clone(), &prepared.payload, prepared.upstream, oauth,
+                    ).build().map_err(|_| ProxyError::new(StatusCode::BAD_REQUEST, "request_build",
+                        "The provider request configuration is invalid.").at_stage("provider_configuration"))
+                })();
+                async move {
+                    let request = request?;
+                    progress.stage = "upstream_send";
+                    progress.diagnostics.send_attempts += 1;
+                    Ok(state.client.execute(request).await)
+                }
+            },
+        ).await.map_err(account_proxy_error)??;
+        let outcome = match &response {
+            Ok(response) => AccountOutcome::from_http(response.status().as_u16(), response.headers()
+                .get(header::RETRY_AFTER).and_then(|value| value.to_str().ok()).and_then(|value| value.parse().ok())),
+            Err(_) => AccountOutcome { kind: OutcomeKind::TransientFailure, retry_after_seconds: None, quota: None },
+        };
+        guard.complete(outcome)?;
+        Ok(AccountSendResult { response, secret, client_body, privacy_settings: effective_privacy })
+    }.await;
+    if let Err(error) = &result {
+        crate::governance::tasks::finish_attempt(&state.database, &attempt.id,
+            if error.code == "request_cancelled" { "cancelled" } else { "local_error" },
+            None, Some(error.code),
+        ).map_err(|_| ProxyError::new(StatusCode::INTERNAL_SERVER_ERROR, "task_store_unavailable",
+            "The task attempt could not be updated."))?;
+    }
+    result
 }
 
 async fn forward_inner(
@@ -1433,6 +1725,17 @@ async fn forward_inner(
         (Bytes::from(bytes), Some(model.to_owned()))
     } else { (body, None) };
 
+    progress.stage = "privacy";
+    let privacy_settings = privacy::load(&state.database).map_err(|_| privacy_error("privacy_policy_unavailable"))?;
+    let source: Value = serde_json::from_slice(&body).map_err(|_| {
+        ProxyError::new(StatusCode::BAD_REQUEST, "invalid_json", "Request body must be a JSON object.").at_stage("request_conversion")
+    })?;
+    if !source.is_object() {
+        return Err(ProxyError::new(StatusCode::BAD_REQUEST, "invalid_json", "Request body must be a JSON object.").at_stage("request_conversion"));
+    }
+    let client_payload = inspect_request_privacy(source, &privacy_settings, &[], progress)?;
+    progress.base_privacy = progress.diagnostics.privacy.clone();
+
     progress.stage = "provider_selection";
     let mut candidates: Vec<Provider> = state
         .database
@@ -1448,7 +1751,7 @@ async fn forward_inner(
     let mut last_failure = None;
     let mut last_error = None;
     let mut first_local_error = None;
-    for (provider_index, provider) in candidates.into_iter().enumerate() {
+    'providers: for (provider_index, provider) in candidates.into_iter().enumerate() {
         progress.begin_provider(&provider.id);
         if let (Some(local), Ok(endpoint_url)) =
             (state.local_addr, reqwest::Url::parse(&provider.endpoint))
@@ -1497,22 +1800,28 @@ async fn forward_inner(
             continue;
         }
         progress.stage = "credentials";
-        let Some(api_key) = state.api_keys.get(&provider.id).map_err(|error| {
-            ProxyError::new(StatusCode::INTERNAL_SERVER_ERROR, "credential_error", error)
-        })?
-        else {
-            let error = ProxyError::new(StatusCode::UNAUTHORIZED, "api_key_missing",
-                "The provider has no API key configured.");
-            progress.record_error(&state.database, protocol, &error);
-            first_local_error.get_or_insert(error);
-            continue;
+        let account_pool = match state.api_keys.account_pool() {
+            Some(pool) if pool.is_configured(&provider.id).map_err(account_proxy_error)? => Some(pool),
+            _ => None,
         };
-        let api_key = zeroize::Zeroizing::new(api_key);
-        let client_shadow =
-            state
-                .database
-                .shadow
-                .begin_capture(&provider.id, protocol.shadow_protocol(), &body);
+        let mut api_key = if account_pool.is_some() {
+            zeroize::Zeroizing::new(String::new())
+        } else {
+            let Some(api_key) = state.api_keys.get(&provider.id).map_err(|error| {
+                ProxyError::new(StatusCode::INTERNAL_SERVER_ERROR, "credential_error", error)
+            })? else {
+                let error = ProxyError::new(StatusCode::UNAUTHORIZED, "api_key_missing",
+                    "The provider has no API key configured.");
+                progress.record_error(&state.database, protocol, &error);
+                first_local_error.get_or_insert(error);
+                continue;
+            };
+            zeroize::Zeroizing::new(api_key)
+        };
+        let candidate_payload = inspect_request_privacy(client_payload.clone(), &privacy_settings, &[api_key.as_str()], progress)?;
+        let mut body = Bytes::from(serde_json::to_vec(&candidate_payload).map_err(|_| privacy_error("privacy_scan_failed"))?);
+        let mut response_settings = privacy_settings.clone();
+        let mut account_secrets: Vec<zeroize::Zeroizing<String>> = Vec::new();
         let mut route_provider = provider.clone();
         progress.stage = "request_conversion";
         if diagnostic.is_some() {
@@ -1526,12 +1835,22 @@ async fn forward_inner(
             route_provider.advanced.body_overrides.clear();
         }
         let mut prepared = prepare_upstream_request(&route_provider, protocol, &body)?;
+        prepared.payload = inspect_request_privacy(prepared.payload, &privacy_settings, &[api_key.as_str()], progress)?;
+        let transport = privacy::inspect_transport(&prepared.url, &route_provider.advanced.header_overrides,
+            &route_provider.advanced.custom_user_agent, &privacy_settings, &[api_key.as_str()]).map_err(privacy_error)?;
+        progress.diagnostics.privacy.get_or_insert_with(Default::default).merge(&transport.report);
+        if let Some(code) = transport.blocked_code { return Err(privacy_error(code)); }
+        let client_shadow = if account_pool.is_none() {
+            state.database.shadow.begin_capture(&provider.id, protocol.shadow_protocol(), &body)
+        } else { None };
         if requested_model.is_some() {
             prepared.audit.requested_model = requested_model.clone();
         }
-        prepared.audit.verification_capture = state.database.verification.capture(
-            &provider, &api_key, prepared.upstream.shadow_protocol(),
-            prepared.audit.requested_model.as_deref().unwrap_or(&provider.model));
+        prepared.audit.verification_capture = if account_pool.is_none() {
+            state.database.verification.capture(
+                &provider, &api_key, prepared.upstream.shadow_protocol(),
+                prepared.audit.requested_model.as_deref().unwrap_or(&provider.model))
+        } else { None };
         if diagnostic.is_some() {
             // Acceptance is exactly one attempt, not a trigger for another paid probe.
             prepared.audit.verification_capture = None;
@@ -1550,31 +1869,40 @@ async fn forward_inner(
                 )
             })
         });
-        progress.stage = "tool_bridge";
-        let tool_bridge = if protocol == ClientProtocol::Responses
-            && matches!(
-                prepared.transform,
-                ResponseTransform::ChatToResponses
-                    | ResponseTransform::AnthropicToResponses
-                    | ResponseTransform::GeminiToResponses
-            )
-        {
-            crate::tool_bridge::ToolBridge::from_request(
-                &serde_json::from_slice::<Value>(&body)
-                    .map_err(|e| adapter_error(e.to_string()))?,
-            )
-            .map_err(adapter_error)?
-        } else {
-            crate::tool_bridge::ToolBridge::default()
-        };
         let mut retry_count = 0usize;
         loop {
             progress.stage = "budget";
             let context = progress.task_context.clone().ok_or_else(|| ProxyError::new(
                 StatusCode::INTERNAL_SERVER_ERROR, "task_state_unavailable", "Task context is unavailable."))?;
             let started = Instant::now();
-            let mut dispatch: Option<Pin<Box<dyn Future<Output = Result<reqwest::Response, reqwest::Error>> + Send>>> = None;
-            let result = futures_util::future::poll_fn(|poll_context| {
+            let result = if let Some(pool) = account_pool {
+                match dispatch_pooled_request(
+                    state, pool, &route_provider, &mut prepared, &client_payload,
+                    &response_settings, &context, if diagnostic.is_some() { "synthetic" } else { "proxy" }, progress,
+                ).await {
+                    Ok(sent) => {
+                        api_key = sent.secret;
+                        body = sent.client_body;
+                        response_settings = sent.privacy_settings;
+                        account_secrets.push(zeroize::Zeroizing::new(api_key.as_str().to_owned()));
+                        shadow = state.database.shadow.begin_capture(&provider.id, protocol.shadow_protocol(), &body)
+                            .and_then(|client| prepared.audit.forwarded_model.as_deref().and_then(|model| {
+                                state.database.shadow.capture(client, &provider.id, model,
+                                    prepared.audit.requested_model.as_deref(), prepared.url.as_str(),
+                                    prepared.upstream.shadow_protocol(), &prepared.payload)
+                            }));
+                        sent.response
+                    }
+                    Err(error) if matches!(error.stage, Some("account_selection" | "account_refresh" | "credentials")) => {
+                        progress.record_error(&state.database, protocol, &error);
+                        first_local_error.get_or_insert(error);
+                        continue 'providers;
+                    }
+                    Err(error) => return Err(error),
+                }
+            } else {
+                let mut dispatch: Option<Pin<Box<dyn Future<Output = Result<reqwest::Response, reqwest::Error>> + Send>>> = None;
+                futures_util::future::poll_fn(|poll_context| {
                 if let Some(dispatch) = dispatch.as_mut() {
                     return dispatch.as_mut().poll(poll_context).map(Ok);
                 }
@@ -1607,7 +1935,21 @@ async fn forward_inner(
                     _ => (StatusCode::PAYMENT_REQUIRED, "budget"),
                 };
                 ProxyError::new(status, error.code, error.reason).at_stage(stage)
-            })?;
+                })?
+            };
+            let tool_bridge = if result.is_ok() && protocol == ClientProtocol::Responses
+                && matches!(prepared.transform, ResponseTransform::ChatToResponses
+                    | ResponseTransform::AnthropicToResponses | ResponseTransform::GeminiToResponses)
+            {
+                progress.stage = "tool_bridge";
+                crate::tool_bridge::ToolBridge::from_request(
+                    &serde_json::from_slice::<Value>(&body).map_err(|error| adapter_error(error.to_string()))?,
+                ).map_err(adapter_error)?
+            } else { crate::tool_bridge::ToolBridge::default() };
+            let secrets: Vec<&str> = if account_pool.is_some() {
+                account_secrets.iter().map(|secret| secret.as_str()).collect()
+            } else { vec![api_key.as_str()] };
+            let response_privacy = privacy::ResponsePrivacy::new(response_settings.clone(), &secrets);
             prepared.audit.max_tokens = if prepared.payload["n"].as_u64().unwrap_or(1) > 1 { None } else {
                 prepared.payload.get("max_completion_tokens").or_else(|| prepared.payload.get("max_tokens"))
                     .or_else(|| prepared.payload.get("max_output_tokens"))
@@ -1630,7 +1972,13 @@ async fn forward_inner(
                     }
                     progress.diagnostics.upstream_response_received = true;
                     progress.diagnostics.attempts.push(RequestAttempt { status_code: Some(status.as_u16()), error_kind: (!status.is_success()).then(|| "upstream_status".to_owned()) });
-                    if is_retryable(status) && retry_count < 2 && diagnostic.is_none() {
+                    let retryable = is_retryable(status) || (account_pool.is_some()
+                        && matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN));
+                    let can_retry = retryable && retry_count < 2 && diagnostic.is_none()
+                        && account_pool.map(|pool| account_pool_can_retry(pool, &provider.id,
+                            prepared.audit.forwarded_model.as_deref().unwrap_or(&prepared.model)))
+                            .transpose()?.unwrap_or(true);
+                    if can_retry {
                         retry_count += 1;
                         #[cfg(test)]
                         state.database.tasks.pause_retry().await;
@@ -1670,6 +2018,7 @@ async fn forward_inner(
                             shadow,
                             upstream,
                             tool_bridge.clone(),
+                            response_privacy.clone(),
                         )
                         .await;
                     }
@@ -1695,11 +2044,13 @@ async fn forward_inner(
                             shadow,
                             upstream,
                             tool_bridge.clone(),
+                            response_privacy.clone(),
                         )
                         .await;
                     }
                     progress.stage = "response_read";
-                    last_failure = Some(buffered_failure(upstream).await?);
+                    last_failure = Some(buffered_failure(&state.database, progress.event_id,
+                        &response_privacy, upstream).await?);
                     progress.stage = "upstream_http";
                     break;
                 }
@@ -1710,7 +2061,11 @@ async fn forward_inner(
                             .map_err(|failure| ProxyError::new(StatusCode::INTERNAL_SERVER_ERROR, "task_store_unavailable", failure))?;
                     }
                     progress.diagnostics.attempts.push(RequestAttempt { status_code: None, error_kind: Some(error_kind.to_owned()) });
-                    if retry_count < 2 && diagnostic.is_none() {
+                    let can_retry = retry_count < 2 && diagnostic.is_none()
+                        && account_pool.map(|pool| account_pool_can_retry(pool, &provider.id,
+                            prepared.audit.forwarded_model.as_deref().unwrap_or(&prepared.model)))
+                            .transpose()?.unwrap_or(true);
+                    if can_retry {
                         retry_count += 1;
                         #[cfg(test)]
                         state.database.tasks.pause_retry().await;
@@ -2556,7 +2911,7 @@ mod tests {
                 return Response::builder()
                     .status(StatusCode::OK)
                     .header(header::CONTENT_TYPE, "text/event-stream")
-                    .body(Body::from("data: {\"ok\":true}\n\n"))
+                    .body(Body::from("data: {\"ok\":true}\n\ndata: [DONE]\n\n"))
                     .unwrap();
             }
             (
@@ -2647,7 +3002,7 @@ mod tests {
                 .unwrap(),
             "text/event-stream"
         );
-        assert_eq!(stream.text().await.unwrap(), "data: {\"ok\":true}\n\n");
+        assert_eq!(stream.text().await.unwrap(), "data: {\"ok\":true}\n\ndata: [DONE]\n\n");
 
         proxy_task.abort();
         mock_task.abort();

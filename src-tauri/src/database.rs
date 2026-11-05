@@ -468,7 +468,7 @@ impl Database {
     }
 
     pub fn open(path: &Path) -> Result<Self, String> {
-        let connection = Connection::open(path).map_err(|error| error.to_string())?;
+        let mut connection = Connection::open(path).map_err(|error| error.to_string())?;
         connection
             .execute_batch("PRAGMA foreign_keys = ON;")
             .map_err(|error| error.to_string())?;
@@ -478,6 +478,20 @@ impl Database {
         connection
             .execute_batch(MIGRATION)
             .map_err(|error| error.to_string())?;
+        let mcp_state_schema: String = connection
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='mcp_app_states'",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|error| error.to_string())?;
+        if !mcp_state_schema.contains("'claude-desktop'") {
+            let transaction = connection.transaction().map_err(|error| error.to_string())?;
+            transaction
+                .execute_batch(include_str!("../migrations/002_mcp_desktop.sql"))
+                .map_err(|error| error.to_string())?;
+            transaction.commit().map_err(|error| error.to_string())?;
+        }
         let has_advanced = connection
             .prepare("PRAGMA table_info(providers)")
             .and_then(|mut statement| {
@@ -1110,6 +1124,73 @@ impl Database {
 #[cfg(test)]
 mod tests {
     use super::{Database, Prompt, Provider, RequestEvent};
+
+    fn assert_mcp_state_constraints(database: &Database) {
+        assert!(database.set_mcp_app_enabled("memory", "unsupported", true).is_err());
+        assert!(database.set_mcp_app_enabled("missing-server", "claude-desktop", true).is_err());
+        let connection = database.connection.lock().unwrap();
+        assert!(connection.execute(
+            "INSERT INTO mcp_app_states(server_id,app,enabled) VALUES('memory','claude-desktop',0)",
+            [],
+        ).is_err());
+        connection.execute("DELETE FROM mcp_servers WHERE id='memory'", []).unwrap();
+        let remaining: i64 = connection.query_row(
+            "SELECT COUNT(*) FROM mcp_app_states WHERE server_id='memory'", [], |row| row.get(0),
+        ).unwrap();
+        assert_eq!(remaining, 0);
+    }
+
+    #[test]
+    fn fresh_mcp_states_support_desktop_and_keep_database_constraints() {
+        let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+        for app in ["claude", "codex", "gemini", "opencode", "claude-desktop"] {
+            database.set_mcp_app_enabled("memory", app, true).unwrap();
+        }
+        let states = database.mcp_app_states("memory").unwrap();
+        assert_eq!(states.len(), 5);
+        assert!(states.values().all(|enabled| *enabled));
+        assert_mcp_state_constraints(&database);
+    }
+
+    #[test]
+    fn migrates_legacy_mcp_states_preserving_selections_and_timestamps_on_reopen() {
+        let path = std::env::temp_dir().join(format!("xy-switch-mcp-migration-{}.db", uuid::Uuid::new_v4()));
+        let connection = rusqlite::Connection::open(&path).unwrap();
+        let legacy_schema = super::MIGRATION.replace("'opencode','claude-desktop'", "'opencode'");
+        connection.execute_batch(&legacy_schema).unwrap();
+        let expected = vec![
+            ("claude".to_string(), 1_i64, "2026-10-01 01:02:03".to_string()),
+            ("codex".to_string(), 0_i64, "2026-10-02 02:03:04".to_string()),
+            ("gemini".to_string(), 1_i64, "2026-10-03 03:04:05".to_string()),
+            ("opencode".to_string(), 0_i64, "2026-10-04 04:05:06".to_string()),
+        ];
+        for (app, enabled, updated_at) in &expected {
+            connection.execute(
+                "INSERT INTO mcp_app_states(server_id,app,enabled,updated_at) VALUES('memory',?1,?2,?3)",
+                rusqlite::params![app, enabled, updated_at],
+            ).unwrap();
+        }
+        drop(connection);
+        for reopen in 0..2 {
+            let database = Database::open(&path).unwrap();
+            let preserved = {
+                let connection = database.connection.lock().unwrap();
+                let mut statement = connection.prepare(
+                    "SELECT app,enabled,updated_at FROM mcp_app_states WHERE server_id='memory' AND app!='claude-desktop' ORDER BY app",
+                ).unwrap();
+                statement.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, String>(2)?)))
+                    .unwrap().collect::<Result<Vec<_>, _>>().unwrap()
+            };
+            assert_eq!(preserved, expected);
+            if reopen == 0 {
+                database.set_mcp_app_enabled("memory", "claude-desktop", true).unwrap();
+            } else {
+                assert_eq!(database.mcp_app_states("memory").unwrap().get("claude-desktop"), Some(&true));
+                assert_mcp_state_constraints(&database);
+            }
+        }
+        std::fs::remove_file(path).unwrap();
+    }
 
     #[test]
     fn seeds_and_switches_current_provider() {

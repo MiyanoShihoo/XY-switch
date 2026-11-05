@@ -702,30 +702,32 @@ mod diagnostics_http_regressions {
                 chat_payload(true)
             };
             let sent = fixture.request(route).json(&payload).send().await;
-            if route == "/v1/responses" {
-                let failed = match sent {
-                    Err(error) => error.is_request(),
-                    Ok(response) => {
-                        assert_eq!(response.status(), StatusCode::OK);
-                        response.bytes().await.is_err()
+            match sent {
+                Err(error) => assert!(error.is_request()),
+                Ok(response) => {
+                    assert_eq!(response.status(), StatusCode::OK);
+                    let mut chunks = response.bytes_stream();
+                    let mut delivered = Vec::new();
+                    let mut failed = false;
+                    while let Some(chunk) = chunks.next().await {
+                        match chunk {
+                            Ok(bytes) => delivered.extend_from_slice(&bytes),
+                            Err(_) => { failed = true; break; }
+                        }
                     }
-                };
-                assert!(
-                    failed,
-                    "a converted stream without a finish event must fail"
-                );
-            } else {
-                let response = sent.unwrap();
-                assert_eq!(response.status(), StatusCode::OK);
-                assert!(response.text().await.unwrap().contains("partial"));
+                    assert!(failed, "a stream without a finish event must fail");
+                    assert!(!String::from_utf8_lossy(&delivered).contains("partial"));
+                }
             }
             let logs = fixture.logs();
             assert_eq!(logs.len(), 1);
             assert_eq!(logs[0].status_code, 200);
             assert!(!logs[0].success);
             let diagnostic = logs[0].diagnostics.as_ref().unwrap();
-            assert_eq!(diagnostic.failure_stage.as_deref(), Some("response_stream"));
-            assert_eq!(logs[0].error_message.as_deref(), Some("stream_interrupted"));
+            let expected = if route == "/v1/responses" { ("response_stream", "stream_interrupted") }
+                else { ("response_privacy", "privacy_response_scan_failed") };
+            assert_eq!(diagnostic.failure_stage.as_deref(), Some(expected.0));
+            assert_eq!(logs[0].error_message.as_deref(), Some(expected.1));
             assert_eq!(
                 diagnostic.send_attempts as usize,
                 upstream.calls.load(Ordering::SeqCst)

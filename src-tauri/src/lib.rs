@@ -1,12 +1,20 @@
 #[cfg(test)]
 mod acl_regression_tests;
+mod accounts;
 mod adapters;
+mod backup_crypto;
+mod cancellation;
 mod commands;
+mod client_config;
+mod clients;
 mod credential_store;
 mod database;
 mod governance;
 mod encrypted_sync;
 mod mcp;
+pub mod marketplace;
+mod marketplace_transport;
+pub mod plugins;
 mod model_audit;
 mod model_pricing;
 mod model_audit_commands;
@@ -14,7 +22,9 @@ mod model_verification;
 mod network;
 mod response_model_probe;
 mod preferences;
+mod privacy;
 mod interface_language;
+mod jsonc;
 mod platform;
 mod proxy;
 mod proxy_connection;
@@ -26,6 +36,7 @@ mod session_usage_codex;
 mod session_usage_harness;
 mod shadow_audit_commands;
 mod shadow_audit_runtime;
+mod shared_mcp;
 mod skills_local;
 mod streaming;
 mod takeover;
@@ -128,6 +139,20 @@ fn open_external_url(app: tauri::AppHandle, url: String) -> Result<(), String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let arguments: Vec<_> = std::env::args_os().skip(1).collect();
+    if arguments.first().is_some_and(|argument| argument == "--shared-mcp-stdio") {
+        let result = arguments.get(1).and_then(|argument| argument.to_str())
+            .filter(|_| arguments.len() == 2)
+            .ok_or("shared_mcp_arguments")
+            .and_then(|id| tokio::runtime::Builder::new_multi_thread().enable_all().build()
+                .map_err(|_| "shared_mcp_runtime")
+                .and_then(|runtime| runtime.block_on(shared_mcp::run_stdio_bridge(id))));
+        if result.is_err() {
+            eprintln!("XY Switch shared MCP bridge failed.");
+            std::process::exit(2);
+        }
+        return;
+    }
     let builder = tauri::Builder::default();
     #[cfg(target_os = "android")]
     let builder = builder.plugin(tauri_plugin_xy_credentials::init());
@@ -182,22 +207,55 @@ pub fn run() {
                 codex_home_override
             };
             let codex_home = takeover::resolve_codex_home(&home_dir, codex_home_override)?;
+            let client_settings = clients::ClientManager::settings(&database)?;
+            let client_path_overrides = (std::env::var_os("OPENCODE_CONFIG"), std::env::var_os("XDG_CONFIG_HOME"));
+            #[cfg(debug_assertions)]
+            let client_path_overrides = if debug_path_override("XY_SWITCH_TEST_HOME_DIR").is_some() { (None, None) } else { client_path_overrides };
+            let client_targets = client_config::ClientTargets::resolve(
+                &home_dir,
+                &client_settings,
+                client_path_overrides.0,
+                client_path_overrides.1,
+            );
+            let client_config_locks = client_config::ClientConfigLocks::default();
             let mcp_manager = mcp::McpManager::new(database.clone(), home_dir.clone())
-                .with_codex_home(codex_home.clone());
+                .with_codex_home(codex_home.clone())
+                .with_client_targets(client_targets.clone())
+                .with_config_locks(client_config_locks.clone());
             let takeover_manager = takeover::AppTakeoverManager::new(
                 database.clone(),
                 proxy_manager.clone(),
                 home_dir.clone(),
-                data_dir,
-            ).with_codex_home(codex_home);
+                data_dir.clone(),
+            ).with_codex_home(codex_home.clone())
+                .with_client_targets(client_targets.clone())
+                .with_config_locks(client_config_locks);
             #[cfg(desktop)]
             takeover_manager.recover_on_startup();
+            let account_pool = accounts::AccountPool::new(database.clone())?;
+            let client_manager = clients::ClientManager::new(
+                database.clone(), home_dir.clone(), codex_home, client_targets, client_settings,
+                takeover_manager.clone(), account_pool.clone(),
+            )?;
+            let plugin_manager = plugins::PluginManager::new(database.clone(), data_dir.join("plugins-v1"))?;
+            let shared_mcp_manager = shared_mcp::SharedMcpManager::new(database.clone(), plugin_manager.clone())?;
+            let shared_mcp_startup = shared_mcp_manager.clone();
+            tauri::async_runtime::spawn(async move {
+                if shared_mcp_startup.start_saved().await.is_err() {
+                    tracing::warn!("shared MCP startup failed; check the local sharing settings");
+                }
+            });
             governance::monitor::start(database.clone(), proxy_manager.clone());
             app.manage(governance::mounts::MountManager::default());
             app.manage(encrypted_sync::SyncManager::default());
             app.manage(proxy_manager);
             app.manage(takeover_manager);
             app.manage(mcp_manager);
+            app.manage(client_manager);
+            app.manage(account_pool);
+            app.manage(plugin_manager);
+            app.manage(shared_mcp_manager);
+            app.manage(marketplace_transport::MarketplaceTransport::new()?);
             // 开机自启拉起时只驻留托盘：不显示主窗口，也不占任务栏。
             // tray::show_main_window 会在唤回时把 skip_taskbar 复位，
             // 所以这里可以放心把它设成 true。
@@ -237,6 +295,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             app_version,
+            marketplace_transport::marketplace_begin_request,
+            marketplace_transport::marketplace_request,
+            marketplace_transport::marketplace_cancel_request,
             governance::access::get_access_policy,
             governance::access::save_access_policy,
             governance::access::create_access_token,
@@ -280,6 +341,9 @@ pub fn run() {
             interface_language::set_interface_language,
             preferences::get_app_preferences,
             preferences::save_app_preferences,
+            privacy::get_privacy_settings,
+            privacy::save_privacy_settings,
+            privacy::preview_privacy,
             preferences::get_autostart_enabled,
             preferences::set_autostart_enabled,
             usage::sync_local_usage,
@@ -325,6 +389,55 @@ pub fn run() {
             commands::proxy::set_proxy_enabled,
             commands::takeover::list_app_takeovers,
             commands::takeover::set_app_takeover_enabled,
+            clients::list_client_connections,
+            clients::get_client_settings,
+            clients::save_client_settings,
+            clients::read_client_account,
+            clients::bind_native_account,
+            clients::refresh_native_account,
+            clients::start_client_login,
+            clients::list_client_login_methods,
+            clients::start_opencode_client_login,
+            clients::complete_client_login,
+            clients::disconnect_client_provider,
+            clients::poll_client_login,
+            clients::cancel_client_login,
+            clients::logout_client_account,
+            accounts::list_accounts,
+            accounts::add_account,
+            accounts::update_account,
+            accounts::replace_account_credentials,
+            accounts::choose_account_import,
+            accounts::import_account,
+            accounts::get_account_policy,
+            accounts::save_account_policy,
+            accounts::refresh_account,
+            accounts::revoke_account,
+            plugins::commands::plugins_validate_package,
+            plugins::commands::plugins_preview_trusted_key,
+            plugins::commands::plugins_configure_trusted_key,
+            plugins::commands::plugins_list_trusted_keys,
+            plugins::commands::plugins_revoke_trusted_key,
+            plugins::commands::plugins_preview_install,
+            plugins::commands::plugins_preview_installed,
+            plugins::commands::plugins_confirm_install,
+            plugins::commands::plugins_list_installed,
+            plugins::commands::plugins_disable,
+            plugins::commands::plugins_enable_client,
+            plugins::commands::plugins_uninstall,
+            plugins::commands::plugins_preview_rollback,
+            plugins::commands::plugins_apply_withdrawal,
+            plugins::commands::plugins_tools,
+            plugins::commands::plugins_skills,
+            plugins::commands::plugins_provider_mappings,
+            plugins::commands::plugins_preview_tool,
+            plugins::commands::plugins_execute_tool,
+            shared_mcp::commands::shared_mcp_status,
+            shared_mcp::commands::shared_mcp_set_enabled,
+            shared_mcp::commands::shared_mcp_register,
+            shared_mcp::commands::shared_mcp_revoke,
+            shared_mcp::commands::shared_mcp_pending,
+            shared_mcp::commands::shared_mcp_decide,
             commands::mcp::list_mcp_servers,
             commands::mcp::list_mcp_apps,
             commands::mcp::save_mcp_server,
@@ -358,12 +471,16 @@ pub fn run() {
         .expect("failed to build XY Switch")
         .run(|app, event| {
             if matches!(event, tauri::RunEvent::ExitRequested { .. }) {
+                app.state::<marketplace_transport::MarketplaceTransport>().cancel_all();
+                let shared_mcp = app.state::<shared_mcp::SharedMcpManager>().inner().clone();
+                tauri::async_runtime::block_on(shared_mcp.stop());
+                app.state::<clients::ClientManager>().stop_owned_driver();
                 let takeover = app.state::<takeover::AppTakeoverManager>().inner().clone();
                 let proxy = app.state::<proxy_manager::ProxyManager>().inner().clone();
                 // 退出顺序：先把被接管的应用配置还原回用户原始内容，再释放监听端口。
                 // 还原失败只能记录日志——不能因此提前 return，否则代理端口会一直被占用，
                 // 下次启动会因端口冲突起不来。
-                if let Err(error) = takeover.disable_all() {
+                if takeover.has_active() && let Err(error) = takeover.disable_all() {
                     tracing::error!(%error, "failed to restore application configs during shutdown");
                 }
                 // 这里不能再调用 sync_all_active_apps：那会在刚刚还原好的配置上

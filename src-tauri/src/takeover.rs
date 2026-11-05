@@ -37,16 +37,20 @@ enum ManagedApp {
     Claude,
     Codex,
     Gemini,
+    OpenCode,
+    ClaudeDesktop,
 }
 
 impl ManagedApp {
-    const ALL: [Self; 3] = [Self::Claude, Self::Codex, Self::Gemini];
+    const ALL: [Self; 5] = [Self::Claude, Self::Codex, Self::Gemini, Self::OpenCode, Self::ClaudeDesktop];
 
     fn parse(value: &str) -> Result<Self, String> {
         match value.to_ascii_lowercase().as_str() {
-            "claude" => Ok(Self::Claude),
-            "codex" => Ok(Self::Codex),
+            "claude" | "claude-code" => Ok(Self::Claude),
+            "codex" | "codex-cli" | "codex-desktop" => Ok(Self::Codex),
             "gemini" => Ok(Self::Gemini),
+            "opencode" | "opencode-desktop" | "opencode-cli" => Ok(Self::OpenCode),
+            "claude-desktop-3p" => Ok(Self::ClaudeDesktop),
             _ => Err(format!("不支持的应用：{value}")),
         }
     }
@@ -56,6 +60,8 @@ impl ManagedApp {
             Self::Claude => "claude",
             Self::Codex => "codex",
             Self::Gemini => "gemini",
+            Self::OpenCode => "opencode",
+            Self::ClaudeDesktop => "claude-desktop-3p",
         }
     }
 
@@ -64,6 +70,8 @@ impl ManagedApp {
             Self::Claude => "Claude Code",
             Self::Codex => "Codex",
             Self::Gemini => "Gemini CLI",
+            Self::OpenCode => "OpenCode",
+            Self::ClaudeDesktop => "Claude Desktop 3P",
         }
     }
 }
@@ -80,6 +88,8 @@ struct BackupMetadata {
     target_path: String,
     existed: bool,
     managed_sha256: Option<String>,
+    #[serde(default)]
+    backup_version: Option<u8>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -99,9 +109,17 @@ pub struct AppTakeoverManager {
     proxy: ProxyManager,
     home_dir: PathBuf,
     codex_dir: PathBuf,
+    client_targets: crate::client_config::ClientTargets,
     backup_dir: PathBuf,
+    backup_cipher: crate::backup_crypto::BackupCipher,
     operation_lock: Arc<Mutex<()>>,
+    config_locks: crate::client_config::ClientConfigLocks,
     recovery_errors: Arc<Mutex<HashMap<String, String>>>,
+}
+
+pub(crate) struct InactiveConfigGuard<'a> {
+    _operation: std::sync::MutexGuard<'a, ()>,
+    _configs: crate::client_config::ClientConfigLease,
 }
 
 impl AppTakeoverManager {
@@ -115,9 +133,12 @@ impl AppTakeoverManager {
             database,
             proxy,
             codex_dir: home_dir.join(".codex"),
+            client_targets: crate::client_config::ClientTargets::for_home(&home_dir),
             home_dir,
             backup_dir: app_data_dir.join("takeover-backups"),
+            backup_cipher: crate::backup_crypto::BackupCipher::new(&app_data_dir),
             operation_lock: Arc::new(Mutex::new(())),
+            config_locks: crate::client_config::ClientConfigLocks::default(),
             recovery_errors: Arc::new(Mutex::new(HashMap::new())),
         }
     }
@@ -125,6 +146,36 @@ impl AppTakeoverManager {
     pub fn with_codex_home(mut self, directory: PathBuf) -> Self {
         self.codex_dir = directory;
         self
+    }
+
+    pub fn with_client_targets(mut self, targets: crate::client_config::ClientTargets) -> Self {
+        self.client_targets = targets;
+        self
+    }
+
+    pub fn with_config_locks(mut self, locks: crate::client_config::ClientConfigLocks) -> Self {
+        self.config_locks = locks;
+        self
+    }
+
+    pub(crate) fn native_config_guard(&self, app: &str) -> Result<crate::client_config::ClientConfigLease, String> {
+        let app = ManagedApp::parse(app)?;
+        let lease = self.config_locks.acquire(app.id())?;
+        let _guard = self.operation_lock.lock().map_err(|_| "客户端配置操作锁不可用")?;
+        if self.is_active(app) { return Err("请先恢复客户端共用配置，再进行原生账号操作".into()); }
+        Ok(lease)
+    }
+
+    pub fn config_group_active(&self, app: &str) -> Result<bool, String> {
+        Ok(self.is_active(ManagedApp::parse(app)?))
+    }
+
+    pub(crate) fn client_paths_changed(&self) -> Result<(), String> {
+        self.config_locks.require_restart()
+    }
+
+    pub(crate) fn client_paths_pending(&self) -> bool {
+        self.config_locks.restart_pending()
     }
 
     fn files(&self, app: ManagedApp) -> Vec<ConfigFile> {
@@ -169,6 +220,16 @@ impl AppTakeoverManager {
                     path: self.home_dir.join(".gemini").join("settings.json"),
                 },
             ],
+            ManagedApp::OpenCode => vec![ConfigFile {
+                id: "opencode-config",
+                path: self.client_targets.opencode.as_ref().map(|target| target.path.clone())
+                    .unwrap_or_else(|_| self.home_dir.join(".config/opencode/opencode.json")),
+            }],
+            ManagedApp::ClaudeDesktop => vec![ConfigFile {
+                id: "claude-desktop-profile",
+                path: self.client_targets.claude_desktop_profile.clone()
+                    .unwrap_or_else(|| self.client_targets.claude_desktop_library.join("xy-switch.json")),
+            }],
         }
     }
 
@@ -191,11 +252,17 @@ impl AppTakeoverManager {
         let installed = files
             .iter()
             .any(|file| file.path.exists() || file.path.parent().is_some_and(Path::exists));
-        let last_error = self
+        let mut last_error = self
             .recovery_errors
             .lock()
             .ok()
             .and_then(|errors| errors.get(app.id()).cloned());
+        if last_error.is_none() && app == ManagedApp::OpenCode {
+            last_error = self.client_targets.opencode.as_ref().err().cloned();
+        }
+        if last_error.is_none() && app == ManagedApp::ClaudeDesktop && self.client_targets.claude_desktop_profile.is_none() {
+            last_error = Some("请在客户端接入页选择 Claude Desktop 中已保存的 3P 配置".into());
+        }
         AppTakeoverStatus {
             app: app.id().to_string(),
             label: app.label().to_string(),
@@ -216,10 +283,11 @@ impl AppTakeoverManager {
             .collect()
     }
 
-    pub(crate) fn inactive_guard(&self) -> Result<std::sync::MutexGuard<'_, ()>, String> {
+    pub(crate) fn inactive_guard(&self) -> Result<InactiveConfigGuard<'_>, String> {
+        let configs = self.config_locks.acquire("*")?;
         let guard = self.operation_lock.lock().map_err(|_| "Takeover operation lock unavailable")?;
         if self.has_active() { return Err("Restore all application takeovers first".into()); }
-        Ok(guard)
+        Ok(InactiveConfigGuard { _operation: guard, _configs: configs })
     }
 
     pub fn has_active(&self) -> bool {
@@ -243,6 +311,7 @@ impl AppTakeoverManager {
         provider: &Provider,
         proxy_address: Option<&str>,
     ) -> Result<(), String> {
+        let _configs = self.config_locks.acquire("codex")?;
         let _guard = self
             .operation_lock
             .lock()
@@ -361,7 +430,7 @@ impl AppTakeoverManager {
             for (index, file) in &pending_backups {
                 let prepared = (|| {
                     if let Some(bytes) = originals[*index].as_ref() {
-                        atomic_write(&self.content_backup_path(file), bytes)?;
+                        self.write_content_backup(file, bytes)?;
                     }
                     self.write_metadata(
                         file,
@@ -369,6 +438,7 @@ impl AppTakeoverManager {
                             target_path: file.path.display().to_string(),
                             existed: originals[*index].is_some(),
                             managed_sha256: None,
+                            backup_version: Some(1),
                         },
                     )
                 })();
@@ -415,6 +485,7 @@ impl AppTakeoverManager {
     }
 
     pub fn sync_all_active_apps(&self, proxy_address: Option<&str>) -> Result<(), String> {
+        let _configs = self.config_locks.acquire("*")?;
         if !self.has_active() {
             return Ok(());
         }
@@ -442,7 +513,7 @@ impl AppTakeoverManager {
                 .iter()
                 .map(|f| read_optional(&f.path))
                 .collect::<Result<Vec<_>, _>>()?;
-            let managed = crate::governance::access::replace_managed(&self.database, build_managed_files(app, &files, &current, address, provider)?)?;
+            let managed = crate::governance::access::replace_managed(&self.database, build_managed_files(app, &files, &current, address, provider, self.client_targets.opencode.as_ref().ok().and_then(|target| target.schema))?)?;
             for ((file, before), bytes) in files.into_iter().zip(current).zip(managed) {
                 let metadata_bytes = fs::read(self.metadata_path(&file))
                     .map_err(|e| format!("{} 接管备份不完整：{e}", app.label()))?;
@@ -498,6 +569,7 @@ impl AppTakeoverManager {
         enabled: bool,
     ) -> Result<AppTakeoverStatus, String> {
         let app = ManagedApp::parse(app_name)?;
+        let _configs = self.config_locks.acquire(app.id())?;
         let _proxy_guard = self.proxy.configuration_guard().await;
         let proxy_status = self.proxy.status().await?;
         if enabled && !proxy_status.running {
@@ -525,6 +597,7 @@ impl AppTakeoverManager {
     }
 
     pub fn disable_all(&self) -> Result<(), String> {
+        let _configs = self.config_locks.acquire("*")?;
         let _guard = self
             .operation_lock
             .lock()
@@ -561,6 +634,13 @@ impl AppTakeoverManager {
     }
 
     fn enable_locked(&self, app: ManagedApp, proxy_address: &str) -> Result<(), String> {
+        if app == ManagedApp::OpenCode { self.client_targets.opencode.as_ref().map_err(Clone::clone)?; }
+        if app == ManagedApp::ClaudeDesktop {
+            let profile = self.client_targets.claude_desktop_profile.as_ref().ok_or("请先选择 Claude Desktop 已保存的 3P 配置，并在原生应用中激活它")?;
+            crate::client_config::ClientTargets::validate_settings(&self.home_dir, &crate::client_config::ClientSettings {
+                claude_desktop_profile: Some(profile.clone()), ..Default::default()
+            })?;
+        }
         if self.is_active(app) {
             if self.is_committed(app)? {
                 return Ok(());
@@ -576,14 +656,14 @@ impl AppTakeoverManager {
             .iter()
             .map(|file| read_optional(&file.path))
             .collect::<Result<Vec<_>, _>>()?;
-        let managed = crate::governance::access::replace_managed(&self.database, build_managed_files(app, &files, &originals, proxy_address, &provider)?)?;
+        let managed = crate::governance::access::replace_managed(&self.database, build_managed_files(app, &files, &originals, proxy_address, &provider, self.client_targets.opencode.as_ref().ok().and_then(|target| target.schema))?)?;
 
         fs::create_dir_all(&self.backup_dir)
             .map_err(|error| format!("创建接管备份目录失败：{error}"))?;
         for (file, original) in files.iter().zip(&originals) {
             let prepared = (|| {
                 if let Some(bytes) = original {
-                    atomic_write(&self.content_backup_path(file), bytes)?;
+                    self.write_content_backup(file, bytes)?;
                 }
                 self.write_metadata(
                     file,
@@ -591,6 +671,7 @@ impl AppTakeoverManager {
                         target_path: file.path.display().to_string(),
                         existed: original.is_some(),
                         managed_sha256: None,
+                        backup_version: Some(1),
                     },
                 )
             })();
@@ -611,6 +692,7 @@ impl AppTakeoverManager {
                     target_path: file.path.display().to_string(),
                     existed: originals[index].is_some(),
                     managed_sha256: Some(sha256(bytes)),
+                    backup_version: Some(1),
                 },
             ) {
                 let rollback = self.restore_files(&files, false);
@@ -649,6 +731,28 @@ impl AppTakeoverManager {
         atomic_write(&self.metadata_path(file), &bytes)
     }
 
+    fn backup_context(file: &ConfigFile, target: &str) -> Result<Vec<u8>, String> {
+        serde_json::to_vec(&(file.id, target)).map_err(|_| "无法编码备份保护范围".into())
+    }
+
+    fn write_content_backup(&self, file: &ConfigFile, content: &[u8]) -> Result<(), String> {
+        let context = Self::backup_context(file, &file.path.display().to_string())?;
+        let encrypted = self.backup_cipher.seal(content, &context)?;
+        atomic_write(&self.content_backup_path(file), &encrypted)
+    }
+
+    fn validated_restore_target(&self, file: &ConfigFile, target: &str) -> Result<PathBuf, String> {
+        let path = PathBuf::from(target);
+        let permitted = path == file.path || (file.id == "claude-settings"
+            && ["settings.json", "claude.json"].iter().any(|name| path == self.home_dir.join(".claude").join(name)));
+        if !permitted || !path.is_absolute()
+            || path.components().any(|part| matches!(part, std::path::Component::ParentDir | std::path::Component::CurDir)) {
+            return Err("备份目标与当前授权的客户端路径不一致，已保留备份，请恢复原客户端路径设置".into());
+        }
+        crate::client_config::regular_file(&path)?;
+        Ok(path)
+    }
+
     fn disable_locked(&self, app: ManagedApp) -> Result<(), String> {
         self.restore_files(&self.files(app), true)
     }
@@ -672,12 +776,30 @@ impl AppTakeoverManager {
         if !metadata_path.exists() {
             return Ok(());
         }
-        let metadata: BackupMetadata = serde_json::from_slice(
+        crate::client_config::regular_file(&metadata_path)?;
+        let mut metadata: BackupMetadata = serde_json::from_slice(
             &fs::read(&metadata_path)
                 .map_err(|error| format!("读取 {} 备份信息失败：{error}", file.path.display()))?,
         )
         .map_err(|error| format!("解析 {} 备份信息失败：{error}", file.path.display()))?;
-        let target_path = PathBuf::from(&metadata.target_path);
+        let target_path = self.validated_restore_target(file, &metadata.target_path)?;
+        let backup_path = self.content_backup_path(file);
+        let original = if metadata.existed {
+            let bytes = zeroize::Zeroizing::new(crate::backup_crypto::BackupCipher::read(&backup_path)?);
+            let context = Self::backup_context(file, &metadata.target_path)?;
+            match metadata.backup_version {
+                Some(1) => Some(self.backup_cipher.open(&bytes, &context)?),
+                Some(_) => return Err("客户端备份保护版本不受支持，已保留备份".into()),
+                None => {
+                    let original = if crate::backup_crypto::BackupCipher::encrypted(&bytes) { self.backup_cipher.open(&bytes, &context)? } else { bytes };
+                    let encrypted = self.backup_cipher.seal(&original, &context)?;
+                    atomic_write(&backup_path, &encrypted)?;
+                    metadata.backup_version = Some(1);
+                    self.write_metadata(file, &metadata)?;
+                    Some(original)
+                }
+            }
+        } else { None };
         if verify_owner && let Some(expected) = metadata.managed_sha256.as_deref() {
             let current = read_optional(&target_path)?;
             if current.as_deref().map(sha256).as_deref() != Some(expected) {
@@ -687,10 +809,7 @@ impl AppTakeoverManager {
                 ));
             }
         }
-        let backup_path = self.content_backup_path(file);
-        if metadata.existed {
-            let original = fs::read(&backup_path)
-                .map_err(|error| format!("读取 {} 原始备份失败：{error}", target_path.display()))?;
+        if let Some(original) = original {
             atomic_write(&target_path, &original)?;
         } else if target_path.exists() {
             fs::remove_file(&target_path).map_err(|error| {
@@ -715,6 +834,7 @@ fn with_rollback_error(error: String, rollback: Result<(), String>) -> String {
 }
 
 fn read_optional(path: &Path) -> Result<Option<Vec<u8>>, String> {
+    crate::client_config::regular_file(path)?;
     match fs::read(path) {
         Ok(bytes) => Ok(Some(bytes)),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
@@ -728,6 +848,7 @@ fn build_managed_files(
     originals: &[Option<Vec<u8>>],
     proxy_address: &str,
     provider: &Provider,
+    opencode_schema: Option<crate::client_config::OpenCodeSchema>,
 ) -> Result<Vec<Vec<u8>>, String> {
     files
         .iter()
@@ -756,9 +877,15 @@ fn build_managed_files(
                 ),
                 (ManagedApp::Codex, "codex-auth") => managed_codex_auth(&text, provider),
                 (ManagedApp::Gemini, "gemini-env") => {
-                    Ok(managed_gemini_env(&text, proxy_address).into_bytes())
+                    managed_gemini_env(&text, proxy_address, &provider.model).map(String::into_bytes)
                 }
                 (ManagedApp::Gemini, "gemini-settings") => managed_gemini_settings(&text),
+                (ManagedApp::OpenCode, "opencode-config") => crate::client_config::managed_opencode(
+                    &text, opencode_schema, proxy_address, &provider.model, PROXY_TOKEN_PLACEHOLDER,
+                ),
+                (ManagedApp::ClaudeDesktop, "claude-desktop-profile") => crate::client_config::managed_claude_desktop(
+                    &text, proxy_address, PROXY_TOKEN_PLACEHOLDER,
+                ),
                 _ => Err("未知的应用接管配置文件".to_string()),
             }
         })
@@ -1064,12 +1191,20 @@ fn managed_codex_auth_internal(text: &str, token: &str) -> Result<Vec<u8>, Strin
     json_bytes(&root, "Codex auth")
 }
 
-fn managed_gemini_env(text: &str, proxy_address: &str) -> String {
+fn managed_gemini_env(text: &str, proxy_address: &str, model: &str) -> Result<String, String> {
+    if model.is_empty()
+        || !model
+            .bytes()
+            .all(|character| character.is_ascii_alphanumeric() || b"-._/:@".contains(&character))
+    {
+        return Err("Gemini 模型必须是非空标识符，仅支持 ASCII 字母、数字及 -._/:@".to_string());
+    }
     let newline = if text.contains("\r\n") { "\r\n" } else { "\n" };
     let trailing_newline = text.ends_with('\n');
     let replacements = [
         ("GOOGLE_GEMINI_BASE_URL", proxy_address),
         ("GEMINI_API_KEY", PROXY_TOKEN_PLACEHOLDER),
+        ("GEMINI_MODEL", model),
     ];
     let mut replaced = HashMap::new();
     let mut lines = Vec::new();
@@ -1100,7 +1235,7 @@ fn managed_gemini_env(text: &str, proxy_address: &str) -> String {
     if trailing_newline || text.is_empty() {
         result.push_str(newline);
     }
-    result
+    Ok(result)
 }
 
 fn managed_gemini_settings(text: &str) -> Result<Vec<u8>, String> {
@@ -1153,10 +1288,14 @@ pub(crate) fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
         uuid::Uuid::new_v4()
     ));
     let result = (|| {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&temp)
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let mut file = options.open(&temp)
             .map_err(|error| format!("创建临时文件 {} 失败：{error}", temp.display()))?;
         file.write_all(bytes)
             .and_then(|_| file.sync_all())
@@ -1213,6 +1352,75 @@ mod tests {
 
     fn temp_root() -> PathBuf {
         std::env::temp_dir().join(format!("xy-switch-takeover-{}", uuid::Uuid::new_v4()))
+    }
+
+    fn isolated_backup_manager(root: &Path) -> AppTakeoverManager {
+        let database = Database::open(Path::new(":memory:")).unwrap();
+        AppTakeoverManager::new(database.clone(), ProxyManager::new(database), root.join("home"), root.join("data"))
+    }
+
+    #[test]
+    fn legacy_plaintext_backup_is_encrypted_before_external_change_is_reported() {
+        let root = temp_root();
+        let manager = isolated_backup_manager(&root);
+        let file = manager.files(ManagedApp::Codex).remove(1);
+        atomic_write(&file.path, b"external-edit").unwrap();
+        atomic_write(&manager.content_backup_path(&file), b"synthetic-original-secret").unwrap();
+        manager.write_metadata(&file, &BackupMetadata {
+            target_path: file.path.display().to_string(), existed: true,
+            managed_sha256: Some(sha256(b"managed")), backup_version: None,
+        }).unwrap();
+        assert!(manager.restore_file(&file, true).is_err());
+        assert_eq!(fs::read(&file.path).unwrap(), b"external-edit");
+        let protected = fs::read(manager.content_backup_path(&file)).unwrap();
+        assert!(crate::backup_crypto::BackupCipher::encrypted(&protected));
+        assert!(!String::from_utf8_lossy(&protected).contains("synthetic-original-secret"));
+        atomic_write(&file.path, b"managed").unwrap();
+        manager.restore_file(&file, true).unwrap();
+        assert_eq!(fs::read(&file.path).unwrap(), b"synthetic-original-secret");
+        assert!(!manager.metadata_path(&file).exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn corrupt_encrypted_backup_never_overwrites_managed_file() {
+        let root = temp_root();
+        let manager = isolated_backup_manager(&root);
+        let file = manager.files(ManagedApp::Codex).remove(1);
+        atomic_write(&file.path, b"managed").unwrap();
+        manager.write_content_backup(&file, b"synthetic-original-secret").unwrap();
+        manager.write_metadata(&file, &BackupMetadata {
+            target_path: file.path.display().to_string(), existed: true,
+            managed_sha256: Some(sha256(b"managed")), backup_version: Some(1),
+        }).unwrap();
+        let mut bytes = fs::read(manager.content_backup_path(&file)).unwrap();
+        *bytes.last_mut().unwrap() ^= 1;
+        atomic_write(&manager.content_backup_path(&file), &bytes).unwrap();
+        assert!(manager.restore_file(&file, true).is_err());
+        assert_eq!(fs::read(&file.path).unwrap(), b"managed");
+        assert!(manager.metadata_path(&file).exists());
+        assert!(manager.content_backup_path(&file).exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn tampered_backup_target_cannot_delete_an_unrelated_file() {
+        let root = temp_root();
+        let manager = isolated_backup_manager(&root);
+        let file = manager.files(ManagedApp::Codex).remove(1);
+        let unrelated = root.join("unrelated.json");
+        atomic_write(&unrelated, b"preserve-this-file").unwrap();
+        manager.write_metadata(&file, &BackupMetadata {
+            target_path: unrelated.display().to_string(), existed: false,
+            managed_sha256: None, backup_version: None,
+        }).unwrap();
+        assert!(manager.restore_file(&file, false).is_err());
+        assert_eq!(fs::read(&unrelated).unwrap(), b"preserve-this-file");
+        assert!(manager.metadata_path(&file).exists());
+        let legacy = manager.home_dir.join(".claude/claude.json");
+        let claude = manager.files(ManagedApp::Claude).remove(0);
+        assert!(manager.validated_restore_target(&claude, &legacy.display().to_string()).is_ok());
+        fs::remove_dir_all(root).unwrap();
     }
 
     fn catalog_provider(upstream_format: &str, endpoint: &str) -> Provider {
@@ -1416,10 +1624,13 @@ mod tests {
         let env = managed_gemini_env(
             "# keep\r\nOTHER=value\r\nGEMINI_API_KEY=old\r\nGEMINI_API_KEY=duplicate\r\n",
             "http://127.0.0.1:15721",
-        );
+            &provider.model,
+        )
+        .unwrap();
         assert!(env.contains("# keep\r\nOTHER=value"));
         assert_eq!(env.matches("GEMINI_API_KEY=").count(), 1);
         assert!(env.contains("GOOGLE_GEMINI_BASE_URL=http://127.0.0.1:15721"));
+        assert!(env.contains("GEMINI_MODEL=configured-model\r\n"));
 
         let settings: Value = serde_json::from_slice(
             &managed_gemini_settings(r#"{"other":true,"security":{"keep":1}}"#).unwrap(),
@@ -1431,6 +1642,179 @@ mod tests {
             settings["security"]["auth"]["selectedType"],
             "gemini-api-key"
         );
+    }
+
+    #[test]
+    fn gemini_selected_model_preserves_env_layout_and_deduplicates_managed_keys() {
+        let original = concat!(
+            "  # GEMINI_MODEL=commented-out\n",
+            "OTHER=\"value # keep\"  # note\n",
+            "\n",
+            " GEMINI_MODEL = old\n",
+            "GEMINI_API_KEY=old\n",
+            "GEMINI_MODEL=duplicate\n",
+            " GOOGLE_GEMINI_BASE_URL = old\n",
+            "GEMINI_API_KEY=duplicate\n",
+            "GOOGLE_GEMINI_BASE_URL=duplicate\n",
+            "TAIL=yes",
+        );
+        let expected = concat!(
+            "  # GEMINI_MODEL=commented-out\n",
+            "OTHER=\"value # keep\"  # note\n",
+            "\n",
+            "GEMINI_MODEL=models/gemini-selected:001@stable\n",
+            "GEMINI_API_KEY=XY_SWITCH_MANAGED\n",
+            "GOOGLE_GEMINI_BASE_URL=http://127.0.0.1:15721\n",
+            "TAIL=yes",
+        );
+        for newline in ["\n", "\r\n"] {
+            for ending in ["", "\n", "\n\n"] {
+                let input = format!("{original}{ending}").replace('\n', newline);
+                let expected = format!("{expected}{ending}").replace('\n', newline);
+                let managed = managed_gemini_env(
+                    &input,
+                    "http://127.0.0.1:15721",
+                    "models/gemini-selected:001@stable",
+                )
+                .unwrap();
+                assert_eq!(managed, expected);
+                assert_eq!(
+                    managed_gemini_env(
+                        &managed,
+                        "http://127.0.0.1:15721",
+                        "models/gemini-selected:001@stable",
+                    )
+                    .unwrap(),
+                    managed,
+                );
+            }
+        }
+        assert_eq!(
+            managed_gemini_env("", "http://127.0.0.1:15721", "gemini-selected").unwrap(),
+            concat!(
+                "GOOGLE_GEMINI_BASE_URL=http://127.0.0.1:15721\n",
+                "GEMINI_API_KEY=XY_SWITCH_MANAGED\n",
+                "GEMINI_MODEL=gemini-selected\n",
+            ),
+        );
+    }
+
+    #[test]
+    fn gemini_invalid_model_never_writes_configs_or_backups() {
+        let root = temp_root();
+        fs::create_dir_all(&root).unwrap();
+        let root = root.canonicalize().unwrap();
+        let temporary_directory = std::env::temp_dir().canonicalize().unwrap();
+        assert_eq!(root.parent(), Some(temporary_directory.as_path()));
+        let manager = isolated_backup_manager(&root);
+        let files = manager.files(ManagedApp::Gemini);
+        let original_env = b"OTHER=keep\r\n";
+        let original_settings = br#"{"security":{"auth":{"selectedType":"oauth-personal"}}}"#;
+        atomic_write(&files[0].path, original_env).unwrap();
+        atomic_write(&files[1].path, original_settings).unwrap();
+        let mut provider = catalog_provider("openai_chat", "https://example.invalid");
+        provider.app_group = "Gemini".to_string();
+        for model in [
+            "",
+            " ",
+            "\t",
+            " gemini-selected",
+            "gemini-selected ",
+            "gemini selected",
+            "gemini\tselected",
+            "gemini-selected\nGEMINI_API_KEY=injected",
+            "gemini-selected\rOTHER=injected",
+            "gemini-selected\r\nOTHER=injected",
+            "gemini-selected\0",
+            "gemini-selected#truncated",
+            concat!("$", "{OTHER}"),
+            "\"gemini-selected\"",
+            "'gemini-selected'",
+            "gemini-selected\\",
+            "gemini-selected;OTHER=injected",
+            "模型",
+        ] {
+            provider.model = model.to_string();
+            manager.database.save_provider(&provider).unwrap();
+            manager.database.set_current_provider(&provider.id).unwrap();
+            assert!(manager.enable_locked(ManagedApp::Gemini, "http://127.0.0.1:15721").is_err());
+            assert_eq!(fs::read(&files[0].path).unwrap(), original_env);
+            assert_eq!(fs::read(&files[1].path).unwrap(), original_settings);
+            assert!(!manager.backup_dir.exists());
+            assert!(!manager.is_active(ManagedApp::Gemini));
+        }
+        drop(manager);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn gemini_takeover_syncs_models_and_restores_exact_originals() {
+        let root = temp_root();
+        fs::create_dir_all(&root).unwrap();
+        let root = root.canonicalize().unwrap();
+        let temporary_directory = std::env::temp_dir().canonicalize().unwrap();
+        assert_eq!(root.parent(), Some(temporary_directory.as_path()));
+        let manager = isolated_backup_manager(&root);
+        let files = manager.files(ManagedApp::Gemini);
+        let original_env = b"# saved\r\nGEMINI_MODEL=original\r\nGEMINI_MODEL=duplicate\r\nGEMINI_API_KEY=synthetic-original\r\nOTHER=keep\r\n";
+        let original_settings = b"{\r\n  \"model\": {\"name\": \"settings-default\"},\r\n  \"security\": {\"auth\": {\"selectedType\": \"oauth-personal\"}},\r\n  \"other\": true\r\n}";
+        atomic_write(&files[0].path, original_env).unwrap();
+        atomic_write(&files[1].path, original_settings).unwrap();
+        let mut provider = catalog_provider("openai_chat", "https://example.invalid");
+        provider.app_group = "Gemini".to_string();
+        provider.model = "gemini-selected".to_string();
+        manager.database.save_provider(&provider).unwrap();
+        manager.database.set_current_provider(&provider.id).unwrap();
+        manager.enable_locked(ManagedApp::Gemini, "http://127.0.0.1:15721").unwrap();
+        let expected_env = concat!(
+            "# saved\r\n",
+            "GEMINI_MODEL=gemini-selected\r\n",
+            "GEMINI_API_KEY=XY_SWITCH_MANAGED\r\n",
+            "OTHER=keep\r\n",
+            "GOOGLE_GEMINI_BASE_URL=http://127.0.0.1:15721\r\n",
+        );
+        assert_eq!(fs::read_to_string(&files[0].path).unwrap(), expected_env);
+        let managed_settings = fs::read(&files[1].path).unwrap();
+        let settings: Value = serde_json::from_slice(&managed_settings).unwrap();
+        assert_eq!(settings["model"]["name"], "settings-default");
+        assert_eq!(settings["security"]["auth"]["selectedType"], "gemini-api-key");
+        assert_eq!(settings["other"], true);
+        let backups = files
+            .iter()
+            .map(|file| fs::read(manager.content_backup_path(file)).unwrap())
+            .collect::<Vec<_>>();
+
+        provider.id = "gemini-second-provider".to_string();
+        provider.model = "models/gemini-next".to_string();
+        manager.database.save_provider(&provider).unwrap();
+        manager.database.set_current_provider(&provider.id).unwrap();
+        manager.sync_all_active_apps(Some("http://127.0.0.1:15721")).unwrap();
+        let updated_env = expected_env.replace("gemini-selected", "models/gemini-next");
+        assert_eq!(fs::read_to_string(&files[0].path).unwrap(), updated_env);
+        assert_eq!(fs::read(&files[1].path).unwrap(), managed_settings);
+        let metadata = files
+            .iter()
+            .map(|file| fs::read(manager.metadata_path(file)).unwrap())
+            .collect::<Vec<_>>();
+        provider.model = "gemini-next\nOTHER=injected".to_string();
+        assert!(manager.sync_active_with_provider(&provider, "http://127.0.0.1:15721").is_err());
+        assert_eq!(fs::read_to_string(&files[0].path).unwrap(), updated_env);
+        assert_eq!(fs::read(&files[1].path).unwrap(), managed_settings);
+        for (index, file) in files.iter().enumerate() {
+            assert_eq!(fs::read(manager.content_backup_path(file)).unwrap(), backups[index]);
+            assert_eq!(fs::read(manager.metadata_path(file)).unwrap(), metadata[index]);
+        }
+
+        manager.disable_locked(ManagedApp::Gemini).unwrap();
+        assert_eq!(fs::read(&files[0].path).unwrap(), original_env);
+        assert_eq!(fs::read(&files[1].path).unwrap(), original_settings);
+        assert!(!manager.is_active(ManagedApp::Gemini));
+        for file in &files {
+            assert!(!manager.content_backup_path(file).exists());
+            assert!(!manager.metadata_path(file).exists());
+        }
+        drop(manager);
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[tokio::test]

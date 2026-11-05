@@ -243,7 +243,7 @@ impl ToolBridge {
         Ok(())
     }
     pub(crate) fn restore_response(&self, response: &mut Value) -> Result<(), String> {
-        if let Some(items) = response["output"].as_array_mut() {
+        if let Some(items) = response.get_mut("output").and_then(Value::as_array_mut) {
             for item in items {
                 self.restore_item(item)?;
             }
@@ -284,6 +284,15 @@ impl ToolBridge {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn restoring_a_chat_response_never_adds_responses_fields() {
+        let bridge = ToolBridge::default();
+        let original = json!({"choices":[{"message":{"role":"assistant","content":"ordinary reply"}}]});
+        let mut response = original.clone();
+        bridge.restore_response(&mut response).unwrap();
+        assert_eq!(response, original);
+        assert!(response.get("output").is_none());
+    }
     #[test]
     fn namespace_and_custom_tool_round_trip_preserves_identity_and_raw_input() {
         let request = json!({"input":[{"type":"custom_tool_call","namespace":"files","name":"patch","call_id":"c1","input":"line\n\"中文\""},{"type":"custom_tool_call_output","call_id":"c1","output":"ok"}],"tools":[{"type":"namespace","name":"files","tools":[{"type":"custom","name":"patch","description":"Edit files","format":{"type":"text"}},{"type":"function","name":"read","parameters":{"type":"object"}}]}],"tool_choice":{"type":"custom","namespace":"files","name":"patch"}});

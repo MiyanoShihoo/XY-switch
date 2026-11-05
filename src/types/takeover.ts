@@ -1,4 +1,4 @@
-export type ManagedApp = "claude" | "codex" | "gemini";
+export type ManagedApp = "claude" | "codex" | "gemini" | "opencode" | "claude-desktop-3p";
 
 export interface AppTakeoverStatus {
   app: ManagedApp;

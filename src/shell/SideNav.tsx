@@ -1,10 +1,14 @@
 import { useEffect, useRef } from "react";
 import { useLanguage, t } from "../i18n/language";
-import { Activity, BookOpen, Box, Cable, Network, Settings, ShieldCheck, Sparkles, WandSparkles } from "lucide-react";
+import { Activity, BookOpen, Box, Cable, LogIn, Network, Puzzle, Settings, ShieldCheck, Sparkles, Store, Users, WandSparkles } from "lucide-react";
 import type { AppView } from "./AppShell";
 export const navigationSections = ["工作区", "观测", "管理"] as const;
 export const navigation = [
   { view: "providers", label: "供应商", icon: Box, section: "工作区" },
+  { view: "clients", label: "客户端接入", icon: LogIn, section: "工作区" },
+  { view: "accounts", label: "账号池", icon: Users, section: "工作区" },
+  { view: "plugins", label: "本地插件", icon: Puzzle, section: "工作区" },
+  { view: "marketplace", label: "插件市场", icon: Store, section: "工作区" },
   { view: "mcp", label: "MCP 服务器", icon: Network, section: "工作区" },
   { view: "prompts", label: "提示词", icon: Sparkles, section: "工作区" },
   { view: "skills", label: "Skills", icon: WandSparkles, section: "工作区" },

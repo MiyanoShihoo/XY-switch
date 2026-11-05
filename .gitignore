@@ -5,6 +5,7 @@ src-tauri/target/
 # Node modules
 node_modules/
 .pnpm-store/
+.cache/
 dist/
 
 # Logs & temp files

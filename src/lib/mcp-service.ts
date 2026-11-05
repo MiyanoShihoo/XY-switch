@@ -1,6 +1,7 @@
 import { t } from "../i18n/language";
 import { invoke } from "@tauri-apps/api/core";
 import type { McpApp, McpAppStatus, McpImportResult, McpServer } from "../types/mcp";
+import { requireUserManagedMcpServer } from "./mcp-validation";
 
 const previewServers: McpServer[] = [
   {
@@ -13,17 +14,18 @@ const previewServers: McpServer[] = [
     url: null,
     env: {},
     headers: {},
-    apps: { claude: false, codex: false, gemini: false, opencode: false },
+    apps: { claude: false, codex: false, gemini: false, opencode: false, "claude-desktop": false },
     builtIn: true,
     secretsConfigured: false,
   },
 ];
 
 const previewApps: McpAppStatus[] = [
-  { app: "claude", label: "Claude Code", installed: true, configPath: "~/.claude.json" },
-  { app: "codex", label: "Codex", installed: true, configPath: "~/.codex/config.toml" },
-  { app: "gemini", label: "Gemini CLI", installed: true, configPath: "~/.gemini/settings.json" },
-  { app: "opencode", label: "OpenCode", installed: false, configPath: "~/.config/opencode/opencode.json" },
+  { app: "claude", label: "Claude Code", installed: false, configPath: "~/.claude.json", lastError: null },
+  { app: "codex", label: "Codex", installed: false, configPath: "~/.codex/config.toml", lastError: null },
+  { app: "gemini", label: "Gemini CLI", installed: false, configPath: "~/.gemini/settings.json", lastError: null },
+  { app: "opencode", label: "OpenCode", installed: false, configPath: "~/.config/opencode/opencode.json", lastError: null },
+  { app: "claude-desktop", label: "Claude Desktop", installed: false, configPath: "Claude/claude_desktop_config.json", lastError: null },
 ];
 
 function isDesktopRuntime(): boolean {
@@ -41,11 +43,13 @@ export async function loadMcpApps(): Promise<McpAppStatus[]> {
 }
 
 export async function saveMcpServer(server: McpServer): Promise<McpServer> {
+  requireUserManagedMcpServer(server.id);
   if (!isDesktopRuntime()) throw new Error(t("浏览器预览模式不能修改 MCP 配置"));
   return invoke<McpServer>("save_mcp_server", { server });
 }
 
 export async function deleteMcpServer(id: string): Promise<void> {
+  requireUserManagedMcpServer(id);
   if (!isDesktopRuntime()) throw new Error(t("浏览器预览模式不能删除 MCP 配置"));
   await invoke("delete_mcp_server", { id });
 }
@@ -55,6 +59,7 @@ export async function setMcpAppEnabled(
   app: McpApp,
   enabled: boolean,
 ): Promise<McpServer> {
+  requireUserManagedMcpServer(serverId);
   if (!isDesktopRuntime()) throw new Error(t("浏览器预览模式不能同步 MCP 配置"));
   return invoke<McpServer>("set_mcp_app_enabled", { serverId, app, enabled });
 }

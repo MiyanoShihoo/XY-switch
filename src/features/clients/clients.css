@@ -1,0 +1,29 @@
+.client-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.client-card { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.client-card__heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.client-card h2, .client-settings h2 { margin: 0; font-size: 16px; }
+.client-card p { margin: 0; line-height: 1.6; font-size: 13px; }
+.client-details { margin: 0; display: grid; gap: 7px; font-size: 12px; }
+.client-details > div { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 12px; }
+.client-details dt { color: var(--text-secondary); }
+.client-details dd { margin: 0; overflow-wrap: anywhere; }
+.client-config-path { display: block; white-space: pre-wrap; overflow-wrap: anywhere; }
+.client-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; }
+.client-account, .client-login { display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+.client-login { padding: 12px; border: 1px solid var(--border); border-radius: 8px; }
+.client-login code { font-size: 20px; letter-spacing: 2px; }
+.client-login a { display: inline-flex; align-items: center; gap: 4px; }
+.client-login__instructions { white-space: pre-wrap; overflow-wrap: anywhere; }
+.client-login-form, .client-code-form { display: grid; gap: 12px; }
+.client-code-form .button { justify-self: start; }
+.client-providers { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.client-providers li { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; }
+.client-providers li > span { overflow-wrap: anywhere; }
+.client-settings { margin-top: 20px; display: grid; gap: 16px; }
+.client-settings__fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.native-binding-form { display: grid; gap: 16px; }
+.native-binding-form p { margin: 0; line-height: 1.6; }
+.native-binding-destination { display: block; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+.native-binding-confirm { display: flex; align-items: flex-start; gap: 8px; line-height: 1.6; }
+.client-bindings { display: grid; gap: 6px; font-size: 12px; }
+@media (max-width: 1000px) { .client-grid, .client-settings__fields { grid-template-columns: minmax(0, 1fr); } }

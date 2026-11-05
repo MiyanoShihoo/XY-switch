@@ -52,6 +52,7 @@ export interface UsageLogEntry {
 }
 
 export interface RequestDiagnostics {
+  privacy?: import("./privacy").PrivacyReport | null;
   budgetReason?: string | null;
   task?: import("./governance").ProxyTask | null;
   taskRequestId?: string | null;

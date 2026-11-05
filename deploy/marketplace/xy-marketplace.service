@@ -1,0 +1,31 @@
+[Unit]
+Description=XY Switch reviewed plugin marketplace
+After=network.target
+
+[Service]
+Type=simple
+User=xy-marketplace
+Group=xy-marketplace
+WorkingDirectory=/var/lib/xy-marketplace
+EnvironmentFile=/etc/xy-marketplace/marketplace.env
+ExecStart=/opt/xy-marketplace/current/xy-marketplace
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=45
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=true
+ReadWritePaths=/var/lib/xy-marketplace
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

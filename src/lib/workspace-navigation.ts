@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 
-export type AppView = "providers" | "provider-detail" | "diagnostics" | "mcp" | "prompts" | "skills" | "sessions" | "usage" | "governance" | "settings";
+export type AppView = "providers" | "provider-detail" | "diagnostics" | "clients" | "accounts" | "plugins" | "marketplace" | "mcp" | "prompts" | "skills" | "sessions" | "usage" | "governance" | "settings";
 export interface WorkspaceRoute { view: AppView; providerId?: string; }
-const pages = new Set<AppView>(["providers", "diagnostics", "mcp", "prompts", "skills", "sessions", "usage", "governance", "settings"]);
+const pages = new Set<AppView>(["providers", "diagnostics", "clients", "accounts", "plugins", "marketplace", "mcp", "prompts", "skills", "sessions", "usage", "governance", "settings"]);
 
 export function parseWorkspaceRoute(hash: string): WorkspaceRoute | null {
   // The initial unfragmented URL is the providers home entry in browser history.

@@ -18,6 +18,8 @@ pub struct RequestDiagnostics {
     pub task_request_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub attempt_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub privacy: Option<crate::privacy::PrivacyReport>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -57,6 +59,15 @@ pub fn failure_reason(code: &str) -> &'static str {
         "response_conversion" => "The application could not convert the provider response.",
         "invalid_request" => "The request or provider configuration could not be converted.",
         "request_build" => "The provider request configuration is invalid.",
+        "privacy_policy_unavailable" => "Privacy settings could not be read; sending was blocked.",
+        "privacy_sensitive_structure" => "Sensitive data was found in an executable or structural field; sending was blocked.",
+        "privacy_attachment_uninspected" => "An attachment could not be inspected; sending was blocked.",
+        "privacy_scan_limit" => "The privacy inspection limit was exceeded; sending was blocked.",
+        "privacy_scan_failed" => "Privacy inspection failed; sending was blocked.",
+        "privacy_response_sensitive_structure" => "Sensitive response data was found in an executable or structural field; delivery was blocked.",
+        "privacy_response_attachment_uninspected" => "A response attachment could not be inspected; delivery was blocked.",
+        "privacy_response_scan_limit" => "The response privacy inspection limit was exceeded; delivery was blocked.",
+        "privacy_response_scan_failed" => "Response privacy inspection failed; delivery was blocked.",
         _ => "The request could not be completed.",
     }
 }
@@ -127,6 +138,34 @@ pub(crate) fn refresh_provider_health(
 }
 
 impl Database {
+    pub(crate) fn update_response_privacy(
+        &self,
+        event_id: Option<i64>,
+        report: &crate::privacy::PrivacyReport,
+        blocked_code: Option<&str>,
+    ) -> Result<(), String> {
+        let Some(event_id) = event_id.filter(|id| *id >= 0) else { return Ok(()); };
+        if let Some(code) = blocked_code {
+            self.mark_request_failed(event_id, "response_privacy", code, false)?;
+        }
+        let connection = self.conn();
+        let mut connection = connection.lock().map_err(|_| "database lock poisoned".to_owned())?;
+        let transaction = connection.transaction().map_err(|error| error.to_string())?;
+        let serialized: Option<String> = transaction.query_row(
+            "SELECT diagnostics_json FROM request_events WHERE id=?1", [event_id], |row| row.get(0),
+        ).optional().map_err(|error| error.to_string())?.flatten();
+        let mut diagnostic: RequestDiagnostics = serialized.as_deref().map(serde_json::from_str)
+            .transpose().map_err(|_| "Invalid request diagnostics".to_owned())?.unwrap_or_default();
+        diagnostic.privacy.get_or_insert_with(Default::default).merge(report);
+        if let Some(code) = blocked_code { diagnostic.fail("response_privacy", code); }
+        let serialized = serde_json::to_string(&diagnostic).map_err(|error| error.to_string())?;
+        transaction.execute(
+            "UPDATE request_events SET diagnostics_json=?2,error_kind=CASE WHEN ?3 IS NULL THEN error_kind ELSE ?3 END WHERE id=?1",
+            params![event_id, serialized, blocked_code],
+        ).map_err(|error| error.to_string())?;
+        transaction.commit().map_err(|error| error.to_string())
+    }
+
     pub fn record_unassigned_request(
         &self,
         route: &str,

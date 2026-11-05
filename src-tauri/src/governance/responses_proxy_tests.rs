@@ -317,6 +317,9 @@ async fn native_utf8_input_boundary_blocks_before_send_without_changing_ledger()
 #[tokio::test]
 async fn native_unbounded_inputs_invalid_tools_and_daily_limits_record_zero_send_rejections() {
     let fixture = ResponsesFixture::new().await;
+    crate::privacy::save(&fixture.database, &crate::privacy::PrivacySettings {
+        block_uninspected_attachments: false, ..Default::default()
+    }).unwrap();
     let payload = dynamic_request();
     fixture.admit(&payload).await;
     let changes = [

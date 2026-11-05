@@ -29,6 +29,42 @@ fn begin(db: &Database, context: &Context) -> Result<String, AdmissionError> {
     )
 }
 
+#[test]
+fn prepared_gemini_attempt_records_the_url_model_without_changing_the_body() {
+    let db = fixture::database();
+    let task = context(&db, "prepared-gemini");
+    let provider = fixture::provider("http://127.0.0.1:1");
+    let original = json!({"contents":[{"role":"user","parts":[{"text":"OK"}]}],
+        "generationConfig":{"maxOutputTokens":16}});
+    let mut payload = original.clone();
+    let model = "gemini-url-model";
+    let attempt = admit_prepared_attempt(&db, &task, &provider, &mut payload, model, "gemini", "proxy").unwrap();
+    assert_eq!(payload, original);
+    assert_eq!(attempt.model, model);
+    assert_eq!(attempt.output_limit, Some(16));
+    let record = detail(&db, &task.identity.id).unwrap();
+    assert_eq!(record.attempts[0].model, model);
+    validate_prepared_attempt(&db, &task, &provider, &attempt, &mut payload, model).unwrap();
+    let error = validate_prepared_attempt(&db, &task, &provider, &attempt, &mut payload, "other-model").unwrap_err();
+    assert_eq!(error.reason, "task_attempt_not_admitted");
+    assert_eq!(payload, original);
+}
+
+#[test]
+fn prepared_gemini_attempt_keeps_the_hard_budget_protocol_rejection() {
+    let db = fixture::database();
+    fixture::budget(&db);
+    let task = context(&db, "prepared-gemini-budget");
+    let provider = fixture::provider("http://127.0.0.1:1");
+    let mut payload = json!({"contents":[],"generationConfig":{"maxOutputTokens":16}});
+    let error = admit_prepared_attempt(&db, &task, &provider, &mut payload, "gemini-url-model", "gemini", "proxy")
+        .err().unwrap();
+    assert_eq!(error.code, "budget_rejected");
+    assert_eq!(error.reason, "budget_unsupported_protocol");
+    assert!(payload.get("model").is_none());
+    assert_eq!(summary(&db, &task.identity.id).unwrap().attempts, 0);
+}
+
 fn record_attempt_event(db: &Database, context: &Context, attempt_id: &str) -> i64 {
     db.save_provider(&fixture::provider("http://127.0.0.1:1"))
         .unwrap();

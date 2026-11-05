@@ -22,6 +22,7 @@ enum Reply {
     MissingUsage,
     PartialUsage,
     Redirect(String),
+    Raw { status: u16, content_type: &'static str, chunks: Vec<Vec<u8>>, request_id: Option<&'static str> },
 }
 #[derive(Clone)]
 struct Captured { body: Value, authorization: Option<String> }
@@ -45,6 +46,12 @@ async fn upstream(State(state): State<Mock>, headers: HeaderMap, Json(body): Jso
     match reply {
         Reply::Error(status) => return (StatusCode::from_u16(status).unwrap(), Json(json!({"error":{"message":"unit-upstream-key must not reach a receipt"}}))).into_response(),
         Reply::Redirect(url) => return (StatusCode::TEMPORARY_REDIRECT, [(header::LOCATION, url)], "redirect").into_response(),
+        Reply::Raw { status, content_type, chunks, request_id } => {
+            let stream = futures_util::stream::iter(chunks.into_iter().map(|chunk| Ok::<_, io::Error>(Bytes::from(chunk))));
+            let mut response = Response::builder().status(status).header(header::CONTENT_TYPE, content_type);
+            if let Some(request_id) = request_id { response = response.header("x-request-id", request_id); }
+            return response.body(Body::from_stream(stream)).unwrap();
+        }
         _ => {}
     }
     if let Reply::Wait(gate) = &reply { let _permit = gate.acquire().await.unwrap(); }
@@ -82,6 +89,10 @@ impl Fixture {
         Self::with_options(replies, access_policy, Duration::from_secs(5), "unit-upstream-key").await
     }
     async fn with_options(replies: Vec<Reply>, access_policy: access::AccessPolicy, timeout: Duration, key: &'static str) -> Self {
+        Self::with_keys(replies, access_policy, timeout, |_| Arc::new(MemoryKey(key))).await
+    }
+    async fn with_keys(replies: Vec<Reply>, access_policy: access::AccessPolicy, timeout: Duration,
+        keys: impl FnOnce(&Database) -> Arc<dyn ApiKeyProvider>) -> Self {
         let mock = Mock::default();
         mock.replies.lock().unwrap().extend(replies);
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -97,7 +108,8 @@ impl Fixture {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let proxy_client = crate::network::client_builder().no_proxy().redirect(reqwest::redirect::Policy::none()).timeout(timeout).build().unwrap();
-        let state = ProxyState { database: db.clone(), client: proxy_client, api_keys: Arc::new(MemoryKey(key)), local_addr: Some(address) };
+        let api_keys = keys(&db);
+        let state = ProxyState { database: db.clone(), client: proxy_client, api_keys, local_addr: Some(address) };
         let router = router_with_targets(state, &[]);
         let proxy_task = tokio::spawn(async move {
             axum::serve(crate::proxy_connection::CancelListener(listener),
@@ -332,3 +344,9 @@ async fn governance_upstream_redirects_are_not_followed() {
 
 #[path = "task_proxy_tests.rs"]
 mod task_tests;
+
+#[path = "privacy_proxy_tests.rs"]
+mod privacy_tests;
+
+#[path = "account_proxy_tests.rs"]
+mod account_tests;

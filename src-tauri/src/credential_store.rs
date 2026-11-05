@@ -6,7 +6,7 @@ fn credential_target(provider_id: &str) -> Result<String, String> {
 }
 
 fn scoped_credential_target(scope: &str, item_id: &str) -> Result<String, String> {
-    if !matches!(scope, "provider" | "mcp" | "internal") {
+    if !matches!(scope, "provider" | "mcp" | "internal" | "accounts") {
         return Err("invalid credential scope".to_string());
     }
     let id = item_id.trim();
@@ -225,6 +225,13 @@ mod tests {
             "XY Switch/mcp/context7.main"
         );
         assert!(scoped_credential_target("unknown", "context7").is_err());
+    }
+
+    #[test]
+    fn builds_separate_account_scope_and_rejects_unsafe_ids() {
+        assert_eq!(scoped_credential_target("accounts", "account-123").unwrap(), "XY Switch/accounts/account-123");
+        assert_ne!(scoped_credential_target("accounts", "account-123").unwrap(), credential_target("account-123").unwrap());
+        assert!(scoped_credential_target("accounts", "../account-123").is_err());
     }
 
     #[cfg(windows)]

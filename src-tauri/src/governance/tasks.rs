@@ -9,46 +9,7 @@ use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock, Weak};
-use tokio::sync::watch;
-
-struct CancellationState {
-    gate: Mutex<()>,
-    changed: watch::Sender<bool>,
-}
-
-#[derive(Clone)]
-pub(crate) struct Cancellation(Arc<CancellationState>);
-
-impl Default for Cancellation {
-    fn default() -> Self {
-        Self(Arc::new(CancellationState {
-            gate: Mutex::new(()),
-            changed: watch::channel(false).0,
-        }))
-    }
-}
-
-impl Cancellation {
-    pub(crate) fn cancel(&self) {
-        if let Ok(_gate) = self.0.gate.lock() {
-            self.0.changed.send_replace(true);
-        }
-    }
-    pub(crate) fn is_cancelled(&self) -> bool {
-        *self.0.changed.borrow()
-    }
-    pub(crate) async fn cancelled(&self) {
-        let mut receiver = self.0.changed.subscribe();
-        loop {
-            if *receiver.borrow_and_update() {
-                return;
-            }
-            if receiver.changed().await.is_err() {
-                return;
-            }
-        }
-    }
-}
+pub(crate) use crate::cancellation::{Cancellation, CancellationState};
 
 #[derive(Default)]
 pub(crate) struct TaskRuntime {
@@ -484,6 +445,23 @@ pub(crate) fn admit_and_start_on<Request, Extra, ResultValue>(
     reserve: impl FnOnce(&Connection) -> Result<Extra, String>,
     start: impl FnOnce(Request, String, i64, Extra) -> ResultValue,
 ) -> Result<ResultValue, AdmissionError> {
+    admit_with_model_and_start_on(
+        db, context, provider, payload, format, source, None, build, reserve, start,
+    )
+}
+
+fn admit_with_model_and_start_on<Request, Extra, ResultValue>(
+    db: &Database,
+    context: &Context,
+    provider: &Provider,
+    payload: &mut Value,
+    format: &str,
+    source: &str,
+    model: Option<&str>,
+    build: impl FnOnce(&Value) -> Result<Request, String>,
+    reserve: impl FnOnce(&Connection) -> Result<Extra, String>,
+    start: impl FnOnce(Request, String, i64, Extra) -> ResultValue,
+) -> Result<ResultValue, AdmissionError> {
     let _connection_gate = context
         .connection
         .0
@@ -573,7 +551,7 @@ pub(crate) fn admit_and_start_on<Request, Extra, ResultValue>(
     tx.execute("INSERT INTO proxy_attempts(id,task_id,request_id,ordinal,provider_id,model,route,reserved_tokens,reserved_microusd,status,started_at)
         VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,'sending',?10)",
         params![attempt_id, context.identity.id, context.request_id, ordinal, provider.id,
-            payload.get("model").and_then(Value::as_str).unwrap_or(&provider.model), format,
+            model.or_else(|| payload.get("model").and_then(Value::as_str)).unwrap_or(&provider.model), format,
             reservation.as_ref().map(|value| value.tokens), reservation.as_ref().map(|value| value.microusd),
             crate::model_verification::now_ms()]).map_err(|_| "task_store_unavailable".to_string())?;
     tx.execute(
@@ -584,6 +562,153 @@ pub(crate) fn admit_and_start_on<Request, Extra, ResultValue>(
     tx.commit()
         .map_err(|_| "task_store_unavailable".to_string())?;
     Ok(start(request, attempt_id, ordinal, extra))
+}
+
+pub(crate) struct PreparedAttempt {
+    pub id: String,
+    model: String,
+    format: String,
+    source: String,
+    policy: budget::BudgetPolicy,
+    output_limit: Option<i64>,
+}
+
+pub(crate) fn admit_prepared_attempt(
+    db: &Database,
+    context: &Context,
+    provider: &Provider,
+    payload: &mut Value,
+    model: &str,
+    format: &str,
+    source: &str,
+) -> Result<PreparedAttempt, AdmissionError> {
+    admit_with_model_and_start_on(
+        db,
+        context,
+        provider,
+        payload,
+        format,
+        source,
+        Some(model),
+        |payload| {
+            if model.trim().is_empty() || (format != "gemini"
+                && payload.get("model").and_then(Value::as_str) != Some(model)) {
+                return Err("budget_model_missing".to_string());
+            }
+            let output_limit = payload.get("max_completion_tokens")
+                .or_else(|| payload.get("max_tokens"))
+                .or_else(|| payload.get("max_output_tokens"))
+                .or_else(|| payload.pointer("/generationConfig/maxOutputTokens"))
+                .and_then(Value::as_i64);
+            Ok((model.to_owned(), output_limit))
+        },
+        |connection| {
+            let mut policy = budget::policy_on(connection)?;
+            let enforced: bool = connection.query_row(
+                "SELECT max_attempts IS NOT NULL OR max_microusd IS NOT NULL FROM proxy_tasks WHERE id=?1",
+                [&context.identity.id], |row| row.get(0),
+            ).map_err(|_| "task_store_unavailable".to_string())?;
+            policy.enabled |= enforced;
+            Ok(policy)
+        },
+        |(model, output_limit), id, _ordinal, policy| PreparedAttempt {
+            id, model, format: format.to_owned(), source: source.to_owned(), policy, output_limit,
+        },
+    )
+}
+
+pub(crate) fn validate_prepared_attempt(
+    db: &Database,
+    context: &Context,
+    provider: &Provider,
+    attempt: &PreparedAttempt,
+    payload: &mut Value,
+    model: &str,
+) -> Result<(), AdmissionError> {
+    let _connection_gate = context.connection.0.gate.lock()
+        .map_err(|_| "task_state_unavailable".to_string())?;
+    let _task_gate = context.signal.0.gate.lock()
+        .map_err(|_| "task_state_unavailable".to_string())?;
+    let cancelled = || AdmissionError { code: "request_cancelled", reason: "task_cancelled".into() };
+    if context.connection.is_cancelled() || context.signal.is_cancelled() {
+        return Err(cancelled());
+    }
+    let connection = db.conn();
+    let connection = connection.lock().map_err(|_| "task_store_unavailable".to_string())?;
+    validate_prepared_attempt_on(&connection, context, provider, attempt, payload, model)
+}
+
+pub(crate) fn validate_prepared_attempt_on(
+    connection: &Connection,
+    context: &Context,
+    provider: &Provider,
+    attempt: &PreparedAttempt,
+    payload: &mut Value,
+    model: &str,
+) -> Result<(), AdmissionError> {
+    let cancelled = || AdmissionError { code: "request_cancelled", reason: "task_cancelled".into() };
+    if context.connection.is_cancelled() || context.signal.is_cancelled() {
+        return Err(cancelled());
+    }
+    let saved = connection.query_row(
+        "SELECT a.task_id,a.request_id,a.provider_id,a.model,a.route,a.status,a.reserved_tokens,a.reserved_microusd,
+            t.cancelled,t.max_attempts,t.max_microusd,t.attempts,t.reserved_microusd
+         FROM proxy_attempts a JOIN proxy_tasks t ON t.id=a.task_id WHERE a.id=?1",
+        [&attempt.id], |row| Ok((
+            row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?,
+            row.get::<_, String>(3)?, row.get::<_, String>(4)?, row.get::<_, String>(5)?,
+            row.get::<_, Option<i64>>(6)?, row.get::<_, Option<i64>>(7)?, row.get::<_, bool>(8)?,
+            row.get::<_, Option<i64>>(9)?, row.get::<_, Option<i64>>(10)?,
+            row.get::<_, i64>(11)?, row.get::<_, i64>(12)?,
+        )),
+    ).optional().map_err(|_| "task_store_unavailable".to_string())?
+        .ok_or_else(|| "task_attempt_not_admitted".to_string())?;
+    if saved.8 { return Err(cancelled()); }
+    if saved.0 != context.identity.id || saved.1 != context.request_id || saved.2 != provider.id
+        || saved.3 != attempt.model || saved.4 != attempt.format || saved.5 != "sending"
+        || model != attempt.model
+        || (attempt.format != "gemini"
+            && payload.get("model").and_then(Value::as_str) != Some(model))
+    {
+        return Err("task_attempt_not_admitted".to_string().into());
+    }
+    if saved.9.is_some_and(|limit| saved.11 > limit) {
+        return Err("task_attempt_budget_exhausted".to_string().into());
+    }
+    let overage: i64 = connection.query_row(
+        "SELECT COALESCE(SUM(MAX(COALESCE(actual_microusd,0)-COALESCE(reserved_microusd,0),0)),0)
+         FROM proxy_attempts WHERE task_id=?1", [&context.identity.id], |row| row.get(0),
+    ).map_err(|_| "task_store_unavailable".to_string())?;
+    let committed = saved.12.checked_add(overage).ok_or_else(|| "task_cost_overflow".to_string())?;
+    if saved.10.is_some_and(|limit| committed > limit) {
+        return Err("task_cost_budget_exhausted".to_string().into());
+    }
+    let current = budget::policy_on(&connection)?;
+    if current.enabled && saved.11 > current.task_max_attempts {
+        return Err("task_attempt_budget_exhausted".to_string().into());
+    }
+    if current.enabled && committed > current.task_max_microusd {
+        return Err("task_cost_budget_exhausted".to_string().into());
+    }
+    let enforced = current.enabled || attempt.policy.enabled || saved.9.is_some() || saved.10.is_some();
+    if !enforced { return Ok(()); }
+    let (reserved_tokens, reserved_cost) = saved.6.zip(saved.7)
+        .ok_or_else(|| "task_unreserved_cost".to_string())?;
+    let mut policy = attempt.policy.clone();
+    policy.enabled = true;
+    policy.max_output_tokens = attempt.output_limit
+        .ok_or_else(|| "budget_invalid_output_limit".to_string())?;
+    if current.enabled {
+        policy.input_reservation = policy.input_reservation.min(current.input_reservation);
+        policy.max_output_tokens = policy.max_output_tokens.min(current.max_output_tokens);
+        budget::check_daily_on(&connection, &current, &budget::Reservation { tokens: 0, microusd: 0 })?;
+    }
+    let reservation = budget::quote_on(&connection, &policy, payload, &attempt.format, &attempt.source)?
+        .ok_or_else(|| "task_unreserved_cost".to_string())?;
+    if reservation.tokens > reserved_tokens || reservation.microusd > reserved_cost {
+        return Err("budget_prepared_reservation_exceeded".to_string().into());
+    }
+    Ok(())
 }
 
 pub(crate) fn finish_attempt(
