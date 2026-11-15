@@ -14,7 +14,7 @@ output="$root/release/$version/macos-$arch"
 archive="$output/XY-Switch-$version-macos-$arch.app.zip"
 dmg="$output/XY-Switch-$version-macos-$arch.dmg"
 (cd "$output" && shasum -a 256 -c SHA256SUMS.txt)
-tmp_root="${TMPDIR:-/tmp}"; tmp_root="${tmp_root%/}"
+tmp_root="$(cd -P -- "${TMPDIR:-/tmp}" && pwd -P)"; tmp_root="${tmp_root%/}"
 temporary="$(mktemp -d "$tmp_root/xy-switch-macos.XXXXXX")"
 mounted=0; app_pid=''
 cleanup() {
