@@ -1,0 +1,11 @@
+{
+  "返回提示词目录": "Back to prompt library",
+  "提示词已保存": "Prompt saved",
+  "有未保存的修改": "Unsaved changes",
+  "编辑中": "Editing",
+  "保存后返回阅读；取消可返回原位置。": "Saving returns to reading. Cancel to return to your previous position.",
+  "放弃本次修改？": "Discard these changes?",
+  "尚未保存的修改将丢失，已保存的提示词保持不变。": "Unsaved changes will be lost. The saved prompt will remain unchanged.",
+  "放弃修改": "Discard changes",
+  "启用状态仅在提示词库中保存，不表示已注入客户端。": "Enabled status is saved in the prompt library only. It does not mean the prompt has been injected into a client."
+}

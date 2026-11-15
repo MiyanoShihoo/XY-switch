@@ -102,23 +102,39 @@ export function accountCanRefresh(account: AccountInfo, timestamp: number): bool
     && (account.cooldownUntil === null || account.cooldownUntil <= timestamp);
 }
 
+export function quotaEvidenceExpired(snapshot: QuotaSnapshot | null, timestamp: number): boolean {
+  return snapshot !== null && snapshot.observedAt <= timestamp
+    && knownQuotaWindows(snapshot, snapshot.observedAt).length > 0 && knownQuotaWindows(snapshot, timestamp).length === 0;
+}
+
 export function localRevocationMessage(result: { localReferenceRevoked: boolean; credentialsRemoved: boolean; account: { cleanupPending: boolean } }): string {
   if (!result.localReferenceRevoked) return t("本地撤销尚未完成，请刷新列表。" );
   if (!result.credentialsRemoved || result.account.cleanupPending) return t("本地引用已撤销；安全存储清理待完成，可重试本地撤销。" );
   return t("本地引用已撤销，已清理本应用凭据；供应商授权与客户端登录未退出。" );
 }
 
+export function AccountQuotaSummary({ quota, timestamp }: { quota: QuotaSnapshot | null; timestamp: number }) {
+  const windows = knownQuotaWindows(quota, timestamp);
+  const firstWindow = windows[0];
+  if (!firstWindow) return <span className="accounts-quota-summary" data-known="false"><strong>{t("额度未知")}</strong><span>{quotaEvidenceExpired(quota, timestamp) ? t("额度证据已过期，不能视为零。") : t("未收到有效额度证据，不能视为零。")}</span></span>;
+  const unit = firstWindow.unit === "requests" ? t("请求数") : firstWindow.unit === "tokens" ? t("令牌数") : t("百分比");
+  return <span className="accounts-quota-summary" data-known="true">
+    <strong>{t("剩余 {remaining} / 上限 {limit}", { remaining: firstWindow.remaining ?? t("未知"), limit: firstWindow.limit ?? t("未知") })}</strong>
+    <span>{t("额度窗口 {index}", { index: 1 })} · {unit}{windows.length > 1 ? " · " + t("共 {count} 个额度窗口", { count: windows.length }) : ""}</span>
+  </span>;
+}
+
 export function AccountQuotaView({ quota, timestamp }: { quota: QuotaSnapshot | null; timestamp: number }) {
   const language = useLanguage();
   const windows = knownQuotaWindows(quota, timestamp);
-  if (!windows.length) return <p className="accounts-quota-unknown">{t("额度未知；未收到有效证据，不能视为零额度。")}</p>;
+  if (!windows.length) return <p className="accounts-quota-unknown">{quotaEvidenceExpired(quota, timestamp) ? t("额度未知；已有证据已过期，请更新额度证据。不能视为零额度。") : t("额度未知；未收到有效证据，不能视为零额度。")}</p>;
   return <div className="accounts-quota">
     <p>{t("额度来源：{source}", { source: quotaSourceLabel(quota!.source) })}</p>
-    {windows.map((window, index) => <div key={index} className="accounts-quota__window">
-      <strong>{t("额度窗口 {index}", { index: index + 1 })}</strong>
-      <span>{t("剩余 {remaining} / 上限 {limit}", { remaining: window.remaining ?? t("未知"), limit: window.limit ?? t("未知") })} · {window.unit === "requests" ? t("请求数") : window.unit === "tokens" ? t("令牌数") : t("百分比")}</span>
-      <span>{t("重置时间：{time}", { time: accountTime(window.resetsAt, language) })}</span>
-    </div>)}
-    <p>{t("证据有效至：{time}", { time: accountTime(quota!.validUntil, language) })}</p>
+    <ol className="accounts-quota__windows">{windows.map((window, index) => <li key={index} className="accounts-quota__window">
+      <div className="accounts-quota__heading"><strong>{t("额度窗口 {index}", { index: index + 1 })}</strong><span>{window.unit === "requests" ? t("请求数") : window.unit === "tokens" ? t("令牌数") : t("百分比")}</span></div>
+      <span className="accounts-quota__value">{t("剩余 {remaining} / 上限 {limit}", { remaining: window.remaining ?? t("未知"), limit: window.limit ?? t("未知") })}</span>
+      <span className="accounts-quota__reset">{t("重置时间：{time}", { time: accountTime(window.resetsAt, language) })}</span>
+    </li>)}</ol>
+    <p className="accounts-numeric">{t("证据有效至：{time}", { time: accountTime(quota!.validUntil, language) })}</p>
   </div>;
 }

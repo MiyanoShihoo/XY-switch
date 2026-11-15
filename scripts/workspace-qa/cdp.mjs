@@ -4,6 +4,7 @@ import { dirname } from 'node:path';
 import { navigateFreshDocument } from './document-navigation.mjs';
 import { waitForPredicate } from './runtime-predicate.mjs';
 import { dispatchElementClick } from './pointer-click.mjs';
+import { resolveIsolatedDebugRuntime, assertIsolatedDebugAppPaths } from './isolated-debug.mjs';
 
 export function isLocalRendererRequest(value, base) {
   try {
@@ -24,12 +25,17 @@ export function isNativeRendererRequest(value) {
   } catch { return false; }
 }
 
-export async function connect(endpoint = process.env.CDP_ENDPOINT ?? 'http://127.0.0.1:9231', { fresh = false, native = false } = {}) {
+export async function connect(endpoint = process.env.CDP_ENDPOINT ?? 'http://127.0.0.1:9231', { fresh = false, native = false, isolatedDebugRoot = null } = {}) {
   const rendererBase = native ? 'http://tauri.localhost' : process.env.APP_URL ?? 'http://127.0.0.1:1431';
+  let isolatedRuntime = null;
+  assert(!isolatedDebugRoot || native, 'Isolated debug verification requires native IPC');
   if (native) {
     assert.equal(process.platform, 'win32', 'Native CDP requires Windows');
-    assert.equal(process.env.GITHUB_ACTIONS, 'true', 'Native CDP requires GitHub Actions');
-    assert.equal(process.env.RUNNER_ENVIRONMENT, 'github-hosted', 'Native CDP requires a disposable runner');
+    if (isolatedDebugRoot) isolatedRuntime = await resolveIsolatedDebugRuntime(isolatedDebugRoot);
+    else {
+      assert.equal(process.env.GITHUB_ACTIONS, 'true', 'Native CDP requires GitHub Actions');
+      assert.equal(process.env.RUNNER_ENVIRONMENT, 'github-hosted', 'Native CDP requires a disposable runner');
+    }
     assert.equal(fresh, false, 'Native CDP must attach to the packaged page');
   } else assert(isLocalRendererRequest(rendererBase, rendererBase), 'QA renderer URL must be a local HTTP(S) origin');
   const url = new URL(endpoint);
@@ -64,6 +70,20 @@ export async function connect(endpoint = process.env.CDP_ENDPOINT ?? 'http://127
     await new Promise(resolve => setTimeout(resolve, 90));
   }
   const click=selector=>clickExpression('document.querySelector('+JSON.stringify(selector)+')');
+  async function workspace(view) {
+    const views = ['overview', 'providers', 'clients', 'accounts', 'diagnostics', 'plugins', 'marketplace', 'mcp', 'prompts', 'skills', 'sessions', 'usage', 'settings', 'governance'];
+    assert(views.includes(view), 'Unknown workspace page: ' + view);
+    if (await evaluate('(()=>{const menu=document.querySelector(".xy-shell-menu");return Boolean(menu?.getClientRects().length)&&menu.getAttribute("aria-expanded")!=="true";})()')) await click('.xy-shell-menu');
+    const groups = { overview: 'overview', providers: 'providers', clients: 'providers', accounts: 'providers', diagnostics: 'providers', plugins: 'plugins', marketplace: 'plugins', mcp: 'plugins', prompts: 'plugins', skills: 'plugins', sessions: 'sessions', usage: 'sessions', settings: 'settings', governance: 'settings' };
+    const selector = '.xy-shell-nav-item[data-view=' + JSON.stringify(view) + ']';
+    if (!await evaluate('[...document.querySelectorAll(' + JSON.stringify(selector) + ')].some(item=>item.getClientRects().length)')) {
+      const activity = '.xy-shell-activity[data-default-view=' + JSON.stringify(groups[view]) + ']';
+      if (await evaluate('Boolean(document.querySelector(' + JSON.stringify(activity) + ')?.getClientRects().length)')) await click(activity);
+    }
+    await clickExpression('(()=>{const root=document.querySelector(".xy-shell-root > .xy-ui-drawer-shell")??document;return [...root.querySelectorAll(' + JSON.stringify(selector) + ')].find(item=>item.getClientRects().length&&!item.closest("details:not([open])"));})()');
+    await waitFor('document.querySelector(".xy-shell-root")?.dataset.workspaceView===' + JSON.stringify(view));
+    await waitFor('!document.querySelector(".xy-shell-root > .xy-ui-drawer-shell")');
+  }
   const button=(label,scope='document')=>clickExpression('[...'+scope+'.querySelectorAll("button")].find(e=>!e.closest("details:not([open])")&&!e.classList.contains("sr-only")&&e.getBoundingClientRect().width>1&&e.getBoundingClientRect().height>1&&getComputedStyle(e).visibility!=="hidden"&&(e.textContent.trim()==='+JSON.stringify(label)+'||e.getAttribute("aria-label")==='+JSON.stringify(label)+'))');
   async function fill(selector,value) { await evaluate('(() => { const e=document.querySelector('+JSON.stringify(selector)+'); if(!e)throw new Error("Missing field");const proto=e instanceof HTMLSelectElement?HTMLSelectElement.prototype:e instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(proto,"value").set.call(e,'+JSON.stringify(value)+');e.dispatchEvent(new Event(e instanceof HTMLSelectElement?"change":"input",{bubbles:true})); })()');await new Promise(r=>setTimeout(r,70)); }
   const key=async(key,modifiers=0)=>{const windowsVirtualKeyCode=({Tab:9,Escape:27,Enter:13,ArrowRight:39,ArrowLeft:37,ArrowDown:40,ArrowUp:38,Home:36,End:35})[key];const text=key==='Enter'?'\r':undefined;await call('Input.dispatchKeyEvent',{type:'keyDown',key,code:key,modifiers,windowsVirtualKeyCode,text,unmodifiedText:text});await call('Input.dispatchKeyEvent',{type:'keyUp',key,code:key,modifiers,windowsVirtualKeyCode});await new Promise(r=>setTimeout(r,50));};
@@ -76,5 +96,12 @@ export async function connect(endpoint = process.env.CDP_ENDPOINT ?? 'http://127
     assert.deepEqual([...new Set(external.map(value => { try { return new URL(value).origin; } catch { return '[invalid URL]'; } }))], [], 'QA renderer attempted requests outside its exact local origin');
   };
   await call('Page.enable');await call('Runtime.enable');await call('Network.enable');
-  return {call,evaluate,waitFor,click,clickExpression,button,fill,key,screenshot,viewport,navigate,snapshot,exceptions,networkRequests,webSocketUrls,assertLocalNetwork,close:async()=>{socket.close();if(fresh)await fetch(endpoint+'/json/close/'+page.id);assertLocalNetwork();}};
+  if (isolatedRuntime) {
+    try {
+      await waitFor('Boolean(window.__TAURI_INTERNALS__?.invoke)');
+      const actual = await evaluate('window.__TAURI_INTERNALS__.invoke("app_paths")');
+      await assertIsolatedDebugAppPaths(isolatedRuntime, actual);
+    } catch (error) { socket.close(); throw error; }
+  }
+  return {call,evaluate,waitFor,click,workspace,clickExpression,button,fill,key,screenshot,viewport,navigate,snapshot,exceptions,networkRequests,webSocketUrls,assertLocalNetwork,close:async()=>{socket.close();if(fresh)await fetch(endpoint+'/json/close/'+page.id);assertLocalNetwork();}};
 }

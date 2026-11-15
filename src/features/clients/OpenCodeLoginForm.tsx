@@ -43,7 +43,7 @@ export function OpenCodeLoginForm({ methods, disabled, onStart, onCancel }: {
         {prompt.options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
       </Select> : <Input id={`opencode-login-input-${index}`} type="password" autoComplete="off" spellCheck={false} maxLength={4096} value={inputs[prompt.key]} disabled={disabled} onChange={event => setValues(currentInputs(method, { ...inputs, [prompt.key]: event.target.value }))} />}
     </Field>)}
-    <p>{t("登录输入仅保存在当前表单内存中，确认或关闭表单后清除。")}</p>
+    <p className="client-detail-note">{t("登录输入仅保存在当前表单内存中，确认或关闭表单后清除。")}</p>
     <div className="client-actions"><Button size="sm" disabled={disabled} onClick={start}>{t("检查并授权登录")}</Button><Button variant="quiet" size="sm" disabled={disabled} onClick={() => { setValues({}); onCancel(); }}>{t("关闭")}</Button></div>
   </section>;
 }

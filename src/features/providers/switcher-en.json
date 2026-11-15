@@ -1,0 +1,14 @@
+{
+  "网关配置": "Gateway configuration",
+  "用于 {clients}": "Used by {clients}",
+  "尚无已接管客户端": "No clients currently routed here",
+  "接管范围待确认": "Checking affected clients",
+  "切换网关配置：{name}": "Switch gateway configuration: {name}",
+  "切换网关配置": "Switch gateway configuration",
+  "搜索名称、模型或地址": "Search names, models or endpoints",
+  "搜索网关配置": "Search gateway configurations",
+  "可用网关配置": "Available gateway configurations",
+  "管理供应商与模型": "Manage providers and models",
+  "添加供应商后，即可在这里切换配置。": "Add a provider to switch configurations here.",
+  "切换中…": "Switching…"
+}

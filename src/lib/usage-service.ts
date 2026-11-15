@@ -15,7 +15,7 @@ import type {
 const IS_PREVIEW = typeof window === "undefined" || !("__TAURI_INTERNALS__" in window);
 
 export async function getUsageSummary(filter: UsageFilter): Promise<UsageSummary> {
-  if (IS_PREVIEW) return { totalRequests: 0, successCount: 0, unknownCostRequests: 0, totalInputTokens: 0, totalOutputTokens: 0, totalCacheReadTokens: 0, totalCacheCreationTokens: 0, totalCostUsd: "0.00", avgLatencyMs: 0 };
+  if (IS_PREVIEW) return { totalRequests: 0, successCount: 0, unknownCostRequests: 0, totalInputTokens: 0, totalOutputTokens: 0, totalCacheReadTokens: 0, totalCacheCreationTokens: 0, tokenCoverage: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 }, totalCostUsd: "", avgLatencyMs: 0 };
   return invoke<UsageSummary>("get_usage_summary", { filter });
 }
 

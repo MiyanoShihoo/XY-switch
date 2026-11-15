@@ -37,6 +37,7 @@ pub struct UsageSummary {
     pub total_output_tokens: i64,
     pub total_cache_read_tokens: i64,
     pub total_cache_creation_tokens: i64,
+    pub token_coverage: TokenCoverage,
     pub total_cost_usd: String,
     pub avg_latency_ms: i64,
 }
@@ -57,6 +58,7 @@ pub struct UsageLogEntry {
     pub output_tokens: i64,
     pub cache_read_tokens: i64,
     pub cache_creation_tokens: i64,
+    pub token_coverage: TokenCoverage,
     pub total_cost_usd: String,
     pub input_cost_usd: String,
     pub output_cost_usd: String,
@@ -81,7 +83,9 @@ pub struct UsageTrendPoint {
     pub output_tokens: i64,
     pub cache_read_tokens: i64,
     pub cache_creation_tokens: i64,
+    pub token_coverage: TokenCoverage,
     pub cost: Option<f64>,
+    pub unknown_cost_requests: i64,
     pub requests: i64,
 }
 
@@ -93,7 +97,9 @@ pub struct ProviderUsageStat {
     pub success_rate: f64,
     pub input_tokens: i64,
     pub output_tokens: i64,
+    pub token_coverage: TokenCoverage,
     pub total_cost_usd: String,
+    pub unknown_cost_requests: i64,
     pub avg_latency_ms: i64,
 }
 
@@ -105,7 +111,29 @@ pub struct ModelUsageStat {
     pub total_requests: i64,
     pub input_tokens: i64,
     pub output_tokens: i64,
+    pub token_coverage: TokenCoverage,
     pub total_cost_usd: String,
+    pub unknown_cost_requests: i64,
+}
+
+#[derive(Debug, Serialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TokenCoverage {
+    pub input: i64,
+    pub output: i64,
+    pub cache_read: i64,
+    pub cache_creation: i64,
+}
+
+impl TokenCoverage {
+    fn from_row(row: &rusqlite::Row<'_>, offset: usize) -> rusqlite::Result<Self> {
+        Ok(Self {
+            input: row.get(offset)?,
+            output: row.get(offset + 1)?,
+            cache_read: row.get(offset + 2)?,
+            cache_creation: row.get(offset + 3)?,
+        })
+    }
 }
 
 pub(crate) fn build_filter_clause(filter: &UsageFilter) -> (String, Vec<rusqlite::types::Value>) {
@@ -280,7 +308,11 @@ fn query_usage_summary(conn: &rusqlite::Connection, filter: &UsageFilter) -> Res
             COALESCE(SUM(cache_read_tokens), 0),
             COALESCE(SUM(cache_creation_tokens), 0),
             SUM(cost),
-            COUNT(*) - COUNT(cost)
+            COUNT(*) - COUNT(cost),
+            COUNT(input_tokens),
+            COUNT(output_tokens),
+            COUNT(cache_read_tokens),
+            COUNT(cache_creation_tokens)
          FROM usage_request_events {where_clause}"
     );
 
@@ -300,6 +332,7 @@ fn query_usage_summary(conn: &rusqlite::Connection, filter: &UsageFilter) -> Res
     let mut cache_creation = 0;
     let mut cost = None;
     let mut unknown_cost_requests = 0;
+    let mut token_coverage = TokenCoverage::default();
 
     if let Some(row) = rows.next().map_err(|e| e.to_string())? {
         total = row.get::<_, i64>(0).unwrap_or(0);
@@ -311,6 +344,7 @@ fn query_usage_summary(conn: &rusqlite::Connection, filter: &UsageFilter) -> Res
         cache_creation = row.get::<_, i64>(6).unwrap_or(0);
         cost = row.get::<_, Option<f64>>(7).unwrap_or(None);
         unknown_cost_requests = row.get::<_, i64>(8).unwrap_or(0);
+        token_coverage = TokenCoverage::from_row(row, 9).map_err(|e| e.to_string())?;
     }
 
     Ok(UsageSummary {
@@ -321,6 +355,7 @@ fn query_usage_summary(conn: &rusqlite::Connection, filter: &UsageFilter) -> Res
         total_output_tokens: output,
         total_cache_read_tokens: cache_read,
         total_cache_creation_tokens: cache_creation,
+        token_coverage,
         total_cost_usd: format_cost(cost),
         avg_latency_ms: avg as i64,
     })
@@ -368,11 +403,15 @@ pub(crate) fn query_usage_logs(
             total_tokens,
             reasoning_tokens,
             success,
-            price.input_cost,
-            price.output_cost,
-            price.cache_read_cost,
-            price.cache_creation_cost,
-            diagnostics_json
+            CASE WHEN input_tokens IS NOT NULL THEN price.input_cost END,
+            CASE WHEN output_tokens IS NOT NULL THEN price.output_cost END,
+            CASE WHEN cache_read_tokens IS NOT NULL THEN price.cache_read_cost END,
+            CASE WHEN cache_creation_tokens IS NOT NULL THEN price.cache_creation_cost END,
+            diagnostics_json,
+            input_tokens IS NOT NULL,
+            output_tokens IS NOT NULL,
+            cache_read_tokens IS NOT NULL,
+            cache_creation_tokens IS NOT NULL
          FROM usage_request_events LEFT JOIN request_price_snapshots AS price ON price.event_id=usage_request_events.id {where_clause}
          ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?"
     );
@@ -443,6 +482,7 @@ pub(crate) fn query_usage_logs(
                 output_tokens,
                 cache_read_tokens,
                 cache_creation_tokens,
+                token_coverage: TokenCoverage::from_row(row, 23)?,
                 total_cost_usd: format_cost(cost),
                 input_cost_usd: format_cost(if id < 0 { Some(0.0) } else { row.get::<_, Option<f64>>(18)? }),
                 output_cost_usd: format_cost(if id < 0 { Some(0.0) } else { row.get::<_, Option<f64>>(19)? }),
@@ -504,10 +544,10 @@ fn query_usage_trends(
         "WITH local_events AS (
             SELECT
                 created_at,
-                COALESCE(input_tokens, 0) AS input_tokens,
-                COALESCE(output_tokens, 0) AS output_tokens,
-                COALESCE(cache_read_tokens, 0) AS cache_read_tokens,
-                COALESCE(cache_creation_tokens, 0) AS cache_creation_tokens,
+                input_tokens,
+                output_tokens,
+                cache_read_tokens,
+                cache_creation_tokens,
                 cost,
                 (
                     CAST(strftime(
@@ -530,12 +570,17 @@ fn query_usage_trends(
         SELECT
             bucket,
             COALESCE(strftime('{label_format}', bucket / 1000, 'unixepoch', 'localtime'), '') AS label,
-            SUM(input_tokens),
-            SUM(output_tokens),
-            SUM(cache_read_tokens),
-            SUM(cache_creation_tokens),
+            COALESCE(SUM(input_tokens), 0),
+            COALESCE(SUM(output_tokens), 0),
+            COALESCE(SUM(cache_read_tokens), 0),
+            COALESCE(SUM(cache_creation_tokens), 0),
             SUM(cost),
-            COUNT(*)
+            COUNT(*),
+            COUNT(input_tokens),
+            COUNT(output_tokens),
+            COUNT(cache_read_tokens),
+            COUNT(cache_creation_tokens),
+            COUNT(*) - COUNT(cost)
         FROM bucketed
         GROUP BY bucket
         ORDER BY bucket ASC"
@@ -564,7 +609,9 @@ fn query_usage_trends(
                 output_tokens: output,
                 cache_read_tokens: cache_read,
                 cache_creation_tokens: cache_creation,
+                token_coverage: TokenCoverage::from_row(row, 8)?,
                 cost,
+                unknown_cost_requests: row.get(12)?,
                 requests,
             })
         })
@@ -600,7 +647,12 @@ fn query_provider_stats(conn: &rusqlite::Connection, filter: &UsageFilter) -> Re
             COALESCE(SUM(input_tokens), 0),
             COALESCE(SUM(output_tokens), 0),
             SUM(cost),
-            COALESCE(AVG(CASE WHEN price_source IN ('codex_session','harness_session') THEN NULL ELSE latency_ms END), 0.0)
+            COALESCE(AVG(CASE WHEN price_source IN ('codex_session','harness_session') THEN NULL ELSE latency_ms END), 0.0),
+            COUNT(input_tokens),
+            COUNT(output_tokens),
+            COUNT(cache_read_tokens),
+            COUNT(cache_creation_tokens),
+            COUNT(*) - COUNT(cost)
          FROM usage_request_events {where_clause}
          GROUP BY provider_id
          ORDER BY COUNT(*) DESC"
@@ -634,6 +686,8 @@ fn query_provider_stats(conn: &rusqlite::Connection, filter: &UsageFilter) -> Re
                 output_tokens: output,
                 total_cost_usd: format_cost(cost),
                 avg_latency_ms: avg_latency as i64,
+                token_coverage: TokenCoverage::from_row(row, 7)?,
+                unknown_cost_requests: row.get(11)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -667,7 +721,12 @@ fn query_model_stats(conn: &rusqlite::Connection, filter: &UsageFilter) -> Resul
             COUNT(*),
             COALESCE(SUM(input_tokens), 0),
             COALESCE(SUM(output_tokens), 0),
-            SUM(cost)
+            SUM(cost),
+            COUNT(input_tokens),
+            COUNT(output_tokens),
+            COUNT(cache_read_tokens),
+            COUNT(cache_creation_tokens),
+            COUNT(*) - COUNT(cost)
          FROM usage_request_events {where_clause}
          GROUP BY COALESCE(model, 'unknown'), provider_id
          ORDER BY COUNT(*) DESC"
@@ -693,6 +752,8 @@ fn query_model_stats(conn: &rusqlite::Connection, filter: &UsageFilter) -> Resul
                 input_tokens: input,
                 output_tokens: output,
                 total_cost_usd: format_cost(cost),
+                token_coverage: TokenCoverage::from_row(row, 6)?,
+                unknown_cost_requests: row.get(10)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -863,6 +924,177 @@ mod tests {
     }
 
     #[test]
+    fn usage_queries_distinguish_http_525_missing_tokens_from_known_zero() {
+        for tokens in [None, Some(0_i64)] {
+            let database = database::Database::open(std::path::Path::new(":memory:")).unwrap();
+            let connection = database.conn();
+            let conn = connection.lock().unwrap();
+            let filter = UsageFilter::default();
+            let empty = query_usage_summary(&conn, &filter).unwrap();
+            assert_eq!(empty.total_requests, 0);
+            assert_eq!(empty.token_coverage, TokenCoverage::default());
+            assert_eq!(empty.total_cost_usd, "");
+            conn.execute(
+                "INSERT INTO request_events(id,provider_id,route,status_code,success,model,created_at,
+                    input_tokens,output_tokens,cache_read_tokens,cache_creation_tokens,cost,total_tokens,reasoning_tokens)
+                 VALUES(2,'openai','/v1/responses',525,0,'paid-model',1700000000000,?1,?1,?1,?1,?2,?1,?1)",
+                rusqlite::params![tokens, tokens.map(|_| 0.0)],
+            ).unwrap();
+            conn.execute_batch(
+                "INSERT INTO request_price_snapshots(event_id,input_cost,output_cost,cache_read_cost,cache_creation_cost,source,version)
+                 VALUES(2,0.0,0.0,0.0,0.0,'custom','test');",
+            ).unwrap();
+            let summary = query_usage_summary(&conn, &filter).unwrap();
+            let logs = query_usage_logs(&conn, &filter, 20, 0).unwrap();
+            let trends = query_usage_trends(&conn, &filter).unwrap();
+            let providers = query_provider_stats(&conn, &filter).unwrap();
+            let models = query_model_stats(&conn, &filter).unwrap();
+            assert_eq!((logs.len(), trends.len(), providers.len(), models.len()), (1, 1, 1, 1));
+            let known = i64::from(tokens.is_some());
+            let expected = serde_json::json!({ "input": known, "output": known, "cacheRead": known, "cacheCreation": known });
+            for result in [serde_json::to_value(&summary).unwrap(), serde_json::to_value(&logs[0]).unwrap(),
+                serde_json::to_value(&trends[0]).unwrap(), serde_json::to_value(&providers[0]).unwrap(), serde_json::to_value(&models[0]).unwrap()] {
+                assert_eq!(result["tokenCoverage"], expected);
+            }
+            let cost = if tokens.is_some() { "0.0000" } else { "" };
+            assert_eq!(summary.total_cost_usd, cost);
+            assert_eq!(summary.unknown_cost_requests, 1 - known);
+            assert_eq!(logs[0].status_code, 525);
+            assert_eq!(logs[0].total_tokens, tokens);
+            assert_eq!(logs[0].reasoning_tokens, tokens);
+            for amount in [&logs[0].total_cost_usd, &logs[0].input_cost_usd, &logs[0].output_cost_usd,
+                &logs[0].cache_read_cost_usd, &logs[0].cache_creation_cost_usd, &providers[0].total_cost_usd, &models[0].total_cost_usd] {
+                assert_eq!(amount, cost);
+            }
+            assert_eq!(trends[0].cost, tokens.map(|_| 0.0));
+            assert_eq!(trends[0].unknown_cost_requests, 1 - known);
+            assert_eq!(providers[0].unknown_cost_requests, 1 - known);
+            assert_eq!(models[0].unknown_cost_requests, 1 - known);
+        }
+    }
+
+    #[test]
+    fn usage_queries_preserve_per_field_partial_coverage_and_filter_scope() {
+        let database = database::Database::open(std::path::Path::new(":memory:")).unwrap();
+        let connection = database.conn();
+        let conn = connection.lock().unwrap();
+        conn.execute_batch(
+            "INSERT INTO request_events(provider_id,route,status_code,success,model,created_at,input_tokens,output_tokens,cache_read_tokens,cache_creation_tokens,cost) VALUES
+             ('openai','/v1/responses',525,0,'paid-model',1700000000000,11,2,NULL,0,NULL),
+             ('openai','/v1/responses',525,0,'paid-model',1700000000001,NULL,0,5,0,0.0),
+             ('openai','/v1/responses',525,0,'paid-model',1700000000002,NULL,NULL,NULL,NULL,NULL);
+             INSERT INTO request_price_snapshots(event_id,input_cost,output_cost,cache_read_cost,cache_creation_cost,source,version) VALUES
+             (1,0.011,0.002,0.0,0.0,'custom','test'),
+             (2,0.0,0.0,0.005,0.0,'custom','test');",
+        ).unwrap();
+        let filter = UsageFilter { provider_id: Some("openai".into()), model: Some("paid-model".into()),
+            app_type: Some("codex".into()), status: Some("error".into()), start_time_ms: Some(1700000000000), ..Default::default() };
+        for add_out_of_scope in [false, true] {
+            if add_out_of_scope {
+                conn.execute_batch(
+                    "INSERT INTO request_events(provider_id,route,status_code,success,model,created_at,input_tokens,output_tokens,cache_read_tokens,cache_creation_tokens,cost) VALUES
+                     ('openai','/v1/responses',200,1,'paid-model',1700000000003,99,99,99,99,1.0),
+                     ('openai','/v1/responses',525,0,'other-model',1700000000004,99,99,99,99,1.0),
+                     ('openai','/v1/messages',525,0,'paid-model',1700000000005,99,99,99,99,1.0),
+                     ('openai','/v1/responses',525,0,'paid-model',1600000000000,99,99,99,99,1.0);",
+                ).unwrap();
+            }
+            let summary = query_usage_summary(&conn, &filter).unwrap();
+            assert_eq!(summary.total_requests, 3);
+            assert_eq!((summary.total_input_tokens, summary.total_output_tokens, summary.total_cache_read_tokens, summary.total_cache_creation_tokens), (11, 2, 5, 0));
+            let trends = query_usage_trends(&conn, &filter).unwrap();
+            let providers = query_provider_stats(&conn, &filter).unwrap();
+            let models = query_model_stats(&conn, &filter).unwrap();
+            assert_eq!((trends.len(), providers.len(), models.len()), (1, 1, 1));
+            assert_eq!(trends[0].requests, 3);
+            assert_eq!((trends[0].input_tokens, trends[0].output_tokens, trends[0].cache_read_tokens, trends[0].cache_creation_tokens), (11, 2, 5, 0));
+            assert_eq!((providers[0].input_tokens, providers[0].output_tokens, providers[0].total_requests), (11, 2, 3));
+            assert_eq!((models[0].input_tokens, models[0].output_tokens, models[0].total_requests), (11, 2, 3));
+            for result in [serde_json::to_value(&summary).unwrap(), serde_json::to_value(&trends[0]).unwrap(),
+                serde_json::to_value(&providers[0]).unwrap(), serde_json::to_value(&models[0]).unwrap()] {
+                assert_eq!(result["tokenCoverage"], serde_json::json!({ "input": 1, "output": 2, "cacheRead": 1, "cacheCreation": 2 }));
+                assert_eq!(result["unknownCostRequests"], 2);
+            }
+            let logs = query_usage_logs(&conn, &filter, 20, 0).unwrap();
+            assert_eq!(logs.len(), 3);
+            assert_eq!(logs[0].token_coverage, TokenCoverage::default());
+            assert_eq!(logs[1].token_coverage, TokenCoverage { input: 0, output: 1, cache_read: 1, cache_creation: 1 });
+            assert_eq!(logs[2].token_coverage, TokenCoverage { input: 1, output: 1, cache_read: 0, cache_creation: 1 });
+            assert_eq!((&*logs[1].input_cost_usd, &*logs[1].output_cost_usd, &*logs[1].cache_read_cost_usd, &*logs[1].cache_creation_cost_usd), ("", "0.0000", "0.0050", "0.0000"));
+            assert_eq!((&*logs[2].input_cost_usd, &*logs[2].output_cost_usd, &*logs[2].cache_read_cost_usd, &*logs[2].cache_creation_cost_usd), ("0.0110", "0.0020", "", "0.0000"));
+        }
+    }
+
+    #[test]
+    fn whole_range_coverage_does_not_depend_on_the_requested_log_page() {
+        for missing_index in [0, 20] {
+            let database = database::Database::open(std::path::Path::new(":memory:")).unwrap();
+            let connection = database.conn();
+            let conn = connection.lock().unwrap();
+            for index in 0..21 {
+                let known = index != missing_index;
+                conn.execute(
+                    "INSERT INTO request_events(provider_id,route,status_code,success,model,created_at,
+                        input_tokens,output_tokens,cache_read_tokens,cache_creation_tokens,cost)
+                     VALUES('openai','/v1/responses',525,0,'paid-model',?1,?2,?3,?4,?4,?5)",
+                    rusqlite::params![1700000000000_i64 + index, known.then_some(10), known.then_some(2), known.then_some(0), known.then_some(0.0)],
+                ).unwrap();
+            }
+            let filter = UsageFilter::default();
+            for offset in [0, 20] {
+                let logs = query_usage_logs(&conn, &filter, 20, offset).unwrap();
+                assert_eq!(logs.len(), if offset == 0 { 20 } else { 1 });
+                let page_known = match (missing_index, offset) {
+                    (0, 0) => 20,
+                    (0, 20) => 0,
+                    (20, 0) => 19,
+                    (20, 20) => 1,
+                    _ => unreachable!(),
+                };
+                assert_eq!(logs.iter().map(|row| row.token_coverage.input).sum::<i64>(), page_known);
+                let summary = query_usage_summary(&conn, &filter).unwrap();
+                let trends = query_usage_trends(&conn, &filter).unwrap();
+                let providers = query_provider_stats(&conn, &filter).unwrap();
+                let models = query_model_stats(&conn, &filter).unwrap();
+                assert_eq!(summary.total_requests, 21);
+                assert_eq!((summary.total_input_tokens, summary.total_output_tokens), (200, 40));
+                assert_eq!((trends.len(), providers.len(), models.len()), (1, 1, 1));
+                assert_eq!((trends[0].requests, providers[0].total_requests, models[0].total_requests), (21, 21, 21));
+                for result in [serde_json::to_value(&summary).unwrap(), serde_json::to_value(&trends[0]).unwrap(),
+                    serde_json::to_value(&providers[0]).unwrap(), serde_json::to_value(&models[0]).unwrap()] {
+                    assert_eq!(result["tokenCoverage"], serde_json::json!({ "input": 20, "output": 20, "cacheRead": 20, "cacheCreation": 20 }));
+                    assert_eq!(result["unknownCostRequests"], 1);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn trend_buckets_preserve_missing_zero_and_partial_token_coverage() {
+        let database = database::Database::open(std::path::Path::new(":memory:")).unwrap();
+        let connection = database.conn();
+        let conn = connection.lock().unwrap();
+        conn.execute_batch(
+            "INSERT INTO request_events(provider_id,route,status_code,success,model,created_at,input_tokens,output_tokens,cache_read_tokens,cache_creation_tokens,cost) VALUES
+             ('openai','/v1/responses',525,0,'paid-model',1700000000000,NULL,NULL,NULL,NULL,NULL),
+             ('openai','/v1/responses',200,1,'paid-model',1700086400000,0,0,0,0,0.0),
+             ('openai','/v1/responses',200,1,'paid-model',1700172800000,11,NULL,NULL,0,0.25),
+             ('openai','/v1/responses',525,0,'paid-model',1700172800001,NULL,2,5,0,NULL);",
+        ).unwrap();
+        let points = query_usage_trends(&conn, &UsageFilter::default()).unwrap();
+        assert_eq!(points.len(), 3);
+        assert_eq!((points[0].requests, points[1].requests, points[2].requests), (1, 1, 2));
+        assert_eq!((points[0].input_tokens, points[0].output_tokens, points[0].cache_read_tokens, points[0].cache_creation_tokens), (0, 0, 0, 0));
+        assert_eq!((points[1].input_tokens, points[1].output_tokens, points[1].cache_read_tokens, points[1].cache_creation_tokens), (0, 0, 0, 0));
+        assert_eq!((points[2].input_tokens, points[2].output_tokens, points[2].cache_read_tokens, points[2].cache_creation_tokens), (11, 2, 5, 0));
+        assert_eq!(points[0].token_coverage, TokenCoverage::default());
+        assert_eq!(points[1].token_coverage, TokenCoverage { input: 1, output: 1, cache_read: 1, cache_creation: 1 });
+        assert_eq!(points[2].token_coverage, TokenCoverage { input: 1, output: 1, cache_read: 1, cache_creation: 2 });
+        assert_eq!((points[0].cost, points[1].cost, points[2].cost), (None, Some(0.0), Some(0.25)));
+        assert_eq!((points[0].unknown_cost_requests, points[1].unknown_cost_requests, points[2].unknown_cost_requests), (1, 0, 1));
+    }
+
+    #[test]
     fn all_usage_queries_include_unassigned_failures_and_preserve_legacy_unknowns() {
         let database = database::Database::open(std::path::Path::new(":memory:")).unwrap();
         database.conn().lock().unwrap().execute(
@@ -884,11 +1116,14 @@ mod tests {
         assert_eq!(logs[0].total_cost_usd, "0.0000");
         assert_eq!(logs[0].input_cost_usd, "0.0000");
         assert_eq!(logs[0].total_tokens, Some(0));
+        assert_eq!(logs[0].token_coverage, TokenCoverage { input: 1, output: 1, cache_read: 1, cache_creation: 1 });
         assert!(logs[1].diagnostics.is_none());
+        assert_eq!(logs[1].token_coverage, TokenCoverage::default());
         assert_eq!(logs[1].total_cost_usd, "");
         let summary = query_usage_summary(&connection, &filter).unwrap();
         assert_eq!((summary.total_requests, summary.success_count, summary.unknown_cost_requests), (2, 1, 1));
         assert_eq!(summary.total_cost_usd, "0.0000");
+        assert_eq!(summary.token_coverage, TokenCoverage { input: 1, output: 1, cache_read: 1, cache_creation: 1 });
         assert_eq!(query_usage_trends(&connection, &filter).unwrap().iter().map(|point| point.requests).sum::<i64>(), 2);
         let providers = query_provider_stats(&connection, &filter).unwrap();
         assert_eq!(providers.iter().map(|stat| stat.total_requests).sum::<i64>(), 2);

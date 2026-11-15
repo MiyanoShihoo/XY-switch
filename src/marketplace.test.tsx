@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MarketplacePage } from "./features/marketplace/MarketplacePage";
+import { MarketplaceCatalog } from "./features/marketplace/MarketplaceCatalog";
+import type { MarketplaceCatalogEntry } from "./types/marketplace";
 import { MarketplaceClient, MarketplaceServiceError, canonicalMarketplacePackage, inspectMarketplacePrivacy, marketplaceErrorText, marketplacePackageDigest, normalizeMarketplaceOrigin, parseMarketplacePackage, parseStrictMarketplaceJson } from "./lib/marketplace-service";
 import type { InstallPreview, InstalledPlugin, PluginPackage, PublishedPlugin } from "./types/plugins";
 import type { MarketplaceSubmission } from "./types/marketplace";
@@ -40,7 +42,7 @@ async function submissionFixture(packageValue = packageFixture()): Promise<Marke
 }
 
 function previewFixture(published: PublishedPlugin): InstallPreview {
-  return { previewId: "synthetic-preview", expiresAt: clock / 1000 + 300, signingKeyId: published.signingKeyId,
+  return { previewId: "synthetic-preview", expiresAt: clock + 300_000, signingKeyId: published.signingKeyId,
     signingKeyFingerprint: "b2".repeat(32), previousVersion: null, permissionChanges: [], validation: { digest: published.digest,
       manifest: published.package.manifest, canonicalSize: canonicalMarketplacePackage(published.package).length,
       fileCount: Object.keys(published.package.files).length, runtimeSupported: true, warnings: [] } };
@@ -486,12 +488,40 @@ describe("independent local signature trust and installation", () => {
 });
 
 describe("market page entry", () => {
+  it("preserves service result order across kinds and uses only catalog metadata for the initial candidate", () => {
+    const kinds = ["provider", "mcp", "skill", "mcp"] as const;
+    const entries: MarketplaceCatalogEntry[] = kinds.map((kind, index) => ({ id: "candidate-" + index, name: "Candidate " + index,
+      description: "Purpose " + index, authorDisplayName: "Synthetic publisher", version: "1.0.0", kind, clients: ["codex-desktop"],
+      digest: "a".repeat(64), signingKeyId: "synthetic-key", signature: "b".repeat(128), publishedAt: 1_800_000_000 }));
+    const action = vi.fn();
+    const html = renderToStaticMarkup(<MarketplaceCatalog page={{ items: entries, offset: 20, limit: 20, hasMore: true }} selected={entries[0]}
+      busy={false} loading={false} hasError={false} filtered={true} canReport={false} filters={null} onSelect={action} onRefresh={action}
+      onLoad={action} onPreview={action} onVersions={action} onDownload={action} onReport={action} />);
+    const labels = entries.map(entry => html.indexOf('aria-label="查看插件 ' + entry.name + '"'));
+    expect(labels.every(position => position >= 0)).toBe(true);
+    expect(labels).toEqual([...labels].sort((left, right) => left - right));
+    expect(html).toContain('id="marketplace-candidate-title"');
+    expect(html).toContain("起始位置");
+    expect(html).toContain("预览安装");
+    expect(html).toContain("版本历史");
+    expect(html).toContain("下载签名包");
+    expect(html).not.toContain('role="dialog"');
+    expect(action).not.toHaveBeenCalled();
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
   it("renders without required props and keeps draft and review sections private while logged out", () => {
     vi.stubGlobal("navigator", { languages: ["zh-CN"] });
     const markup = renderToStaticMarkup(<MarketplacePage />);
-    expect(markup).toContain("公开已发布插件");
-    expect(markup).toContain("独立市场身份");
-    expect(markup).toContain('type="password"');
+    expect(markup).toContain("探索插件");
+    expect(markup).toContain("市场来源");
+    expect(markup).toContain("设置市场来源");
+    expect(markup).toContain("登录市场");
+    expect(markup).toContain("投稿插件");
+    expect(markup).not.toContain("独立市场身份");
+    expect(markup).not.toContain('type="password"');
+    expect(markup).not.toContain("HTTPS 服务地址");
+    expect(markup).not.toContain('role="dialog"');
     expect(markup).not.toContain("我的审核状态");
     expect(markup).not.toContain("独立审核队列");
     expect(markup).not.toContain("投稿包全文");

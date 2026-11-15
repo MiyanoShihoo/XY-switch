@@ -11,6 +11,13 @@ export interface UsageFilter {
   status?: string;
 }
 
+export interface TokenCoverage {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheCreation: number;
+}
+
 export interface UsageSummary {
   totalRequests: number;
   successCount: number;
@@ -19,6 +26,7 @@ export interface UsageSummary {
   totalOutputTokens: number;
   totalCacheReadTokens: number;
   totalCacheCreationTokens: number;
+  tokenCoverage?: TokenCoverage;
   totalCostUsd: string;
   avgLatencyMs: number;
 }
@@ -37,6 +45,7 @@ export interface UsageLogEntry {
   outputTokens: number;
   cacheReadTokens: number;
   cacheCreationTokens: number;
+  tokenCoverage?: TokenCoverage;
   totalCostUsd: string;
   inputCostUsd: string;
   outputCostUsd: string;
@@ -72,7 +81,9 @@ export interface UsageTrendPoint {
   outputTokens: number;
   cacheReadTokens: number;
   cacheCreationTokens: number;
+  tokenCoverage?: TokenCoverage;
   cost: number | null;
+  unknownCostRequests?: number;
   requests: number;
 }
 
@@ -82,7 +93,9 @@ export interface ProviderUsageStat {
   successRate: number;
   inputTokens: number;
   outputTokens: number;
+  tokenCoverage?: TokenCoverage;
   totalCostUsd: string;
+  unknownCostRequests?: number;
   avgLatencyMs: number;
 }
 
@@ -92,7 +105,9 @@ export interface ModelUsageStat {
   totalRequests: number;
   inputTokens: number;
   outputTokens: number;
+  tokenCoverage?: TokenCoverage;
   totalCostUsd: string;
+  unknownCostRequests?: number;
 }
 
 export interface ModelPricingInput {

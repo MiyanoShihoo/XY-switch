@@ -65,7 +65,7 @@ export async function waitForNativePage(client, { timeoutMs = 60_000, intervalMs
     try {
       state = await client.evaluate(`({url:location.href,origin:location.origin,title:document.title,
         readyState:document.readyState,productionIpc:Boolean(window.__TAURI_INTERNALS__?.invoke),
-        mockIpc:Boolean(window.__XY_QA__),workspace:Boolean(document.querySelector('.provider-workspace'))})`);
+        mockIpc:Boolean(window.__XY_QA__),workspace:Boolean(document.querySelector('.overview-page, .provider-workspace'))})`);
     } catch (error) {
       if (!/Execution context was destroyed|Cannot find context with specified id/.test(String(error))) throw error;
       state = undefined;

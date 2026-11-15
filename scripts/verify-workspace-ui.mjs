@@ -12,34 +12,43 @@ const only = process.env.QA_ONLY?.split(',');
 let fixtureId;
 const pause = ms=>new Promise(r=>setTimeout(r,ms));
 const body = ()=>c.evaluate('document.body.innerText');
-const nav = label=>c.click('.xy-shell-nav-item[title='+JSON.stringify(label)+']');
+async function expand(label, scope='document') {
+  const details='[...(('+scope+')?.querySelectorAll("details") ?? [])].find(e=>e.querySelector(":scope > summary")?.textContent.trim().startsWith('+JSON.stringify(label)+'))';
+  await c.waitFor('Boolean('+details+')');
+  if(!await c.evaluate('('+details+').open'))await c.clickExpression('('+details+').querySelector(":scope > summary")');
+  await c.waitFor('('+details+')?.open===true');
+}
+async function settingsSection(value) {
+  await c.click('#settings-tab-'+value);
+  await c.waitFor('document.querySelector("#settings-tab-'+value+'")?.getAttribute("aria-current")==="page" && Boolean(document.querySelector("#settings-panel-'+value+'"))');
+}
 const field = async label=>{ const id=await c.evaluate('[...document.querySelectorAll("label")].find(e=>e.textContent.replace(/[*]/g, "").trim() === '+JSON.stringify(label)+')?.htmlFor');assert(id,'field '+label);return '[id='+JSON.stringify(id)+']'; };
 const fillField = async(label,value)=>c.fill(await field(label),value);
 const contains = async value=>assert((await body()).includes(value),'visible text '+value);
 const absent = async value=>assert(!(await body()).includes(value),'unexpected text '+value);
 const countCalls = command=>c.evaluate('window.__XY_QA__.calls.filter(c=>c.command === '+JSON.stringify(command)+').length');
 const fixture = script=>c.evaluate('(()=>{const q=window.__XY_QA__;'+script+'})()');
-async function reset() { await c.viewport(1180,760); await c.navigate(base+'/');await c.waitFor('document.body.innerText.includes("Orion")'); }
+async function reset() { await c.viewport(1180,760); await c.navigate(base+'/');await c.waitFor('Boolean(document.querySelector(".xy-shell-root"))');await c.workspace('providers');await c.waitFor('document.body.innerText.includes("Orion")'); }
 async function noOverflow() { const metrics=await c.evaluate('({width:innerWidth,root:document.documentElement.scrollWidth,body:document.body.scrollWidth})');assert(metrics.root<=metrics.width && metrics.body<=metrics.width,JSON.stringify(metrics)); }
 async function run(name,work) { if(only && !only.includes(name))return;console.log('RUN '+name);const exceptionStart=c.exceptions.length;try{await work();if(name!=='error-boundary')assert.equal(c.exceptions.length,exceptionStart,'unexpected runtime exception');reports.push({name,passed:true});console.log('PASS '+name);}catch(error){reports.push({name,passed:false,error:String(error)});await c.screenshot(join(output,name+'-failure.png'));await writeFile(join(output,name+'-failure.json'),JSON.stringify({snapshot:await c.snapshot(),exceptions:c.exceptions},null,2));throw error;}finally{await writeFile(join(output,'results.json'),JSON.stringify(reports,null,2));} }
 try {
   ({identifier:fixtureId}=await c.call('Page.addScriptToEvaluateOnNewDocument',{source:'localStorage.setItem("xy-qa:native-language","zh-CN");localStorage.setItem("xy-switch:language","zh-CN");\n'+await readFile(new URL('./workspace-qa/fixture.js',import.meta.url),'utf8')}));
   await run('layout',async()=>{
     await reset();
-    const pages=['供应商','MCP 服务器','提示词','Skills','连接诊断','会话','用量与审计','安全与验收','设置'];
+    const pages=['providers','mcp','prompts','skills','diagnostics','sessions','usage','governance','settings'];
     for(const [width,height] of [[1180,760],[820,600]]) {
       await c.viewport(width,height);
       for(const theme of ['light','dark']) {
         await c.evaluate('localStorage.setItem("xy-switch:theme",'+JSON.stringify(theme)+')');
-        await c.navigate(base+'/'); await c.waitFor('document.body.innerText.includes("Orion")');
-        for(const [i,label] of pages.entries()) {
-          await nav(label);await pause(130);await noOverflow();
-          assert.equal(await c.evaluate('document.querySelector(".xy-shell-nav-item[aria-current=page]")?.title'),label);
+        await c.navigate(base+'/'); await c.waitFor('Boolean(document.querySelector(".xy-shell-root"))');
+        for(const [i,view] of pages.entries()) {
+          await c.workspace(view);await pause(130);await noOverflow();
+          assert.equal(await c.evaluate('document.querySelector(".xy-shell-section-nav .xy-shell-nav-item[aria-current=page]")?.dataset.view'),view);
           await c.screenshot(join(output,'layout-'+width+'-'+theme+'-'+i+'.png'));
         }
       }
     }
-    await c.viewport(1280,800);await nav('用量与审计');await noOverflow();
+    await c.viewport(1280,800);await c.workspace('usage');await noOverflow();
     assert.equal(c.exceptions.length,0,'unhandled runtime exceptions');
   });
   await run('providers',async()=>{
@@ -59,7 +68,7 @@ try {
     await c.waitFor('!document.querySelector("[role=dialog]")');
     assert.equal(await c.evaluate('window.__XY_QA__.current'),current,'save must not activate');
     assert.equal(await countCalls('set_provider_api_key'),0,'empty key must preserve existing credential');
-    await c.button('删除供应商');
+    await expand('配置管理');await c.button('删除供应商');
     assert.equal(await c.evaluate('document.activeElement.textContent.trim()'),'取消');
     await c.key('Tab',8);assert.equal(await c.evaluate('document.activeElement.textContent.trim()'),'确认删除');
     await c.key('Tab');assert.equal(await c.evaluate('document.activeElement.textContent.trim()'),'取消');
@@ -80,77 +89,89 @@ try {
     assert.equal(await c.evaluate('document.activeElement.id'),'workspace-content');
   });
   await run('prompts',async()=>{
-    await reset();await nav('提示词');await c.waitFor('document.body.innerText.includes("代码审查")');
-    await c.button('删除 代码审查');await c.button('取消');assert.equal(await countCalls('delete_prompt'),0);
+    await reset();await c.workspace('prompts');await c.waitFor('document.body.innerText.includes("代码审查")');
+    await c.button('查看 代码审查');await c.waitFor('Boolean(document.querySelector(".prompt-document .prompt-management"))');
+    await c.button('删除提示词');await c.button('取消');assert.equal(await countCalls('delete_prompt'),0);
     await fixture('q.fail.delete_prompt="QA prompt delete failed";');
-    await c.button('删除 代码审查');await c.button('确认删除');await c.waitFor('document.body.innerText.includes("QA prompt delete failed")');
+    await c.button('删除提示词','document.querySelector(".prompt-document")');await c.button('确认删除');await c.waitFor('document.body.innerText.includes("QA prompt delete failed")');
     assert.equal(await c.evaluate('Boolean(document.querySelector("[role=alertdialog]"))'),true);
     await fixture('delete q.fail.delete_prompt;');await c.button('确认删除');await c.waitFor('!document.querySelector("[role=alertdialog]")');
     await contains('尚未添加提示词');
   });
   await run('mcp',async()=>{
-    await reset();await nav('MCP 服务器');await c.waitFor('document.body.innerText.includes("Memory QA")');
-    const mounts=await c.evaluate('[...document.querySelectorAll(".mcp-record [role=switch]")].map(e=>e.getAttribute("aria-label"))');assert.equal(mounts.length,4);for(const app of ['Claude','Codex','Gemini','OpenCode'])assert(mounts.some(label=>label.includes(app))); 
-    await c.button('编辑 Memory QA');await fillField('名称','Memory Edited');await c.button('保存配置');await c.waitFor('!document.querySelector("[role=dialog]")');
+    await reset();await c.workspace('mcp');await c.waitFor('document.body.innerText.includes("Memory QA")');
+    await c.button('连接详情 · Memory QA','[...document.querySelectorAll(".mcp-record")].find(e=>e.textContent.includes("Memory QA"))');
+    await c.waitFor('Boolean(document.querySelector(".mcp-targets .mcp-apps"))');
+    const mounts=await c.evaluate('[...document.querySelectorAll(".mcp-targets .mcp-apps [role=switch]")].map(e=>e.getAttribute("aria-label"))');assert.equal(mounts.length,5);for(const app of ['Claude Code','Claude Desktop','Codex','Gemini','OpenCode'])assert(mounts.some(label=>label.includes(app)));
+    await c.button('编辑配置','document.querySelector(".mcp-targets")');await fillField('名称','Memory Edited');await c.button('保存配置');await c.waitFor('!document.querySelector("[role=dialog]") && document.querySelector(".mcp-targets .mcp-connection-details h3")?.textContent==="Memory Edited"');
     const record=await c.evaluate('window.__XY_QA__.mcp[0]');
     assert.deepEqual(record.env,{KEEP:'value'});assert.deepEqual(record.headers,{'X-QA':'preserve'});assert.equal(record.secretsConfigured,true);assert.equal(record.builtIn,false);
     await fixture('q.fail.delete_mcp_server="QA MCP delete failed";');
-    await c.button('删除 Memory Edited');await c.button('确认删除');await c.waitFor('document.body.innerText.includes("QA MCP delete failed")');
-    assert.equal(await c.evaluate('Boolean(document.querySelector("[role=alertdialog]"))'),true);await c.button('取消');
+    await c.button('删除服务器');await c.button('确认删除');await c.waitFor('document.body.innerText.includes("QA MCP delete failed")');
+    assert.equal(await c.evaluate('Boolean(document.querySelector("[role=alertdialog]"))'),true);await c.button('取消');await c.key('Escape');
     const savesBefore=await countCalls('save_mcp_server');await c.button('添加 MCP');await contains('启动命令');await contains('启动参数（JSON 数组）');
     await fillField('名称','HTTP QA');await fillField('传输方式','http');await fillField('服务 URL','not-an-url');await c.button('保存配置');
     assert.equal(await countCalls('save_mcp_server'),savesBefore,'invalid URL must not reach backend');assert.equal(await c.evaluate('Boolean(document.querySelector("[role=dialog]"))'),true);
-    await fillField('服务 URL','https://qa.invalid/mcp');await c.click('[role=dialog] details > summary');await fillField('环境变量','PATH_HINT=C:/My Folder\nEQUAL=a=b');await fillField('HTTP Headers','X-QA=preserve');await c.button('保存配置');await c.waitFor('!document.querySelector("[role=dialog]")');
+    await fillField('服务 URL','https://qa.invalid/mcp');await expand('环境变量与 HTTP Headers','document.querySelector("[role=dialog]")');await fillField('环境变量','PATH_HINT=C:/My Folder\nEQUAL=a=b');await fillField('HTTP Headers','X-QA=preserve');await c.button('保存配置');await c.waitFor('!document.querySelector("[role=dialog]")');
     const added=await c.evaluate('window.__XY_QA__.mcp.find(s=>s.name==="HTTP QA")');assert.equal(added.transport,'http');assert.deepEqual(added.env,{PATH_HINT:'C:/My Folder',EQUAL:'a=b'});assert.deepEqual(added.headers,{'X-QA':'preserve'});assert.equal(added.command,null);assert.deepEqual(added.args,[]);
   });
   await run('skills',async()=>{
-    await reset();await nav('Skills');await c.waitFor('document.body.innerText.includes("Review Skill")');
+    await reset();await c.workspace('skills');await c.waitFor('document.body.innerText.includes("Review Skill")');
     await fixture('q.emit("tauri://drag-enter",{paths:["QA:/skills/new"],position:{x:100,y:100}});');
     await c.waitFor('document.querySelector(".skills-page")?.dataset.dragging==="true"');
     await fixture('q.emit("tauri://drag-drop",{paths:["QA:/skills/new"],position:{x:100,y:100}});');
     await c.waitFor('window.__XY_QA__.calls.some(c=>c.command === "import_skill_folder")');
     assert.equal(await c.evaluate('window.__XY_QA__.calls.find(c=>c.command==="import_skill_folder").args.path'),'QA:/skills/new');
-    await c.click('details.skill-record summary');
+    await c.waitFor('window.__XY_QA__.skills.length===2 && [...document.querySelectorAll("button")].some(e=>e.getAttribute("aria-label")==="查看 Review Skill" && !e.disabled)');
+    await c.button('查看 New QA Skill');await c.waitFor('Boolean(document.querySelector("[role=dialog] .skill-detail"))');await c.button('关闭详情','document.querySelector("[role=dialog]")');await c.waitFor('!document.querySelector("[role=dialog]")');
+    await c.button('查看 Review Skill');await expand('技能信息','document.querySelector("[role=dialog]")');
     await fixture('q.fail.uninstall_skill_unified="QA uninstall failed";');
     await c.button('移除引用');await c.button('移除引用','document.querySelector("[role=alertdialog]")');await c.waitFor('document.body.innerText.includes("QA uninstall failed")');
     assert.equal(await c.evaluate('Boolean(document.querySelector("[role=alertdialog]"))'),true);
     assert.equal(await c.evaluate('window.__XY_QA__.skills.length'),2,'failed removal must retain both references');await c.button('取消');
   });
   await run('sessions',async()=>{
-    await reset();await nav('会话');await c.waitFor('document.body.innerText.includes("请检查界面边界")');
+    await reset();await c.workspace('sessions');await c.waitFor('document.body.innerText.includes("工作台界面验收")');
+    assert.equal(await countCalls('get_session_detail'),0,'the session list must not read messages before selection');
+    await c.button('查看会话 工作台界面验收');await c.waitFor('document.body.innerText.includes("请检查界面边界")');await c.button('放大阅读');await expand('会话信息与管理','document.querySelector("[role=dialog]")');
     await fixture('q.deleteCount=0;');await c.button('删除会话');await c.button('确认删除');
     await c.waitFor('document.body.innerText.includes("后端未删除任何会话")');
-    assert.equal(await c.evaluate('Boolean(document.querySelector("[role=alertdialog]"))'),true);await c.button('取消');
-    await c.viewport(820,600);await c.waitFor('!document.querySelector(".session-workspace > .session-detail")');await c.button('查看会话 工作台界面验收');await c.waitFor('Boolean(document.querySelector("[role=dialog]"))');
+    assert.equal(await c.evaluate('Boolean(document.querySelector("[role=alertdialog]"))'),true);await c.button('取消');await c.key('Escape');
+    await c.viewport(820,600);await c.waitFor('Boolean(document.querySelector(".session-reading-pane .session-detail")) && !document.querySelector("[role=dialog]")');await c.button('放大阅读');await c.waitFor('Boolean(document.querySelector("[role=dialog] .session-detail"))');
     await contains('请检查界面边界');await noOverflow();await c.key('Escape');
   });
   await run('sessions-read-errors',async()=>{
-    await reset();await fixture('q.sessionWarnings=["QA skipped unreadable log"];q.sessionMessageWarnings=["QA incomplete final JSONL entry"];');await nav('会话');
-    await c.waitFor('document.body.innerText.includes("QA incomplete final JSONL entry")');await contains('QA skipped unreadable log');await contains('请检查界面边界');await noOverflow();
+    await reset();await fixture('q.sessionWarnings=["QA skipped unreadable log"];q.sessionMessageWarnings=["QA incomplete final JSONL entry"];');await c.workspace('sessions');
+    await expand('部分会话内容未能读取','document.querySelector(".sessions-page")');await contains('QA skipped unreadable log');
+    await c.button('查看会话 工作台界面验收');await expand('部分会话内容未能读取','document.querySelector(".session-messages")');
+    await contains('QA incomplete final JSONL entry');await contains('请检查界面边界');await noOverflow();
     await c.screenshot(join(output,'sessions-partial-read.png'));
-    await reset();await fixture('q.fail.get_session_detail="QA session detail read denied";');await nav('会话');
+    await reset();await fixture('q.fail.get_session_detail="QA session detail read denied";');await c.workspace('sessions');await c.waitFor('document.body.innerText.includes("工作台界面验收")');await c.button('查看会话 工作台界面验收');
     await c.waitFor('document.body.innerText.includes("QA session detail read denied")');await absent('没有可读取的消息');
     const detailReads=await countCalls('get_session_detail');
     await fixture('delete q.fail.get_session_detail;');await c.button('重试','document.querySelector(".session-messages")');await c.waitFor('document.body.innerText.includes("请检查界面边界")');
     assert.equal(await countCalls('get_session_detail'),detailReads+1,'message retry must refetch the selected session');await absent('QA session detail read denied');
-    await reset();await fixture('q.fail.get_session_catalog="QA session catalog read denied";');await nav('会话');
+    await reset();await fixture('q.fail.get_session_catalog="QA session catalog read denied";');await c.workspace('sessions');
     await c.waitFor('document.body.innerText.includes("QA session catalog read denied")');await absent('尚未发现本地会话');
     const catalogReads=await countCalls('get_session_catalog');
-    await fixture('delete q.fail.get_session_catalog;');await c.button('重试','[...document.querySelectorAll(".sessions-page > [role=alert]")].find(element=>element.textContent.includes("QA session catalog read denied"))');await c.waitFor('document.body.innerText.includes("请检查界面边界")');
+    await fixture('delete q.fail.get_session_catalog;');await c.button('重试','[...document.querySelectorAll(".sessions-page > [role=alert]")].find(element=>element.textContent.includes("QA session catalog read denied"))');await c.waitFor('document.body.innerText.includes("工作台界面验收")');
     assert.equal(await countCalls('get_session_catalog'),catalogReads+1,'catalog retry must refetch the session list');await absent('QA session catalog read denied');
+    await c.button('查看会话 工作台界面验收');await c.waitFor('document.body.innerText.includes("请检查界面边界")');
   });
   await run('sessions-delete-and-filter',async()=>{
-    await reset();await fixture('q.sessions.push({...q.sessions[0],providerId:"claude",sessionId:"qa-claude",title:"Claude QA session",resumeCommand:"claude --resume qa-claude"});');await nav('会话');
-    await c.waitFor('document.body.innerText.includes("请检查界面边界")');await c.fill('select[aria-label="筛选会话客户端"]','codex');
+    await reset();await fixture('q.sessions.push({...q.sessions[0],providerId:"claude",sessionId:"qa-claude",title:"Claude QA session",resumeCommand:"claude --resume qa-claude"});');await c.workspace('sessions');
+    await c.waitFor('document.body.innerText.includes("工作台界面验收")');
+    const clientFilter=await field('筛选会话客户端');await c.fill(clientFilter,'codex');
     await c.waitFor('document.querySelectorAll(".session-index [role=listitem]").length===1');
+    await c.button('查看会话 工作台界面验收');await c.button('放大阅读');await expand('会话信息与管理','document.querySelector("[role=dialog]")');
     const beforeFailure=await countCalls('get_session_catalog');
     await fixture('q.fail.delete_sessions="QA session file changed";');await c.button('删除会话');await contains('不可撤销');await contains('不会修改客户端的索引或数据库');await c.button('确认删除');
     await c.waitFor('document.body.innerText.includes("QA session file changed")');
     assert((await countCalls('get_session_catalog'))>beforeFailure,'failed deletion must refresh the catalog');
     assert.equal(await c.evaluate('window.__XY_QA__.sessions.length'),2,'failed deletion preserves files');await c.button('取消');
-    await fixture('delete q.fail.delete_sessions;');await c.button('删除会话');await c.button('确认删除');
+    await fixture('delete q.fail.delete_sessions;');await expand('会话信息与管理','document.querySelector("[role=dialog]")');await c.button('删除会话');await c.button('确认删除');
     await c.waitFor('!document.querySelector("[role=alertdialog]") && window.__XY_QA__.sessions.length===1');
-    await c.waitFor('document.querySelector("select[aria-label=筛选会话客户端]").value==="all"');
+    await c.waitFor('document.querySelector('+JSON.stringify(clientFilter)+').value==="all"');
     await contains('Claude QA session');await absent('没有匹配的会话');
     const deletion=await c.evaluate('window.__XY_QA__.calls.filter(c=>c.command==="delete_sessions").at(-1).args');
     assert.deepEqual(deletion,{ids:[{providerId:'codex',sessionId:'qa-session'}]});
@@ -158,13 +179,13 @@ try {
     await c.screenshot(join(output,'sessions-after-delete.png'));
   });
   await run('usage',async()=>{
-    await reset();await nav('用量与审计');await c.waitFor('document.querySelectorAll("#usage-data-panel-logs tbody tr").length===20');
+    await reset();await c.workspace('usage');await c.click('#usage-data-tab-logs');await c.waitFor('document.querySelectorAll("#usage-data-panel-logs tbody tr").length===20');
     await contains('$0.0000');await c.fill('select[aria-label="自动刷新间隔"]','0');
     await c.button('下一页');await c.waitFor('window.__XY_QA__.calls.some(c=>c.command === "get_usage_logs" && c.args.offset===20)');
     await c.fill('input[aria-label="跳转页码"]','3');await c.button('跳转');await c.waitFor('document.querySelectorAll("#usage-data-panel-logs tbody tr").length===5');
     await c.button('查看请求 qa-request-40');await contains('请求详情');await c.key('Escape');
-    await c.button('供应商统计');await contains('98.5%');await absent('9850');
-    await c.button('请求日志');await fillField('模型 ID','empty');await c.button('应用筛选');await c.waitFor('document.body.innerText.includes("当前筛选范围没有请求")');
+    await c.click('#usage-data-tab-overview');await c.click('#usage-breakdown-tab-providers');await contains('98.5%');await absent('9850');
+    await c.click('#usage-data-tab-logs');await fillField('模型 ID','empty');await c.button('应用筛选');await c.waitFor('document.body.innerText.includes("当前筛选范围没有请求")');
     await fillField('模型 ID','slow');await c.button('应用筛选');await c.waitFor('window.__XY_QA__.pending.length===5');
     await fillField('模型 ID','fast');await c.button('应用筛选');await c.waitFor('document.querySelectorAll("#usage-data-panel-logs tbody tr").length===1');
     await fixture('q.release();');await pause(200);assert.equal(await c.evaluate('document.querySelectorAll("#usage-data-panel-logs tbody tr").length'),1,'late old filter ignored');await contains('fast');
@@ -176,22 +197,22 @@ try {
     await c.screenshot(join(output,'usage-error.png'));
   });
   await run('settings',async()=>{
-    await reset();await fixture('q.fail.get_autostart_enabled="QA registry unavailable";');await nav('设置');
+    await reset();await fixture('q.fail.get_autostart_enabled="QA registry unavailable";');await c.workspace('settings');
     await c.waitFor('document.body.innerText.includes("状态未知")');
     assert.equal(await c.evaluate('Boolean(document.querySelector("[aria-label=开机自启]"))'),false,'unknown is not an off switch');
     await fixture('delete q.fail.get_autostart_enabled;q.autostartMismatch=true;');await c.button('重试');await c.waitFor('Boolean(document.querySelector("[aria-label=开机自启]"))');
     await c.click('[aria-label="开机自启"]');await c.waitFor('document.body.innerText.includes("回读状态与请求不一致")');
     assert.equal(await c.evaluate('document.querySelector("[aria-label=开机自启]").getAttribute("aria-checked")'),'false');
-    await fillField('请求超时（秒）','14');
+    await contains('请求与日志');await fillField('请求超时（秒）','14');
     assert.equal(await c.evaluate('[...document.querySelectorAll("button")].find(b=>b.textContent.trim()==="保存偏好").disabled'),true);
     await fillField('请求超时（秒）','60');await c.button('保存偏好');await c.waitFor('document.body.innerText.includes("偏好已保存")');
     assert.equal(await c.evaluate('window.__XY_QA__.preferences.requestTimeoutSecs'),60);
-    await fillField('颜色主题','light');assert.equal(await c.evaluate('document.documentElement.dataset.theme'),'light');
-    await c.click('#settings-tab-general');await c.key('ArrowRight');assert.equal(await c.evaluate('document.activeElement.id'),'settings-tab-routing');
-    await c.button('凭据');await c.waitFor('document.body.innerText.includes("已配置")');
+    await c.click('.settings-theme input[value="light"]');assert.equal(await c.evaluate('document.documentElement.dataset.theme'),'light');
+    await settingsSection('general');await c.key('Tab');assert.equal(await c.evaluate('document.activeElement.id'),'settings-tab-privacy');await c.key('Tab');assert.equal(await c.evaluate('document.activeElement.id'),'settings-tab-routing');await c.key('Enter');await c.waitFor('Boolean(document.querySelector("#settings-panel-routing"))');
+    await settingsSection('credentials');await c.waitFor('document.body.innerText.includes("已配置")');
     await fixture('q.fail["has_provider_api_key:qa-p2"]="QA credential status failed";');await c.button('刷新状态');
     await c.waitFor('document.body.innerText.includes("QA credential status failed")');await contains('状态未知');
-    await c.button('数据');await fixture('q.fail.import_config="QA partial import failure";');
+    await settingsSection('data');await fixture('q.fail.import_config="QA partial import failure";');
     const beforeImportFailure=await countCalls('list_providers');
     await c.evaluate('(()=>{const input=document.querySelector("input[type=file]");const transfer=new DataTransfer();transfer.items.add(new File(["{}"],"qa-failed-config.json",{type:"application/json"}));input.files=transfer.files;input.dispatchEvent(new Event("change",{bubbles:true}));})()');
     await c.button('确认导入');await c.waitFor('document.body.innerText.includes("QA partial import failure")');
@@ -202,23 +223,25 @@ try {
     await c.button('确认导入');await c.waitFor('document.body.innerText.includes("导入已完成，但界面刷新失败")');
     assert.equal(await c.evaluate('Boolean(document.querySelector("[role=alertdialog]"))'),false,'successful import cannot be retried accidentally');assert.equal(await countCalls('import_config'),2);
     await fixture('delete q.fail.list_providers;delete q.fail["has_provider_api_key:qa-p2"];');await c.button('重新刷新工作台');await c.waitFor('document.body.innerText.includes("工作台数据已刷新")');assert.equal(await countCalls('import_config'),2);
-    await c.button('关于');await contains('v1.1.0-qa');await c.button('数据');await c.waitFor('document.body.innerText.includes("QA:/data")');await noOverflow();
+    await settingsSection('about');await contains('v1.1.0-qa');await settingsSection('data');await expand('数据位置');await c.waitFor('document.body.innerText.includes("QA:/data")');await noOverflow();
   });
   await run('routing',async()=>{
-    await reset();await nav('设置');await c.button('本地路由');await c.waitFor('document.body.innerText.includes("保存路由配置")');
+    await reset();await c.workspace('settings');await settingsSection('routing');await expand('监听与路由选项');await c.waitFor('document.body.innerText.includes("保存路由配置")');
     await fillField('监听端口','0');assert.equal(await c.evaluate('[...document.querySelectorAll("button")].find(b=>b.textContent.trim()==="保存路由配置").disabled'),true);
     await fillField('监听端口','15722');await c.button('保存路由配置');await c.waitFor('window.__XY_QA__.proxy.settings.port===15722');
     await fixture('q.hold.push("set_proxy_enabled");');await c.button('启动路由');
     await c.waitFor('window.__XY_QA__.pending.some(p=>p.command==="set_proxy_enabled")');
+    await c.click('.xy-shell-runtime > summary');await c.waitFor('document.querySelector(".xy-shell-runtime").open');
     assert.equal(await c.evaluate('document.querySelector(".xy-shell-runtime button").disabled'),true,'global runtime toggle is serialized');
+    await c.key('Escape');await c.waitFor('!document.querySelector(".xy-shell-runtime").open');
     await fixture('q.release("set_proxy_enabled");');await c.waitFor('window.__XY_QA__.proxy.running');await contains('运行中');
     await fixture('q.fail.set_proxy_enabled="QA stop failed";q.fail.get_proxy_status="QA status unavailable";');await c.button('停止路由');
     await c.waitFor('document.body.innerText.includes("状态未知")');await contains('QA stop failed');
   });
   await run('audit',async()=>{
-    await c.viewport(1180,760);await c.navigate(base+'/scripts/audit-qa/?handoff=1');await c.waitFor('document.querySelectorAll("#usage-data-panel-logs tbody tr").length===3');
+    await c.viewport(1180,760);await c.navigate(base+'/scripts/audit-qa/?handoff=1');await c.waitFor('Boolean(document.querySelector("#usage-data-tab-logs"))');await c.click('#usage-data-tab-logs');await c.waitFor('document.querySelectorAll("#usage-data-panel-logs tbody tr").length===3');
     await c.fill('select[aria-label="自动刷新间隔"]','0');await contains('503');
-    await c.button('查看请求 0');await c.key('Tab');
+    await c.button('查看请求 0');await c.key('Tab');await c.key('Tab');await c.key('Tab');
     assert.equal(await c.evaluate('document.activeElement.matches(".model-audit-details > summary")'),true,'summary must be keyboard reachable in a dialog');
     await c.key('Enter');await c.waitFor('document.querySelector(".model-audit-details").open');await c.button('分析此响应流式统计');
     const billing=await c.evaluate('Object.fromEntries([...document.querySelectorAll(".audit-stream-billing dl > div")].map(e=>[e.querySelector("dt").textContent,e.querySelector("dd").textContent]))');
@@ -226,13 +249,16 @@ try {
     await contains('该比较不是硬证据');await c.screenshot(join(output,'audit-stream-bytes.png'));await c.key('Escape');
     await c.button('查看请求 1');await contains('1 项硬证据');await c.click('.model-audit-details > summary');await contains('inv.byte_bound');await contains('inv.model_mismatch');await contains('cheap-model-v0');await c.key('Escape');
     await c.button('查看请求 2');await contains('未自报 / 未记录');await c.click('.model-audit-details > summary');await contains('model.upstream_missing');await contains('byte_bound.reasoning_unknown');await c.key('Escape');
-    await c.navigate(base+'/scripts/audit-qa/?panel=1');await c.waitFor('document.querySelectorAll(".audit-counts strong").length===5');
-    assert.deepEqual(await c.evaluate('[...document.querySelectorAll(".audit-counts strong")].map(e=>e.textContent)'),['3','1','1','0','3']);
+    await c.click('#usage-data-tab-audit');await c.waitFor('document.querySelectorAll(".audit-categories strong").length===5');
+    assert.deepEqual(await c.evaluate('[...document.querySelectorAll(".audit-categories strong")].map(e=>e.textContent)'),['3','1','1','0','3']);
+    assert.equal(await c.evaluate('window.__AUDIT_QA__.calls.some(c=>["analyze_model_audit","analyze_shadow_audit","save_shadow_audit_setting"].includes(c.command))'),false,'opening audit must not start analysis or enable sampling');
     await c.button('分析当前筛选范围');await c.waitFor('Boolean(document.querySelector(".audit-passive-report"))');
     const comparisons=await c.evaluate('[...document.querySelectorAll(".audit-billing-comparison")].map(e=>e.innerText)');assert.equal(comparisons.length,2);assert(comparisons[0].includes('2.00×'));assert(comparisons[1].includes('不可比'));
     await c.click('.audit-passive-report .audit-group-details > summary');assert.equal(await c.evaluate('document.querySelectorAll(".audit-passive-report .audit-group-details tbody tr").length'),3);
     await c.screenshot(join(output,'audit-passive.png'));await noOverflow();
-    await c.click('.audit-shadow-section > summary');await c.waitFor('document.body.innerText.includes("尚未配置，影子采样默认关闭")');
+    await c.click('#usage-data-tab-configuration');
+    assert.equal(await c.evaluate('window.__AUDIT_QA__.calls.some(c=>["get_shadow_audit_settings","analyze_shadow_audit","save_shadow_audit_setting"].includes(c.command))'),false,'shadow settings must remain idle until explicitly requested');
+    await c.button('读取配置','document.querySelector("#audit-tools-panel-shadow")');await c.waitFor('document.body.innerText.includes("尚未配置，影子采样默认关闭")');
     await c.button('分析已采集差分');await c.waitFor('document.body.innerText.includes("没有可分析的配对分组")');
     await fillField('渠道 ID（精确匹配）','fixture');await fillField('实际转发模型（精确匹配）','premium-model');await fillField('本地分词器绝对路径','C:/qa/tokenizer.json');await c.click('[aria-label="启用影子采样"]');await c.button('保存配置');
     await c.waitFor('window.__AUDIT_QA__.settings[0]?.enabled===true');await contains('已保存启用配置');
@@ -242,11 +268,13 @@ try {
     }
     await c.button('停用');await c.waitFor('window.__AUDIT_QA__.settings[0]?.enabled===false');
     await c.evaluate('window.__AUDIT_QA__.setScenario("suspicious");window.__AUDIT_QA__.deferAnalysis=true;');await c.button('分析已采集差分');await c.waitFor('Boolean(window.__AUDIT_QA__.pendingAnalysis)');
-    await fillField('模型 ID','changed-filter');await c.button('应用筛选');await c.evaluate('window.__AUDIT_QA__.releaseAnalysis()');await pause(150);
+    await c.click('#usage-data-tab-logs');await expand('更多筛选');await fillField('模型 ID','changed-filter');await c.button('应用筛选');
+    await c.click('#usage-data-tab-configuration');await c.waitFor('Boolean(document.querySelector("#audit-tools-panel-shadow .audit-shadow-section")?.getClientRects().length)');await c.waitFor('document.body.innerText.includes("已停用")');
+    await c.evaluate('window.__AUDIT_QA__.releaseAnalysis()');await pause(150);
     assert.equal(await c.evaluate('Boolean(document.querySelector(".audit-shadow-results"))'),false,'late audit result must not cross filter boundaries');
-    await c.evaluate('(()=>{const details=document.querySelector(".audit-shadow-section");if(!details.open)details.querySelector("summary").click();})()');await c.button('分析已采集差分');await c.waitFor('Boolean(document.querySelector(".audit-shadow-results"))');
+    await c.button('分析已采集差分');await c.waitFor('Boolean(document.querySelector(".audit-shadow-results"))');
     assert.equal(await c.evaluate('window.__AUDIT_QA__.calls.filter(c=>c.command==="analyze_shadow_audit").at(-1).args.filter.model'),'changed-filter');
-    await c.clickExpression('[...document.querySelectorAll("summary")].find(e=>e.textContent.trim()==="离线参照库分析")');await contains('观测指纹 JSON 绝对路径');await c.click('.audit-tokenizer-form > summary');await contains('分词器文件绝对路径');await noOverflow();
+    await c.click('#audit-tools-tab-reference');await contains('观测指纹 JSON 绝对路径');await c.click('.audit-tokenizer-form > summary');await contains('分词器文件绝对路径');await noOverflow();
   });
   await run('model-editor',async()=>{
     await c.viewport(1180,760);await c.navigate(base+'/?qa=provider-models');await c.button('打开模型编辑器');await c.waitFor('Boolean(document.querySelector("[role=dialog]"))');
@@ -270,12 +298,12 @@ try {
   });
   await run('preview',async()=>{
     await c.call('Page.removeScriptToEvaluateOnNewDocument',{identifier:fixtureId});fixtureId=undefined;
-    await c.navigate(base+'/');await nav('设置');await c.waitFor('document.body.innerText.includes("浏览器预览")');
+    await c.viewport(1180,760);await c.navigate(base+'/');await c.waitFor('Boolean(document.querySelector(".xy-shell-root"))');await c.workspace('settings');await c.waitFor('document.body.innerText.includes("浏览器预览")');
     await contains('当前平台不支持');
     assert.equal(await c.evaluate('document.querySelector("[aria-label=关闭窗口时最小化到托盘]").disabled'),true);
     assert.equal(await c.evaluate('[...document.querySelectorAll("button")].find(b=>b.textContent.trim()==="保存偏好").disabled'),true);
-    await fillField('颜色主题','dark');assert.equal(await c.evaluate('document.documentElement.dataset.theme'),'dark');
-    await c.button('数据');assert.equal(await c.evaluate('[...document.querySelectorAll("button")].find(b=>b.textContent.trim()==="导入配置").disabled'),true);
+    await c.click('.settings-theme input[value="dark"]');assert.equal(await c.evaluate('document.documentElement.dataset.theme'),'dark');
+    await settingsSection('data');assert.equal(await c.evaluate('[...document.querySelectorAll("button")].find(b=>b.textContent.trim()==="导入配置").disabled'),true);
   });
   await run('error-boundary',async()=>{
     await c.navigate(base+'/scripts/error-boundary-qa/?theme=dark');await contains('界面暂时无法显示');await contains('HANDOFF_QA_EXPECTED_RENDER_ERROR');await c.viewport(820,600);await noOverflow();await c.screenshot(join(output,'error-boundary.png'));

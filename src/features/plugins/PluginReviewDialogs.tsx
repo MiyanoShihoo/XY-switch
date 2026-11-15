@@ -36,7 +36,7 @@ export function TrustedKeyDialog({ input, review, busy, error, onChange, onPrevi
   const [fingerprint, setFingerprint] = useState("");
   const [independentSource, setIndependentSource] = useState(false);
   useEffect(() => { setFingerprint(""); setIndependentSource(false); }, [review]);
-  return <Modal open title={t("添加发布者信任密钥")} size="lg" busy={busy} onClose={onClose}
+  return <Modal className="plugins-dialog" open title={t("添加发布者信任密钥")} size="lg" busy={busy} onClose={onClose}
     description={t("请从独立可信来源取得公钥；插件包内的公钥不能建立信任。")}
     footer={<><Button variant="secondary" disabled={busy} onClick={onClose}>{t("取消")}</Button>
       {review ? <Button disabled={busy || !independentSource || fingerprint !== review.preview.fingerprint}
@@ -69,26 +69,28 @@ export function InstallReviewDialog({ preview, initialClients = [], busy, error,
   const [enable, setEnable] = useState(false);
   const expired = useExpired(preview.expiresAt);
   const manifest = preview.validation.manifest;
-  return <Modal open title={t("审核插件安装与客户端授权")} size="lg" busy={busy} onClose={onClose}
+  return <Modal className="plugins-dialog plugins-install-dialog" open title={t("审核插件安装与客户端授权")} size="lg" busy={busy} onClose={onClose}
     description={t("本次确认会停用旧客户端授权，仅按下方选择重新授权。")}
     footer={<><Button variant="secondary" disabled={busy} onClick={onClose}>{t("取消")}</Button>
       <Button disabled={busy || expired || !accepted || !clients.length || digest !== preview.validation.digest}
         onClick={() => onConfirm({ clients, digest, accepted, enable })}>{t("确认保存并授权")}</Button></>}>
-    <dl className="key-values"><dt>{t("插件")}</dt><dd>{manifest.name} · {manifest.id}</dd>
-      <dt>{t("版本")}</dt><dd>{preview.previousVersion ? preview.previousVersion + " → " + manifest.version : manifest.version}</dd>
-      <dt>{t("发布者")}</dt><dd>{manifest.author}</dd><dt>{t("签名密钥")}</dt><dd>{preview.signingKeyId}</dd>
-      <dt>{t("公钥指纹")}</dt><dd><code className="plugins-digest">{preview.signingKeyFingerprint}</code></dd>
-      <dt>{t("文件数量 / 文本字节")}</dt><dd>{preview.validation.fileCount} / {preview.validation.canonicalSize}</dd>
-      <dt>{t("固定版本依赖")}</dt><dd>{manifest.dependencies.length ? manifest.dependencies.join(" · ") : t("无")}</dd></dl>
-    <p>{manifest.description}</p>
-    <PermissionsSummary permissions={manifest.permissions} />
+    <div className="plugins-install-identity"><div><h3>{manifest.name}</h3><span>{preview.previousVersion ? preview.previousVersion + " → " + manifest.version : manifest.version}</span></div><code>{manifest.id}</code></div>
     <fieldset disabled={busy} className="plugins-client-choices"><legend>{t("本次授权客户端")}</legend>
       {manifest.clients.map(client => <ReviewCheckbox key={client} label={pluginClientLabels[client]} checked={clients.includes(client)}
         onCheckedChange={checked => setClients(previous => checked ? [...previous, client] : previous.filter(item => item !== client))} />)}
     </fieldset>
-    {preview.permissionChanges.length > 0 && <details><summary>{t("各客户端新增权限")}</summary>
+    {preview.permissionChanges.length > 0 && <details className="plugins-permission-changes" open><summary>{t("各客户端新增权限")}</summary>
       {preview.permissionChanges.map(change => <section className="plugins-review" key={change.client}>
         <h4>{pluginClientLabels[change.client]}</h4><PermissionsSummary permissions={change.added} /></section>)}</details>}
+    <section className="plugins-permission-summary"><h4>{t("完整权限")}</h4><PermissionsSummary permissions={manifest.permissions} /></section>
+    <details className="plugins-install-metadata"><summary>{t("签名与包信息")}</summary>
+      <div className="plugins-review"><p>{manifest.description}</p>
+        <dl className="key-values"><dt>{t("发布者")}</dt><dd>{manifest.author}</dd><dt>{t("签名密钥")}</dt><dd>{preview.signingKeyId}</dd>
+          <dt>{t("公钥指纹")}</dt><dd><code className="plugins-digest">{preview.signingKeyFingerprint}</code></dd>
+          <dt>{t("文件数量 / 文本字节")}</dt><dd>{preview.validation.fileCount} / {preview.validation.canonicalSize}</dd>
+          <dt>{t("固定版本依赖")}</dt><dd>{manifest.dependencies.length ? manifest.dependencies.join(" · ") : t("无")}</dd></dl>
+      </div>
+    </details>
     {preview.validation.warnings.map(code => <p className="plugins-notice" key={code}>{translateMessage(pluginStatusText(code))}</p>)}
     <ReviewCheckbox checked={enable} disabled={busy || !preview.validation.runtimeSupported} onCheckedChange={setEnable}
       label={t("确认后启用所选客户端")} />
@@ -113,7 +115,7 @@ export function ToolReviewDialog({ review, operation, busy, error, onConfirm, on
   const preview = review.preview;
   const effect = operation === "json_passthrough" ? t("返回本次明确确认的 JSON 输入。")
     : operation === "read_text" ? t("读取已签名插件包内的文本。") : t("向已授权公网 HTTPS 站点发送一次 GET 请求。");
-  return <Modal open title={t("确认这一次工具调用")} size="lg" busy={busy} onClose={onClose}
+  return <Modal className="plugins-dialog" open title={t("确认这一次工具调用")} size="lg" busy={busy} onClose={onClose}
     description={t("调用确认仅使用一次。修改参数、客户端、插件版本或权限后必须重新预览。")}
     footer={<><Button variant="secondary" disabled={busy} onClick={onClose}>{t("取消")}</Button>
       <Button disabled={busy || expired || !accepted || argumentsDigest !== preview.argumentsDigest}
@@ -140,7 +142,7 @@ export function WithdrawalReviewDialog({ review, busy, error, onConfirm, onClose
   const [accepted, setAccepted] = useState(false);
   const notice = review.notice;
   const reason = notice.reason === "security" ? t("安全问题") : notice.reason === "privacy" ? t("隐私问题") : t("发布者撤回");
-  return <Modal open title={t("应用签名撤回通知")} size="lg" busy={busy} onClose={onClose}
+  return <Modal className="plugins-dialog" open title={t("应用签名撤回通知")} size="lg" busy={busy} onClose={onClose}
     description={t("签名将在确认后由宿主验证。验证成功后，此版本将禁止安装、运行和回滚。")}
     footer={<><Button variant="secondary" disabled={busy} onClick={onClose}>{t("取消")}</Button>
       <Button variant="danger" disabled={busy || !accepted} onClick={() => onConfirm(accepted)}>{t("确认验证并应用撤回")}</Button></>}>

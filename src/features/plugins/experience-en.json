@@ -1,0 +1,19 @@
+{
+  "查看可调用工具": "View callable tools",
+  "此包当前没有活跃安装，可在版本历史中重新审核安装。": "This package has no active installation. Open version history to review installation again.",
+  "选择一个包，管理客户端授权、版本与可调用工具。": "Select a package to manage client access, versions, and callable tools.",
+  "这里只列出此包在所选客户端已授权的当前版本工具。每次调用仍需独立预览和确认。": "Only this package’s current-version tools authorized for the selected client appear here. Each call requires a separate preview and confirmation.",
+  "此包在所选客户端没有可调用的已验证工具。": "This package has no verified callable tools for the selected client.",
+  "审核客户端授权": "Review client access",
+  "插件生命周期工作区": "Plugin lifecycle workspace",
+  "返回包目录": "Back to package catalog",
+  "包生命周期任务": "Package lifecycle tasks",
+  "客户端授权": "Client access",
+  "可调用工具": "Callable tools",
+  "调用证据": "Call evidence",
+  "仅显示此工作区中最近一次调用的返回结果；未读取持久调用历史。": "Only the most recent call result in this workspace is shown. Saved call history has not been loaded.",
+  "尚无本次调用证据": "No call evidence yet",
+  "选择此包的已授权客户端与工具，完成独立预览和确认后查看返回结果。": "Select an authorized client and tool for this package, then preview and confirm the call to see its result.",
+  "插件标识": "Plugin ID",
+  "返回可调用工具": "Back to callable tools"
+}

@@ -14,6 +14,8 @@ import {
   previewTrustedPluginKey, readPluginDocument, revokeTrustedPluginKey, uninstallPlugin, validatePluginPackage,
 } from "./lib/plugins-service";
 import { PluginsPage } from "./features/plugins/PluginsPage";
+import { InstalledPluginDetails } from "./features/plugins/InstalledPluginCard";
+import { PluginCallEvidence, PluginWorkspace, toolsForPackage } from "./features/plugins/PluginWorkspace";
 import { InstallReviewDialog, ToolReviewDialog, TrustedKeyDialog, WithdrawalReviewDialog } from "./features/plugins/PluginReviewDialogs";
 import {
   confirmInstallReview, confirmKeyReview, confirmToolReview, confirmWithdrawalReview, readWithdrawalReview,
@@ -21,7 +23,7 @@ import {
 } from "./features/plugins/review";
 import {
   emptyPluginPermissions, type InstalledPlugin, type InstallPreview, type PluginManifest,
-  type PluginWithdrawal, type TrustedKeyInput,
+  type PluginWithdrawal, type TrustedKeyInput, type VerifiedTool, type ToolExecutionResult,
 } from "./types/plugins";
 
 const digest = "a".repeat(64);
@@ -274,7 +276,12 @@ describe("production local plugin panel and review dialogs", () => {
     const html = renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(PluginsPage)));
     expect(html).toContain("本地插件安装、信任配置与执行需要桌面应用");
     expect(html).toContain("导入签名插件包");
-    expect(html).toContain("签名撤回通知");
+    expect(html).toContain("插件管理");
+    expect(html).toContain("搜索已安装插件");
+    expect(html).not.toContain("签名撤回通知");
+    expect(html).not.toContain("签名包 JSON");
+    expect(html).not.toContain("工具参数 JSON");
+    expect(html).not.toContain('role="dialog"');
     expect(html).toContain('disabled=""');
     expect(invoke).not.toHaveBeenCalled();
     client.clear();
@@ -285,13 +292,57 @@ describe("production local plugin panel and review dialogs", () => {
     const client = new QueryClient();
     client.setQueryData(pluginQueryKeys.installed, [installedFixture()]);
     client.setQueryData(pluginQueryKeys.keys, [keyFixture().preview]);
-    const html = renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(PluginsPage)));
-    for (const text of ["Approved Reader", "Codex Desktop", "Codex CLI", "已启用", "已停用", "已撤回", "审核授权", "停用全部客户端", "卸载插件", "审核回滚", "吊销信任"]) {
+    const pageHtml = renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(PluginsPage)));
+    expect(pageHtml).toContain('class="plugins-directory-row"');
+    expect(pageHtml).toContain('aria-label="审查插件 Approved Reader"');
+    expect(pageHtml).toContain('data-inspecting="false"');
+    expect(pageHtml).not.toContain('aria-label="包检查器"');
+    expect(pageHtml).not.toContain('aria-label="插件生命周期工作区"');
+    expect(pageHtml).not.toContain('role="dialog"');
+    const detailsHtml = renderToStaticMarkup(createElement(InstalledPluginDetails, { plugin: installedFixture(), busy: false,
+      onReviewClients: vi.fn(), onDisable: vi.fn(), onUninstall: vi.fn(), onRollback: vi.fn() }));
+    const html = pageHtml + detailsHtml;
+    for (const text of ["Approved Reader", "Codex Desktop", "Codex CLI", "已启用", "已停用", "已撤回", "审核授权", "停用全部客户端", "卸载插件", "审核回滚", "权限与签名"]) {
       expect(html).toContain(text);
     }
+    expect(html).toMatch(/<details[^>]*\sopen=""><summary>权限与签名<\/summary>/);
+    expect(html).toContain('<details class="workspace-disclosure plugins-versions"><summary>');
+    expect(html).not.toContain("吊销信任");
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*>审核回滚<\/button>/);
     expect(invoke).not.toHaveBeenCalled();
     client.clear();
+  });
+
+
+  it("scopes callable tools to the selected installed package, version, digest and authorized client", () => {
+    const plugin = installedFixture();
+    const tool: VerifiedTool = { pluginId: plugin.id, version: "1.0.0", digest, client: "codex-desktop",
+      tool: { name: "read", description: "Read reviewed text", inputSchema: { type: "object", properties: {}, required: [], additionalProperties: false }, operation: { type: "json_passthrough" } } };
+    const tools: VerifiedTool[] = [tool, { ...tool, pluginId: "other.package" }, { ...tool, version: "0.9.0" },
+      { ...tool, digest: "e".repeat(64) }, { ...tool, client: "codex-cli" }];
+    expect(toolsForPackage(plugin, "codex-desktop", tools)).toEqual([tool]);
+    expect(toolsForPackage(plugin, "codex-cli", tools)).toEqual([]);
+    expect(toolsForPackage({ ...plugin, installed: false }, "codex-desktop", tools)).toEqual([]);
+    expect(toolsForPackage({ ...plugin, verification: "plugin_withdrawn" }, "codex-desktop", tools)).toEqual([]);
+    expect(toolsForPackage({ ...plugin, manifest: { ...manifestFixture(), clients: ["codex-cli"] } }, "codex-desktop", tools)).toEqual([]);
+    expect(toolsForPackage(undefined, "codex-desktop", tools)).toEqual([]);
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it("keeps lifecycle tasks in one package and refuses evidence from a different package identity", () => {
+    const plugin = installedFixture();
+    const workspace = renderToStaticMarkup(createElement(PluginWorkspace, { plugin, task: "clients", busy: false, onTask: vi.fn(), onBack: vi.fn(), children: null }));
+    for (const text of ["返回包目录", "客户端授权", "权限与签名", "版本历史", "可调用工具", "调用证据"]) expect(workspace).toContain(text);
+    expect(workspace).toContain('aria-labelledby="plugin-lifecycle-tasks-tab-clients"');
+    const result: ToolExecutionResult = { pluginId: plugin.id, version: "1.0.0", digest, client: "codex-desktop", tool: "read", value: "reviewed-result", redacted: true };
+    const renderEvidence = (value: ToolExecutionResult | null) => renderToStaticMarkup(createElement(PluginCallEvidence, { plugin, result: value, onTools: vi.fn() }));
+    expect(renderEvidence(result)).toContain("reviewed-result");
+    expect(renderEvidence(result)).toContain(digest);
+    for (const mismatch of [null, { ...result, pluginId: "other.package" }, { ...result, version: "0.9.0" }, { ...result, digest: "f".repeat(64) }]) {
+      expect(renderEvidence(mismatch)).not.toContain("reviewed-result");
+      expect(renderEvidence(mismatch)).toContain("尚无本次调用证据");
+    }
+    expect(invoke).not.toHaveBeenCalled();
   });
 
   it("renders independent trust and full install permission review with confirmation initially disabled", () => {
@@ -304,7 +355,10 @@ describe("production local plugin panel and review dialogs", () => {
     const preview = installFixture();
     preview.expiresAt = Date.now() + 120_000;
     const html = renderToStaticMarkup(createElement(InstallReviewDialog, { preview, busy: false, error: "", onConfirm: vi.fn(), onClose: vi.fn() }));
-    expect(html).toContain("各客户端新增权限");
+    expect(html).toContain('<details class="plugins-permission-changes" open=""><summary>各客户端新增权限</summary>');
+    expect(html.indexOf("本次授权客户端")).toBeLessThan(html.indexOf("各客户端新增权限"));
+    expect(html.indexOf("各客户端新增权限")).toBeLessThan(html.indexOf("签名与包信息"));
+    expect(html).toContain(fingerprint);
     expect(html).toContain("package:docs/");
     expect(html).toContain("输入本次插件包的精确摘要");
     expect(html).toContain("默认保持停用");

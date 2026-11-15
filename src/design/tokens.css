@@ -1,26 +1,26 @@
 :root {
-  --xy-p-paper: #f4f7fb;
+  --xy-p-paper: #f8f9f9;
   --xy-p-white: #ffffff;
-  --xy-p-ink: #172338;
-  --xy-p-blue: #0c7769;
-  --xy-p-font-ui: "Segoe UI Variable", "Segoe UI", -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei UI", sans-serif;
+  --xy-p-ink: #282a2b;
+  --xy-p-accent: #ad4828;
+  --xy-p-font-ui: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", system-ui, sans-serif;
   --xy-p-font-code: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
   --xy-p-space-1: 4px;
   --xy-p-space-2: 8px;
   --xy-p-space-3: 12px;
   --xy-p-space-4: 16px;
   --xy-p-space-6: 24px;
-  --xy-p-radius-1: 8px;
-  --xy-p-radius-2: 12px;
+  --xy-p-radius-1: 4px;
+  --xy-p-radius-2: 6px;
   --xy-ds-font-sans: var(--xy-p-font-ui);
   --xy-ds-font-mono: var(--xy-p-font-code);
   --xy-ds-font-size-xs: 12px;
   --xy-ds-font-size-sm: 13px;
   --xy-ds-font-size-md: 14px;
-  --xy-ds-font-size-lg: 16px;
+  --xy-ds-font-size-lg: 15px;
   --xy-ds-font-size-xl: 18px;
-  --xy-ds-font-size-2xl: 26px;
-  --xy-ds-line-normal: 1.5;
+  --xy-ds-font-size-2xl: 22px;
+  --xy-ds-line-normal: 1.55;
   --xy-ds-space-1: var(--xy-p-space-1);
   --xy-ds-space-2: var(--xy-p-space-2);
   --xy-ds-space-3: var(--xy-p-space-3);
@@ -33,10 +33,14 @@
   --xy-ds-duration-fast: 120ms;
   --xy-ds-duration-normal: 180ms;
   --xy-ds-ease-standard: ease-out;
-  --xy-control-height: 40px;
-  --xy-control-height-small: 36px;
-  --xy-row-height: 64px;
+  --xy-control-height: 32px;
+  --xy-control-height-small: 28px;
+  --xy-row-height: 56px;
   --xy-dialog-width: 680px;
-  --xy-nav-width: 220px;
-  --xy-inspector-width: 320px;
+  --xy-content-width: 1248px;
+  --xy-nav-width: 196px;
+  --xy-inspector-width: 300px;
+}
+@media (max-width: 600px), (pointer: coarse) {
+  :root { --xy-control-height: 40px; --xy-control-height-small: 36px; }
 }

@@ -139,7 +139,7 @@ export const unifiedClientEn: Record<string, string> = {
   "已发现配置": "Configuration found",
   "未发现配置": "No configuration found",
   "网关状态": "Gateway status",
-  "配置已接管，连接待验证": "Configuration taken over; connection unverified",
+  "配置已接管，连接待验证": "Configuration taken over; connection not verified",
   "原生订阅与共享 MCP": "Native subscription and shared MCP",
   "查看实际配置路径": "View actual configuration paths",
   "原生账号状态": "Native account status",

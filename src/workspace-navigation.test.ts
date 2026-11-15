@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import { parseWorkspaceRoute, workspaceRouteHash, type WorkspaceRoute } from "./lib/workspace-navigation";
 
 describe("workspace navigation", () => {
-  it.each(["", "#", "#providers"])("resolves the home history entry %j", hash => {
-    expect(parseWorkspaceRoute(hash)).toEqual({ view: "providers" });
+  it.each(["", "#"])("starts the home history entry %j at clients", hash => {
+    expect(parseWorkspaceRoute(hash)).toEqual({ view: "clients" });
   });
-  it.each(["providers", "diagnostics", "mcp", "prompts", "skills", "sessions", "usage", "governance", "settings"] as const)("round-trips the %s page", view => {
+  it.each(["overview", "providers", "clients", "accounts", "plugins", "marketplace", "diagnostics", "mcp", "prompts", "skills", "sessions", "usage", "governance", "settings", "agents"] as const)("round-trips the %s page", view => {
     const route = { view };
     expect(parseWorkspaceRoute(workspaceRouteHash(route))).toEqual(route);
   });
@@ -19,7 +19,7 @@ describe("workspace navigation", () => {
     const history = ["", workspaceRouteHash({ view: "provider-detail", providerId: "relay" }), "#diagnostics/relay"];
     expect(parseWorkspaceRoute(history[2])).toEqual({ view: "diagnostics", providerId: "relay" });
     expect(parseWorkspaceRoute(history[1])).toEqual({ view: "provider-detail", providerId: "relay" });
-    expect(parseWorkspaceRoute(history[0])).toEqual({ view: "providers" });
+    expect(parseWorkspaceRoute(history[0])).toEqual({ view: "clients" });
   });
   it.each(["#workspace-content", "#unknown", "#Providers", "#providers//configuration", "#providers/relay/other", "#diagnostics/", "#providers/%/configuration", "#diagnostics/%E0%A4%A"])("ignores external or malformed fragment %j", hash => {
     expect(parseWorkspaceRoute(hash)).toBeNull();

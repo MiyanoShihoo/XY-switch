@@ -6,6 +6,12 @@ A local AI configuration and protocol-routing workbench built with Tauri 2, Rust
 
 **Version 1.1.0 adds English and Simplified Chinese interfaces.** Choose **System / 简体中文 / English** in **Settings → General**. Native preferences are persisted locally and update the desktop tray; browser previews use local storage. User names, prompts, Skills, conversation content, model IDs, and raw diagnostics are not translated.
 
+**UI redesign in current source (2026-11-10):** The client directory is the default home. The top bar opens **Client / Providers / Sessions / Tools / Usage** directly. Settings and runtime status are at the top right; **All features** keeps account management, connection diagnostics, safety settings, and every existing destination available. At widths of 800px and below, use the top-right menu to navigate. The brand button returns to Overview.
+
+Clients use directory → dedicated detail; sessions use directory → preview → full reader; settings use a task directory → individual settings. A provider name opens its details, **Set as current** switches providers, and the model name opens a focused model editor. Account management shows saved policies, participation, and separate native references. The workspace menu switches between configuration and the read-only **Agent teams** workspace (`#agents`); see the [Agent teams guide](docs/agent-fleet-en.md). Configuration, runtime, and historical evidence remain distinct. See the [user guide](docs/user-guide-en.md) for the new paths.
+
+**1.3.0 preview:** Adds channel-group configuration and offline scheduling, the Agent workspace, usage/navigation improvements, and Windows startup fixes. Channel groups keep live dispatch disabled. See the [release notes](docs/release-notes-1.3.0.md) and [verified acceptance scope](docs/channel-groups-acceptance-1.3.0.md). This preview has separately built Windows packages; other-platform assets and installation checks depend on their corresponding release evidence.
+
 ## Download and platform scope
 
 Get packages, checksums, native screenshots, and the verification report from [GitHub Releases](https://github.com/MiyanoShihoo/XY-switch/releases). Source archives alone are not installers.
@@ -23,6 +29,7 @@ Current development supports **Windows, macOS, and Linux only** (since 2026-10-3
 | Area | Delivered behavior | Boundary |
 | --- | --- | --- |
 | Providers and models | Endpoint/credential management, active-provider selection, discovery, mapping, header/body overrides | Saving, activating, connection testing, and successful upstream requests are different states |
+| Channel groups (1.3.0 preview) | Persisted virtual groups, five offline scheduling strategies, quota/affinity/cooldown simulation | Real requests to `xy-group/` models fail locally with `channel_group_pilot_only`; no live upstream dispatch |
 | Protocol routing | Local proxy adapters for OpenAI Chat Completions, Responses, Anthropic Messages, and Gemini | Protocol/tool compatibility and declared model names are not proof of model-weight identity |
 | Desktop client takeover | Explicit configuration takeover and restoration for **Claude Code, Codex, and Gemini CLI** | Other displayed client groups do not imply takeover support |
 | MCP | Server management and supported client import/synchronization workflows | Platform permissions and client support still apply |
@@ -38,15 +45,15 @@ Current development supports **Windows, macOS, and Linux only** (since 2026-10-3
 
 **Unreleased source maintenance (2026-10-27):** the current checkout can browse Codex, Claude Code, and Gemini CLI session logs, display messages/tool results, copy resume commands, and delete explicitly selected logs. Deletion does not update a client’s database/index. Browser previews do not gain native session access. The same maintenance adds **Usage & audit → Model pricing**, custom-price backups (v2 export, v1 import compatibility), and protects historical recorded costs from later price changes. These changes are not in the published 1.1.0 packages; see the [maintenance report](docs/maintenance-20261027.md).
 
-**1.2.0 safety and acceptance (2026-10-29):** the sidebar adds **Safety & Acceptance** with access control, reservation budgets, bounded synthetic monitoring, configuration history, and explicit rule-file mounting. Real loopback-to-upstream checks passed **6/6 with Chat and 6/6 with Responses**, after fixing a nullable-error validation bug. See [live evidence](docs/governance-live-followup-20261029.md) and [1.2.0 release notes](docs/release-notes-1.2.0.md); actual package availability and native verification are established by Release assets, not this source README.
+**1.2.0 safety and acceptance (2026-10-29):** **Safety & Acceptance** in the **Settings** group provides access control, reservation budgets, bounded synthetic monitoring, configuration history, and explicit rule-file mounting. Real loopback-to-upstream checks passed **6/6 with Chat and 6/6 with Responses**, after fixing a nullable-error validation bug. See [live evidence](docs/governance-live-followup-20261029.md) and [1.2.0 release notes](docs/release-notes-1.2.0.md); actual package availability and native verification are established by Release assets, not this source README.
 
 ## Get started
 
 1. Install the package for your platform and open the native app. Browser preview is not a replacement for native credential, filesystem, or proxy operations. The proxy starts disabled.
 2. In **Settings → General**, choose your language. System mode uses the first preferred system/browser language: Chinese if it starts with `zh`, English otherwise. A failed native preference write keeps the previous language and offers retry.
-3. Add a provider, enter its endpoint and credential, save, then run the connection/model checks you need. Clicking an enabled non-current provider card inspects **and activates** it; the details icon only inspects. Use the active-state indicator rather than assuming a click is read-only.
+3. Open **Providers** from the top bar, add a provider, enter its endpoint and credential, save, then run the connection/model checks you need. Its name or **Configuration** opens details; **Set as current** switches providers. Check the current-provider indicator before sending requests.
 4. Enable the local proxy and desktop client takeover only when needed. Check the selected upstream, running proxy, client configuration, and actual request result separately. Some clients must restart before loading changed configuration.
-5. For desktop Skills, explicitly enable the desired source in settings, preview the scan, then confirm import. Recursive scanning includes `.system`; it excludes plugin cache directories.
+5. For desktop Skills, open **Skills** from the **Tools** menu, then **Add and manage sources** to authorize a source or import a folder. Recursive scanning includes `.system`; it excludes plugin cache directories.
 
 See the [English user guide](docs/user-guide-en.md) / [中文使用指南](docs/user-guide-zh.md) for resource management, model verification, backups, and troubleshooting.
 

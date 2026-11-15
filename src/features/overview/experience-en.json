@@ -1,0 +1,23 @@
+{
+  "当前工作环境": "Current workspace",
+  "核对当前选择，比较下一项配置。": "Check the current selection and compare other configurations.",
+  "管理供应商": "Manage providers",
+  "已选择": "Selected",
+  "服务地址": "Endpoint",
+  "路由设置": "Routing settings",
+  "选择配置": "Choose a configuration",
+  "搜索供应商、模型或地址": "Search providers, models or endpoints",
+  "切换影响": "Switching affects",
+  "无法确认接管范围，请刷新后再切换。": "Takeover scope is unavailable. Refresh it before switching.",
+  "正在确认实际接管范围…": "Checking active takeovers…",
+  "将同步所有已接管配置：": "All active takeovers will be updated: ",
+  "仅更改当前配置；没有客户端被接管。": "Only the current configuration changes; no client configuration is taken over.",
+  "刷新接管状态": "Refresh takeover status",
+  "供应商 / 协议": "Provider / protocol",
+  "模型 / 地址": "Model / endpoint",
+  "配置选择": "Selection",
+  "当前配置：{name}": "Current configuration: {name}",
+  "设为当前配置：{name}": "Set current configuration: {name}",
+  "继续会话": "Continue a session",
+  "查看请求用量": "View request usage"
+}

@@ -33,7 +33,7 @@ describe("model pricing dialog states", () => {
   });
   it("shows free and unknown cache rates separately and escapes model names", () => {
     const html = render([row("qa/<script>")]);
-    expect(html).toContain("0 / 未知");
+    expect(html).toMatch(/<td[^>]*>0<\/td><td[^>]*>未知<\/td>/);
     expect(html).toContain("qa/&lt;script&gt;");
     expect(html).not.toContain("qa/<script>");
   });

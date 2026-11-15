@@ -1,8 +1,12 @@
-import { createElement } from "react";
+import { createElement, type ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ClientConnectionsPage, clearSensitiveAction } from "./features/clients/ClientConnectionsPage";
+import { ClientConnectionsPage, clearSensitiveAction, clientGatewayActionIssue } from "./features/clients/ClientConnectionsPage";
+import { ClientDetailsPanel } from "./features/clients/ClientDetailsPanel";
+import { ClientDirectory } from "./features/clients/ClientDirectory";
+import { groupClientConfigurations } from "./features/clients/client-configuration";
+import { ClientPathSettingsDialog } from "./features/clients/ClientPathSettingsDialog";
 import { NativeCodeForm, OpenCodeLoginForm, currentInputs, visible } from "./features/clients/OpenCodeLoginForm";
 import { NativeAccountBindingDialog } from "./features/clients/NativeAccountBindingDialog";
 import { NativeAccountConfirmDialog } from "./features/clients/NativeAccountConfirmDialog";
@@ -73,6 +77,13 @@ function boundAccount(): AccountInfo {
     lastValidatedAt: null, lastUsedAt: null, createdAt: 1, updatedAt: 1 };
 }
 
+function renderDetails(current: ClientConnection, overrides: Partial<ComponentProps<typeof ClientDetailsPanel>> = {}): string {
+  return renderToStaticMarkup(createElement(ClientDetailsPanel, {
+    row: current, rows: [current], accounts: [], accountsReady: true, login: null, loginMethods: null,
+    disabled: false, busy: false, onAction: vi.fn(), onBind: vi.fn(), onCloseMethods: vi.fn(), onOpenPaths: vi.fn(), ...overrides,
+  }));
+}
+
 beforeEach(() => {
   vi.resetAllMocks();
   vi.stubGlobal("window", { __TAURI_INTERNALS__: {} });
@@ -106,20 +117,273 @@ describe("client authorization and preview isolation", () => {
     expect(inputs).toEqual({});
   });
 
-  it("renders explicit preview status and keeps account controls disabled", async () => {
+  it("groups the directory by configuration owner and disables sensitive operations in preview details", async () => {
     vi.stubGlobal("window", {});
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity, gcTime: Infinity } } });
     queryClients.push(client);
-    client.setQueryData(["clients", "connections"], await loadClientConnections());
+    const entries = await loadClientConnections();
+    client.setQueryData(["clients", "connections"], entries);
     client.setQueryData(["clients", "settings"], settings);
     client.setQueryData(["takeovers"], []);
     const markup = renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(ClientConnectionsPage)));
     for (const label of ["Codex Desktop", "Claude Desktop", "OpenCode Desktop", "Codex CLI", "Claude Code", "OpenCode CLI", "Gemini CLI"]) expect(markup).toContain(label);
     expect(markup).toContain("浏览器预览仅展示入口");
-    expect(markup).toContain("OpenCode 桌面与终端共用所选配置");
-    const signInControls = [...markup.matchAll(/<button\b([^>]*)>提供商授权登录<\/button>/g)];
-    expect(signInControls).toHaveLength(2);
-    expect(signInControls.every(control => control[1].includes('disabled=""'))).toBe(true);
+    expect([...markup.matchAll(/class="client-directory-group"/g)]).toHaveLength(6);
+    expect([...markup.matchAll(/aria-label="查看客户端 [^"]+"/g)]).toHaveLength(8);
+    expect([...markup.matchAll(/2 个客户端共享配置/g)]).toHaveLength(2);
+    expect(markup).toContain('id="client-filter"');
+    expect(markup).not.toContain('aria-pressed="true"');
+    expect(markup).not.toContain('aria-current="true"');
+    expect(markup).not.toContain('id="client-inspector"');
+    expect(markup).not.toContain('role="dialog"');
+    for (const detail of ['id="client-opencode-config"', "提供商授权登录</button>", "设备授权登录</button>", "查看实际配置路径"]) expect(markup).not.toContain(detail);
+    const gateways = [...markup.matchAll(/<button\b[^>]*aria-label="将 [^"]+ 连接本地网关"[^>]*>/g)];
+    expect(gateways).toHaveLength(7);
+    expect(gateways.every(button => button[0].includes('disabled=""'))).toBe(true);
+    const selections = [...markup.matchAll(/<button\b[^>]*class="client-row-select"[^>]*>/g)];
+    expect(selections.every(button => !button[0].includes('disabled=""'))).toBe(true);
+    for (const entry of entries.filter(item => ["codex_device_code", "opencode_oauth"].includes(item.loginMethod))) {
+      const details = renderDetails(entry, { rows: entries, disabled: true });
+      expect(details).toContain('<section class="client-inspector" id="client-inspector" aria-labelledby="client-inspector-name"');
+      expect(details).not.toContain('role="dialog"');
+      expect(details).not.toContain('role="tablist"');
+      expect(details).toContain("正在查看");
+      expect(details).toContain("当前配置");
+      expect(details).toContain("客户端运行");
+      expect(details).toContain("请求验证");
+      expect(details).toContain("尚未验证");
+      expect(details).toMatch(/<button[^>]*disabled=""[^>]*>读取账号<\/button>/);
+      expect(details).toMatch(entry.loginMethod === "codex_device_code" ? /<button[^>]*disabled=""[^>]*>设备授权登录<\/button>/ : /<button[^>]*disabled=""[^>]*>提供商授权登录<\/button>/);
+    }
+    const connectionDetails = renderDetails(entries.find(entry => entry.id === "claude-desktop")!, { rows: entries, disabled: true });
+    expect(connectionDetails).toContain("OpenCode 桌面与终端共用所选配置");
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it("uses exact configOwner values, leaves unknown owners separate and preserves action targets", () => {
+    const entries = [
+      row({ id: "codex-desktop", configOwner: "codex", takeoverTarget: "codex" }),
+      row({ id: "codex-cli", configOwner: "codex", takeoverTarget: "codex" }),
+      row({ id: "claude-desktop", configOwner: "", takeoverTarget: null }),
+      row({ id: "claude-code", configOwner: "  ", takeoverTarget: "claude" }),
+      row({ id: "opencode-cli", configOwner: "codex ", takeoverTarget: "opencode" }),
+    ];
+    const groups = groupClientConfigurations(entries);
+    expect(groups.map(group => group.rows.map(entry => entry.id))).toEqual([
+      ["codex-desktop", "codex-cli"], ["claude-desktop"], ["claude-code"], ["opencode-cli"],
+    ]);
+    expect(groups.map(group => group.owner)).toEqual(["codex", null, null, "codex "]);
+    expect(groups.flatMap(group => group.rows)).toEqual(entries);
+    expect(groups[2].rows[0]).toBe(entries[3]);
+    expect(groups[2].rows[0].takeoverTarget).toBe("claude");
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { pendingLogin: true, pendingConfiguration: false, settingsState: undefined, message: "原生登录期间锁定客户端路径" },
+    { pendingLogin: false, pendingConfiguration: true, settingsState: undefined, message: "请重启 XY Switch 后继续操作" },
+    { pendingLogin: false, pendingConfiguration: false, settingsState: "loading" as const, message: "正在读取已保存的路径" },
+    { pendingLogin: false, pendingConfiguration: false, settingsState: "error" as const, message: "避免覆盖已有路径" },
+  ])("locks the independent path dialog when $message", ({ pendingLogin, pendingConfiguration, settingsState, message }) => {
+    const html = renderToStaticMarkup(createElement(ClientPathSettingsDialog, {
+      draft: settings, disabled: false, busy: false, pendingLogin, pendingConfiguration, settingsState, onChange: vi.fn(), onClose: vi.fn(), onSave: vi.fn(),
+    }));
+    expect(html).toContain('role="dialog"');
+    expect(html).toContain(message);
+    const fields = [...html.matchAll(/<(?:input|select)\b[^>]*id="client-[^"]+"[^>]*>/g)];
+    expect(fields).toHaveLength(5);
+    expect(fields.every(field => field[0].includes('disabled=""'))).toBe(true);
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>保存路径并在重启后应用<\/button>/);
+    expect(html).toMatch(/<button(?![^>]*disabled)[^>]*>取消<\/button>/);
+    expect(invoke).not.toHaveBeenCalled();
+  });
+});
+
+describe("client list and independent details", () => {
+  function directory(rows: ClientConnection[], overrides: Partial<ComponentProps<typeof ClientDirectory>> = {}) {
+    return renderToStaticMarkup(createElement(ClientDirectory, {
+      rows, takeovers: [{ app: "opencode", label: "OpenCode", configPaths: [], installed: true, active: false, lastError: null }],
+      login: null, filter: "", busy: false, disabled: false, onFilter: vi.fn(), onSelect: vi.fn(), onAction: vi.fn(), ...overrides,
+    }));
+  }
+
+  it("places the optional configuration control after the title and opens no default detail", () => {
+    const client = bindingClient();
+    const withControl = renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(ClientConnectionsPage, {
+      configurationControl: createElement("select", { "aria-label": "当前网关配置" }, createElement("option", {}, "团队网关")), onNavigate: vi.fn(),
+    })));
+    expect(withControl.indexOf("<h1>客户端</h1>")).toBeLessThan(withControl.indexOf('aria-label="当前网关配置"'));
+    expect(withControl).toContain("团队网关");
+    expect(withControl).toContain("账号池</button>");
+    expect(withControl).toContain("连接诊断</button>");
+    expect(withControl).not.toContain('id="client-inspector"');
+    expect(withControl).not.toContain('role="tablist"');
+    const withoutControl = renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(ClientConnectionsPage)));
+    expect(withoutControl).not.toContain("client-configuration-control");
+    expect(withoutControl).toContain('aria-label="查看客户端 OpenCode CLI"');
+  });
+
+  it("keeps view and gateway buttons separate and reports takeover even with account metadata", () => {
+    const current = row({ configDetected: true });
+    for (const active of [false, true]) {
+      const html = directory([current], { takeovers: [{ app: "opencode", label: "OpenCode", configPaths: [], installed: true, active, lastError: null }] });
+      expect(html).toContain(active ? "配置已接管，连接待验证" : "已发现配置");
+      expect(html).toContain("原生账号状态已读取");
+      expect(html).toMatch(/<button[^>]*class="client-row-select"[^>]*>[\s\S]*?<\/button><div class="client-row-action"><button/);
+      expect(html).toMatch(new RegExp('<button(?![^>]*disabled)[^>]*>' + (active ? "恢复原配置" : "连接本地网关") + '<\/button>'));
+      expect(html).not.toContain("已在线");
+    }
+    const unread = directory([current], { takeovers: undefined });
+    expect(unread).toContain("已发现配置");
+    expect(unread).toMatch(/<button[^>]*disabled=""[^>]*>连接本地网关<\/button>/);
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it("filters members without inventing separate ownership and retains shared restart locks", () => {
+    const desktop = row({ id: "opencode-desktop", label: "OpenCode Desktop", configurationPending: true });
+    const terminal = row();
+    const html = directory([desktop, terminal], { filter: "cli" });
+    expect(html).toContain('value="cli"');
+    expect(html).toContain("1 个客户端");
+    expect(html).toContain("2 个客户端共享配置");
+    expect(html).toContain('aria-label="查看客户端 OpenCode CLI"');
+    expect(html).not.toContain('aria-label="查看客户端 OpenCode Desktop"');
+    expect(html).toContain("待重启");
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>连接本地网关<\/button>/);
+    expect(directory([terminal], { filter: "missing-client" })).toContain("没有匹配的客户端。");
+    expect(directory([])).toContain("暂无客户端入口。");
+  });
+
+  it("keeps failures visible and puts account actions before collapsed configuration metadata", () => {
+    const current = row({ setupError: "Synthetic configuration failure", configPaths: ["C:/Users/test/.config/opencode/opencode.json"] });
+    const takeover = { app: "opencode" as const, label: "OpenCode", configPaths: [], installed: true, active: true, lastError: "Synthetic restore failure" };
+    const list = directory([current], { takeovers: [takeover] });
+    const details = renderDetails(current, { takeover });
+    for (const html of [list, details]) {
+      expect(html).toContain("Synthetic configuration failure");
+      expect(html).toContain("Synthetic restore failure");
+    }
+    expect(details.indexOf("提供商授权登录</button>")).toBeLessThan(details.indexOf('class="client-detail-layout"'));
+    expect(details).toContain('<details class="client-configuration"><summary>');
+    expect(details).not.toContain('<details class="client-configuration" open');
+    expect(details.indexOf("Synthetic configuration failure")).toBeLessThan(details.indexOf("<details"));
+    expect(details).toContain(current.configPaths[0]);
+    expect(details).toContain("尚不参与网关的 HTTP 账号轮换");
+  });
+
+  it("revalidates gateway confirmations against shared locks, paths and current takeover state", () => {
+    const current = row({ configPaths: ["/original/config.json"] });
+    const action = { kind: "gateway" as const, row: current, enabled: true };
+    const takeover = { app: "opencode" as const, label: "OpenCode", configPaths: [], installed: true, active: false, lastError: null };
+    expect(clientGatewayActionIssue(action, [current], [takeover], null)).toBe("");
+    expect(clientGatewayActionIssue(action, undefined, [takeover], null)).not.toBe("");
+    expect(clientGatewayActionIssue(action, [current], undefined, null)).not.toBe("");
+    expect(clientGatewayActionIssue(action, [current, row({ id: "opencode-desktop", loginStatus: "pending" })], [takeover], null)).toContain("原生登录进行中");
+    expect(clientGatewayActionIssue(action, [current, row({ id: "opencode-desktop", configurationPending: true })], [takeover], null)).toContain("重启");
+    expect(clientGatewayActionIssue(action, [current], [takeover], progress)).toContain("原生登录进行中");
+    for (const changed of [{ ...current, configPaths: ["/changed/config.json"] }, { ...current, configOwner: "other" }, { ...current, setupError: "failure" }]) {
+      expect(clientGatewayActionIssue(action, [changed], [takeover], null)).toContain("已改变");
+    }
+    expect(clientGatewayActionIssue(action, [current], [{ ...takeover, active: true }], null)).toContain("已改变");
+    expect(clientGatewayActionIssue({ ...action, enabled: false }, [current], [{ ...takeover, active: true }], null)).toBe("");
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it("translates the new directory and disclosure labels in English", () => {
+    vi.stubGlobal("navigator", { language: "en-US", languages: ["en-US"] });
+    const html = directory([row()], { takeovers: [{ app: "opencode", label: "OpenCode", configPaths: [], installed: true, active: true, lastError: null }] });
+    for (const label of ["Search clients or configuration owners", "View client OpenCode CLI", "Restore the original configuration for OpenCode CLI", "Configuration taken over; connection not verified"]) expect(html).toContain(label);
+    expect(html).not.toMatch(/[\u4e00-\u9fff]/);
+    expect(renderDetails(row())).toContain("Configuration metadata");
+  });
+});
+
+describe("client configuration and evidence", () => {
+  it("keeps configured routes separate from runtime and request verification beside the connection actions", () => {
+    for (const active of [true, false]) {
+      const current = row({ configDetected: true });
+      const html = renderDetails(current, {
+        takeover: { app: "opencode", label: "OpenCode", configPaths: [], installed: true, active, lastError: null },
+        onNavigate: vi.fn(),
+      });
+      const header = html.match(/<header\b[^>]*>([\s\S]*?)<\/header>/)?.[1];
+      expect(header).toContain("正在查看");
+      expect(header).not.toContain("尚未验证");
+      const status = html.match(/<dl[^>]*aria-label="接入状态">([\s\S]*?)<\/dl>/)?.[1];
+      expect(status).toContain(active ? "本地网关" : "原生配置");
+      expect(status).toContain("客户端运行</dt><dd>未检测");
+      expect(status).toContain("请求验证</dt><dd>尚未验证");
+      expect(html).toContain('aria-describedby="client-connection-evidence"');
+      expect(html).toContain("历史成功不能证明当前连通");
+      expect(html.indexOf('aria-label="接入状态"')).toBeLessThan(html.indexOf('aria-describedby="client-connection-evidence"'));
+      expect(html).toMatch(new RegExp('<button(?![^>]*disabled)[^>]*>' + (active ? "恢复原配置" : "连接本地网关") + '<\\/button>'));
+    }
+    const unread = renderDetails(row());
+    expect(unread).toContain("当前配置</dt><dd>尚未读取");
+    expect(unread).toContain("当前配置尚未读取，刷新状态后再修改接入方式");
+    expect(unread).toMatch(/<button[^>]*disabled=""[^>]*>连接本地网关<\/button>/);
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it("shows native zero usage only within the read and reset evidence lifetime", () => {
+    const timestamp = Math.floor(Date.now() / 1000);
+    const quota = { source: "nativeClient", usedPercent: 0, resetAt: timestamp + 300, windowMinutes: 300 };
+    const fresh = renderDetails(row({ account: { ...snapshot, checkedAt: timestamp, quotas: [quota] } }));
+    expect(fresh).toContain("0.0%");
+    expect(fresh).toContain("证据有效至");
+    for (const account of [
+      { ...snapshot, checkedAt: timestamp - 60, quotas: [quota] },
+      { ...snapshot, checkedAt: timestamp - 10, quotas: [{ ...quota, resetAt: timestamp - 1 }] },
+    ]) {
+      const expired = renderDetails(row({ account }));
+      expect(expired).toContain("额度未知；原生额度证据已过期，请重新读取账号。");
+      expect(expired).not.toContain("0.0%");
+      expect(expired).not.toContain("已用额度");
+    }
+    for (const account of [
+      { ...snapshot, checkedAt: timestamp, quotas: [] },
+      { ...snapshot, checkedAt: Number.NaN, quotas: [quota] },
+      { ...snapshot, checkedAt: timestamp + 60, quotas: [quota] },
+      ...[null, Number.NaN, -1, 101].map(usedPercent => ({ ...snapshot, checkedAt: timestamp, quotas: [{ ...quota, usedPercent }] })),
+      { ...snapshot, checkedAt: timestamp, quotas: [{ ...quota, resetAt: -1 }] },
+    ]) {
+      const unknown = renderDetails(row({ account }));
+      expect(unknown).toContain("额度未知；原生接口未提供可用数据。");
+      expect(unknown).not.toContain("已用额度");
+      expect(unknown).not.toContain("Invalid Date");
+      expect(unknown).not.toContain("NaN%");
+    }
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it("shows authorization links and codes only while native login is pending", () => {
+    const login = { ...progress, userCode: "synthetic-device-code" };
+    const pending = renderDetails(row({ loginStatus: "pending" }), { login });
+    expect(pending).toContain(login.userCode);
+    expect(pending).toContain(login.verificationUrl!);
+    expect(pending).toContain('type="password"');
+    for (const [status, label] of [["expired", "原生授权已过期"], ["failed", "原生授权未完成"], ["cancelled", "原生授权已取消"]]) {
+      const html = renderDetails(row({ loginStatus: status }), { login: { ...login, status } });
+      expect(html).toContain(label);
+      expect(html).toContain("可重新发起原生授权。");
+      expect(html).not.toContain(login.userCode);
+      expect(html).not.toContain(login.verificationUrl!);
+      expect(html).not.toContain(login.instructions!);
+      expect(html).not.toContain('type="password"');
+      expect(html).toMatch(/<button(?![^>]*disabled)[^>]*>提供商授权登录<\/button>/);
+    }
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it("explains configuration, expired authorization and failed path reads in English", () => {
+    vi.stubGlobal("navigator", { language: "en-US", languages: ["en-US"] });
+    const html = renderDetails(row({ loginStatus: "expired" }));
+    for (const label of ["Viewing ·", "Current configuration", "Client runtime", "Not checked", "Request verification", "Not verified", "past success does not establish current connectivity", "Native authorization expired", "Start native authorization again."]) expect(html).toContain(label);
+    const paths = renderToStaticMarkup(createElement(ClientPathSettingsDialog, {
+      draft: settings, disabled: false, busy: false, pendingLogin: false, pendingConfiguration: false, settingsState: "error", onChange: vi.fn(), onClose: vi.fn(), onSave: vi.fn(),
+    }));
+    expect(paths).toContain("Saved paths could not be loaded.");
+    expect(paths).toMatch(/<button(?![^>]*disabled)[^>]*>Cancel<\/button>/);
     expect(invoke).not.toHaveBeenCalled();
   });
 });
@@ -360,8 +624,19 @@ describe("native account binding and shared login state", () => {
     const rows = [desktop, terminal];
     const client = bindingClient(rows);
     const html = renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(ClientConnectionsPage)));
+    const sharedEntries = html.match(/<li class="client-list-row"[\s\S]*?<\/li>/g) ?? [];
+    expect(sharedEntries).toHaveLength(2);
+    for (const entry of sharedEntries) {
+      expect(entry).toContain("正在登录</p>");
+      expect(entry).toMatch(/<button[^>]*disabled=""[^>]*>连接本地网关<\/button>/);
+    }
+    expect(html).toContain('role="status"');
+    expect(html).not.toContain('id="client-inspector"');
+    const details = rows.map(current => renderDetails(current, { rows })).join("");
+    expect(details).toMatch(/<button(?![^>]*disabled)[^>]*>查看登录进度<\/button>/);
+    expect(details).toMatch(/<button(?![^>]*disabled)[^>]*>取消原生登录<\/button>/);
     for (const label of owner === "codex" ? ["读取账号", "绑定原生账号", "刷新登录状态"] : ["读取账号", "绑定原生账号"]) {
-      const controls = [...html.matchAll(new RegExp('<button\\b([^>]*)>' + label + '<\\/button>', 'g'))];
+      const controls = [...details.matchAll(new RegExp('<button\\b([^>]*)>' + label + '<\\/button>', 'g'))];
       expect(controls).toHaveLength(2);
       expect(controls.every(control => control[1].includes('disabled=""'))).toBe(true);
     }
@@ -381,9 +656,14 @@ describe("native account binding and shared login state", () => {
     const desktop = { ...terminal, id: "opencode-desktop" as const };
     const client = bindingClient([terminal, desktop], [boundAccount()]);
     const html = renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(ClientConnectionsPage)));
-    expect(html).toContain("已绑定 · 工作订阅 · 原生状态已同步");
+    expect(html).toContain("已绑定");
     expect(html).not.toContain("可参与选择");
     expect(html).not.toContain('id="native-binding-alias"');
+    const details = renderDetails(terminal, { rows: [terminal, desktop], accounts: [boundAccount()] });
+    expect(details).toContain("已绑定 · 工作订阅 · 原生状态已同步");
+    expect(details).toContain("尚不参与网关的 HTTP 账号轮换");
+    expect(details).not.toContain("可参与选择");
+    expect(details).not.toContain('id="native-binding-alias"');
     markNativeLoginStarted(client, "opencode-desktop");
     expect(currentClientConnections(client)?.every(item => item.account === null && item.loginStatus === "pending")).toBe(true);
   });

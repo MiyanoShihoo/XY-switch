@@ -86,8 +86,10 @@ const state = await evaluate(`(async () => {
     title: document.title,
     bodyText: document.body.innerText,
     rootChildren: document.querySelector('#root')?.childElementCount ?? 0,
-    navigation: [...document.querySelectorAll(".xy-shell-nav-item")].map(node => node.title),
+    navigation: [...document.querySelectorAll(".xy-shell-nav-item")].map(node => node.dataset.view),
+    workspaceView: document.querySelector(".xy-shell-root")?.dataset.workspaceView,
     runtimeVisible: Boolean(document.querySelector(".xy-shell-runtime")),
+    runtimeCollapsed: document.querySelector(".xy-shell-runtime")?.open === false,
     horizontalOverflow: document.documentElement.scrollWidth > innerWidth,
     proxy,
   };
@@ -96,10 +98,10 @@ const state = await evaluate(`(async () => {
 if (state.readyState !== "complete" || state.rootChildren === 0) {
   throw new Error(`Release renderer did not finish loading: ${JSON.stringify(state)}`);
 }
-if (!state.bodyText.includes("供应商") || !state.bodyText.includes("XY Switch")) {
+if (state.workspaceView !== "overview" || !state.bodyText.includes("XY Switch")) {
   throw new Error(`Release renderer is missing primary UI content: ${JSON.stringify(state)}`);
 }
-if (state.navigation.length !== 7 || !state.runtimeVisible) {
+if (state.navigation.join(",") !== "overview,providers,plugins,sessions,settings" || !state.runtimeVisible || !state.runtimeCollapsed) {
   throw new Error(`Release workbench shell is incomplete: ${JSON.stringify(state)}`);
 }
 if (state.horizontalOverflow) {

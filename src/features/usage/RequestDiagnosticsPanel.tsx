@@ -50,6 +50,7 @@ const reasons: Record<string, string> = {
 
 export function forwardingStatusLabel(row: UsageLogEntry): string {
   if (row.diagnostics?.sendAttempts === 0) return t("本地拒绝") + (row.statusCode ? " · " + row.statusCode : "");
+  if (row.diagnostics?.upstreamResponseReceived === false) return t("未取得 HTTP") + (row.statusCode ? t(" · 本地状态 {code}", { code: row.statusCode }) : "");
   return row.statusCode ? "HTTP " + row.statusCode + (row.success === false ? t(" · 未完成") : "") : t("未取得 HTTP");
 }
 
@@ -62,26 +63,26 @@ export function RequestDiagnosticsPanel({ diagnostics, errorCode }: { diagnostic
   return <section className="request-diagnostics" aria-label={t("请求链路")}>
     <h3>{t("请求链路")}</h3>
     {!diagnostics ? <p className="muted">{t("此记录没有链路证据；发送次数和上游响应状态未知。")}</p> : <>
-      <dl className="key-values">
-        <dt>{t("失败阶段")}</dt><dd>{diagnostics.failureStage ? t(stages[diagnostics.failureStage] ?? "未知") : "—"}</dd>
-        <dt>{t("发送尝试次数")}</dt><dd>{diagnostics.sendAttempts}</dd>
-        <dt>{t("收到过上游 HTTP 响应")}</dt><dd>{diagnostics.upstreamResponseReceived ? t("是") : t("否")}</dd>
-        {diagnostics.failureStage && <><dt>{t("失败原因")}</dt><dd>{reason(errorCode, diagnostics.failureReason)}</dd></>}
-        {diagnostics.budgetReason && <><dt>{t("预算拒绝原因")}</dt><dd>{budgetReasonLabel(diagnostics.budgetReason)}</dd></>}
-        {diagnostics.taskRequestId && <><dt>{t("客户端请求标识")}</dt><dd><code>{diagnostics.taskRequestId}</code></dd></>}
-        {diagnostics.attemptId && <><dt>{t("发送标识")}</dt><dd><code>{diagnostics.attemptId}</code></dd></>}
+      <dl className="usage-facts request-diagnostics__overview">
+        <div><dt>{t("失败阶段")}</dt><dd>{diagnostics.failureStage ? t(stages[diagnostics.failureStage] ?? "未知") : "—"}</dd></div>
+        <div><dt>{t("发送尝试次数")}</dt><dd>{diagnostics.sendAttempts}</dd></div>
+        <div><dt>{t("收到过上游 HTTP 响应")}</dt><dd>{diagnostics.upstreamResponseReceived ? t("是") : t("否")}</dd></div>
+        {diagnostics.failureStage && <div className="usage-facts__wide"><dt>{t("失败原因")}</dt><dd>{reason(errorCode, diagnostics.failureReason)}</dd></div>}
+        {diagnostics.budgetReason && <div className="usage-facts__wide"><dt>{t("预算拒绝原因")}</dt><dd>{budgetReasonLabel(diagnostics.budgetReason)}</dd></div>}
+        {diagnostics.taskRequestId && <div><dt>{t("客户端请求标识")}</dt><dd><code>{diagnostics.taskRequestId}</code></dd></div>}
+        {diagnostics.attemptId && <div><dt>{t("发送标识")}</dt><dd><code>{diagnostics.attemptId}</code></dd></div>}
       </dl>
-      {diagnostics.privacy && <details><summary>{t("隐私检查计数")}</summary><dl className="key-values">
-        <dt>{t("凭据替换数")}</dt><dd>{diagnostics.privacy.secretRedactions}</dd>
-        <dt>{t("个人信息替换数")}</dt><dd>{diagnostics.privacy.personalRedactions}</dd>
-        <dt>{t("敏感结构字段数")}</dt><dd>{diagnostics.privacy.protectedFields}</dd>
-        <dt>{t("未检查附件数")}</dt><dd>{diagnostics.privacy.uninspectedAttachments}</dd>
+      {diagnostics.privacy && <details className="request-diagnostics__detail"><summary>{t("隐私检查计数")}</summary><dl className="usage-facts">
+        <div><dt>{t("凭据替换数")}</dt><dd>{diagnostics.privacy.secretRedactions}</dd></div>
+        <div><dt>{t("个人信息替换数")}</dt><dd>{diagnostics.privacy.personalRedactions}</dd></div>
+        <div><dt>{t("敏感结构字段数")}</dt><dd>{diagnostics.privacy.protectedFields}</dd></div>
+        <div><dt>{t("未检查附件数")}</dt><dd>{diagnostics.privacy.uninspectedAttachments}</dd></div>
       </dl><p className="muted">{t("请求诊断只记录计数和原因，不保存匹配到的正文。")}</p></details>}
-      {diagnostics.attempts.length > 0 && <details><summary>{t("每次发送的结果")}</summary><ol>{diagnostics.attempts.map((attempt, index) => <li key={index}>
+      {diagnostics.attempts.length > 0 && <details className="request-diagnostics__detail"><summary>{t("每次发送的结果")}</summary><ol className="request-diagnostics__attempts">{diagnostics.attempts.map((attempt, index) => <li key={index}>
         <span>{t("尝试")} {index + 1}{" · "}{attempt.statusCode === null ? t("未取得 HTTP") : "HTTP " + attempt.statusCode}</span>
         {attempt.errorKind && <span className="usage-cell-note">{reason(attempt.errorKind)}</span>}
       </li>)}</ol></details>}
-      {diagnostics.task && <details><summary>{t("任务累计与上限（记录快照）")}</summary><p className="muted">{t("此处显示记录生成时的任务快照；最新累计和状态请查看硬预算中的最近任务。")}</p><TaskSummaryView task={diagnostics.task} /></details>}
+      {diagnostics.task && <details className="request-diagnostics__detail"><summary>{t("任务累计与上限（记录快照）")}</summary><p className="muted">{t("此处显示记录生成时的任务快照；最新累计和状态请查看硬预算中的最近任务。")}</p><TaskSummaryView task={diagnostics.task} /></details>}
     </>}
   </section>;
 }

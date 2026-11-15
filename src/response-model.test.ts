@@ -85,26 +85,44 @@ describe("两个指定入口与手动探测契约", () => {
     expect(invokeMock).not.toHaveBeenCalled();
   });
 
-  it("配置检查中的一次探测明确告知预算且不自动触发", () => {
+  it("配置检查区分尚未读取的策略与关闭默认，明确预算且不自动触发", async () => {
+    const { DEFAULT_VERIFICATION_SETTINGS } = await import("./types/model-verification");
+    expect(DEFAULT_VERIFICATION_SETTINGS.enabled).toBe(false);
+    expect(DEFAULT_VERIFICATION_SETTINGS.activeProbeEnabled).toBe(false);
+    expect(DEFAULT_VERIFICATION_SETTINGS.softTokenBudgetPerDay).toBe(100);
     const html = renderToStaticMarkup(createElement(ProviderResponseProbe, { provider, busy: false }));
     expect(html).toContain("整个模块默认关闭");
-    expect(html).toContain('aria-checked="false"');
+    expect(html).toContain("额外 API 请求 / 推理 Token 均为 0");
     expect(html).toContain("不插入提示词，不改业务参数");
+    expect(html).toContain("验证策略（全局）");
+    expect(html).toContain("尚未读取");
+    expect(html).toContain("读取验证状态…");
+    const policy = html.match(/<details\b[^>]*class="provider-verification-policy"[^>]*>/)?.[0];
+    expect(policy).toBeDefined();
+    expect(policy).not.toMatch(/\sopen(?:=|\s|>)/);
+    expect(html).not.toContain("预算、隐私与别名设置");
+    expect(html).not.toContain("aria-checked=");
     expect(html).not.toContain("复核最近一条异常");
     expect(invokeMock).not.toHaveBeenCalled();
   });
 
-  it("用量页移除独立模型审计 Tab，逐行展示各自结果", () => {
+  it("请求视图逐行展示各自证据，与概览和配置分开", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
     const rows = ["first", "second"].map((model, i) => ({ requestId: String(i), providerId: "p", appType: "model_probe", source: "model_probe", model, inputTokens: 4, outputTokens: 1, cacheReadTokens: 0, cacheCreationTokens: 0, totalCostUsd: "", inputCostUsd: "", outputCostUsd: "", cacheReadCostUsd: "", cacheCreationCostUsd: "", costMultiplier: "", isStreaming: false, latencyMs: 10, statusCode: 200, success: true, createdAt: 1234567890, audit: audit(model) }));
     client.setQueryData(["usage", { dateRange: "today" }, 0], { summary: { totalRequests: 2, successCount: 2, unknownCostRequests: 2, totalInputTokens: 8, totalOutputTokens: 2, totalCacheReadTokens: 0, totalCacheCreationTokens: 0, totalCostUsd: "", avgLatencyMs: 10 }, logs: rows, trends: [], providerStats: [], modelStats: [], sync: { codexImported: 0, harnessImported: 0, warnings: [] } });
-    const html = renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(UsagePage, { providers: [provider] })));
-    expect(html).not.toContain("usage-data-tab-audit");
-    expect(html).not.toContain(">模型审计<");
+    const html = renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(UsagePage, { providers: [provider], initialView: "logs" })));
+    expect(html).toContain("usage-data-panel-logs");
+    expect(html).not.toContain("usage-trend-title");
+    expect(html).not.toContain("audit-tools-tab-shadow");
     expect(html.match(/>真实响应模型<\/span>/g)?.length).toBe(2);
     expect(html).toContain(">first</code>");
     expect(html).toContain(">second</code>");
     expect(html).toContain("探测详情");
+    const overview = renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(UsagePage, { providers: [provider] })));
+    expect(overview).toContain("usage-data-panel-overview");
+    expect(overview).toContain("usage-trend-title");
+    expect(overview).not.toContain("探测详情");
+    expect(overview).not.toContain("audit-tools-tab-shadow");
     expect(invokeMock).not.toHaveBeenCalled();
     client.clear();
   });

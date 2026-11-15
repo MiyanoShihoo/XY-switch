@@ -1,0 +1,6 @@
+.xy-ui-modal.task-leave-dialog { max-width: calc(100vw - 24px); max-height: calc(100dvh - 24px); min-width: 0; }
+.task-leave-dialog .xy-ui-modal__body { min-height: 0; overflow: auto; overflow-wrap: anywhere; }
+.task-leave-dialog :is(.xy-ui-modal__header, .xy-ui-modal__footer) { flex-shrink: 0; flex-wrap: wrap; }
+.task-leave-dialog .xy-ui-modal__header > div { min-width: 0; }
+.task-leave-dialog button { max-width: 100%; white-space: normal; }
+.task-navigation-wait { position: fixed; z-index: 80; bottom: 24px; inset-inline: 24px; width: fit-content; margin-inline: auto; padding: 12px 16px; color: var(--xy-ds-text); background: var(--xy-ds-surface); border: 1px solid var(--xy-ds-border); border-radius: var(--xy-ds-radius-sm); }

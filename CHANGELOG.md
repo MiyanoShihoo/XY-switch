@@ -1,5 +1,23 @@
 # Changelog / 更新日志
 
+## 1.3.0 Preview / 预发布 — 2026-11-15
+
+- Add persisted virtual channel groups, five offline scheduling strategies, shared quota pools, affinity, cooldowns, budget reservations and read-only history replay. Live virtual-model requests fail locally before credentials, billing or upstream dispatch.
+- Include the Agent workspace, source accounting, usage readers, task navigation, bilingual UI changes, and Windows application-identity/single-instance startup fixes.
+- Verify channel groups in an isolated Windows WebView with real IPC: 9 checks pass, all 6 loopback proxy routes reject pilot models, upstream receivers see 0 requests, and billing-table counts remain unchanged.
+- 渠道组维持离线试点；既有 HTTP 525 请求的实际用量与费用未核实，收费验收继续暂停。Windows 安装包由 1.3.0 源码重新构建。
+- See [release notes](docs/release-notes-1.3.0.md), [architecture](docs/channel-groups-architecture.md), [IPC contract](docs/channel-groups-contract.md) and [acceptance](docs/channel-groups-acceptance-1.3.0.md). Earlier unreleased entries below retain their historical scope.
+
+## Unreleased / 未发布 — 2026-11-06
+
+- Base renderer layouts on each task's information priorities and decision flow; record two structural alternatives and the selected tradeoff for every workspace and management subpage in the [product decision record](docs/ui-product-decisions-20261106.md).
+- Use a 68px activity bar for five groups, 48px horizontal section navigation, and a left navigation drawer at 760px and below. Overview is the default home and does not repeat itself as an actionable sub-navigation item.
+- Make provider editing compact, give marketplace search and comparison the full content width, and disclose secondary filters on narrow screens. Keep the applied conditions visible and retain exact-version installation review.
+- Present client authorization and expanded permission changes before optional plugin signature metadata. Align usage summaries, trends and comparisons; preserve unknown-cost semantics, zero baselines and raw values in dense series.
+- Share typography, density, semantic colors and interaction rules between light/dark themes and Chinese/English layouts. Preserve existing data contracts, credentials, expiry checks, focus behavior and required destructive-action confirmations.
+- 按真实任务重新安排供应商编辑、市场浏览、授权审查、用量比较和会话阅读；全部页面记录布局取舍，以长内容、少量/大量/空数据及独立截图审查收敛具体问题。保留业务功能、数据兼容及必要安全确认。
+- Renderer verification and scope are recorded in the [UI verification report](docs/ui-redesign-20261105.md). This source update does not replace released installers or native acceptance receipts.
+
 ## Unreleased / 未发布 — 2026-10-30
 
 - Limit current build, CI, documentation, and website distribution entries to **Windows, macOS, and Linux**. Remove iOS/Android packaging and simulator workflows, including signed iOS device builds.

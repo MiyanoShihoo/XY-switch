@@ -1,14 +1,56 @@
+import skillsExperienceEn from '../features/skills/experience-en.json';
+import settingsExperienceEn from '../features/settings/experience-en.json';
+import governanceExperienceEn from '../features/governance/experience-en.json';
+import sessionsExperienceEn from '../features/sessions/experience-en.json';
+import providersExperienceEn from '../features/providers/experience-en.json';
+import promptsExperienceEn from '../features/prompts/experience-en.json';
+import pluginsExperienceEn from '../features/plugins/experience-en.json';
+import mcpExperienceEn from '../features/mcp/experience-en.json';
+import marketplaceExperienceEn from '../features/marketplace/experience-en.json';
+import clientsExperienceEn from '../features/clients/experience-en.json';
+import accountsExperienceEn from '../features/accounts/experience-en.json';
+import overviewExperienceEn from '../features/overview/experience-en.json';
+import usageExperienceEn from '../features/usage/experience-en.json';
 import { unifiedClientEn } from './unified-client-en';
 import pluginEnTranslations from '../features/plugins/en-translations.json';
 import marketplaceEnTranslations from '../features/marketplace/en-translations.json';
 import accountEnTranslations from '../features/accounts/en-translations.json';
+import redesignEnTranslations from './redesign-en.json';
+import sessionRedesignEnTranslations from '../features/sessions/redesign-en.json';
+import settingsRedesignEnTranslations from '../features/settings/redesign-en.json';
+import usageRedesignEnTranslations from '../features/usage/redesign-en.json';
+import shellRedesignEnTranslations from '../shell/redesign-en.json';
+import configurationSwitcherEnTranslations from '../features/providers/switcher-en.json';
+import channelGroupsEnTranslations from '../features/providers/channel-groups-en.json';
+import agentsEnTranslations from '../features/agents/en-translations.json';
 
 // Application-owned interface messages. User content and protocol identifiers are not translated.
 export const en: Record<string, string> = {
+  ...settingsExperienceEn,
+  ...governanceExperienceEn,
+  ...skillsExperienceEn,
+  ...sessionsExperienceEn,
+  ...providersExperienceEn,
+  ...promptsExperienceEn,
+  ...pluginsExperienceEn,
+  ...mcpExperienceEn,
+  ...marketplaceExperienceEn,
+  ...clientsExperienceEn,
+  ...accountsExperienceEn,
+  ...overviewExperienceEn,
+  ...usageExperienceEn,
   ...unifiedClientEn,
   ...pluginEnTranslations,
   ...marketplaceEnTranslations,
   ...accountEnTranslations,
+  ...redesignEnTranslations,
+  ...sessionRedesignEnTranslations,
+  ...settingsRedesignEnTranslations,
+  ...usageRedesignEnTranslations,
+  ...shellRedesignEnTranslations,
+  ...configurationSwitcherEnTranslations,
+  ...channelGroupsEnTranslations,
+  ...agentsEnTranslations,
   "插件市场": "Plugin marketplace",
   "请在桌面端管理原生客户端登录和配置。": "Manage native client sign-in and configuration on desktop.",
   "请在桌面端管理授权账号池。": "Manage authorized accounts on desktop.",
@@ -79,6 +121,9 @@ export const en: Record<string, string> = {
   "审批 ID": "Approval ID",
   "工具事件": "Tool event",
   "路由读取失败：": "Failed to read routing status: ",
+  "运行状态待刷新": "Status needs refresh",
+  "当前配置状态未知": "Current configuration is unknown",
+  "重新读取供应商配置后再切换。": "Reload provider configurations before switching.",
   "另一项路由操作正在进行，请稍候。": "Another routing operation is in progress. Please wait.",
   "路由操作失败：": "Routing operation failed: ",
   "路由实际状态与请求不一致。": "The actual routing status does not match the requested status.",

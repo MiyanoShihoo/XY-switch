@@ -1,0 +1,13 @@
+{
+  "浏览会话": "Browse sessions",
+  "按项目": "By project",
+  "{count} 条会话": "{count} sessions",
+  "未记录工作目录": "Working directory not recorded",
+  "恢复前请先切换到此工作目录。": "Switch to this working directory before resuming.",
+  "未记录工作目录；恢复前请先确认原工作目录。": "No working directory was recorded. Confirm the original directory before resuming.",
+  "复制工作目录": "Copy working directory",
+  "工作目录已复制": "Working directory copied",
+  "本次讨论": "Discussion",
+  "第 {number} 段讨论": "Discussion {number}",
+  "已加载消息中没有用户讨论。": "No user discussions in the loaded messages."
+}

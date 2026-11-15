@@ -18,6 +18,7 @@ release/
 tools/
 
 # Test & diagnostic artifacts
+/out/
 .cdp-release-diagnostic.mjs
 .provider-dom-diagnostic.mjs
 .chrome-acceptance-profile*

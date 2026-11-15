@@ -15,7 +15,7 @@ function provider(change: Partial<Provider> = {}): Provider {
       headerOverrides: { Authorization: "DO_NOT_RENDER_HEADER_SECRET" }, bodyOverrides: { embedded: "DO_NOT_RENDER_BODY_SECRET" } }, ...change };
 }
 function controller(change: Partial<ProvidersController> = {}): ProvidersController {
-  return { providers: [provider()], currentId: "relay", loading: false, busy: false, testing: null, error: "", message: "", health: {},
+  return { providers: [provider()], currentId: "relay", loading: false, busy: false, testing: null, error: "", readError: "", message: "", health: {},
     refresh: vi.fn(async () => true), activate: vi.fn(async () => {}), copy: vi.fn(async () => {}), remove: vi.fn(async () => true),
     reorder: vi.fn(async () => {}), test: vi.fn(async () => {}), saved: vi.fn(), dismissMessage: vi.fn(), ...change };
 }
@@ -23,7 +23,7 @@ const callbacks = { onBack: vi.fn(), onDiagnostics: vi.fn(), onConfigure: vi.fn(
 const detail = (c: ProvidersController, id = "relay") => render(<ProviderConfigurationPage controller={c} providerId={id} {...callbacks} />);
 const diagnostics = (c: ProvidersController, id?: string) => render(<ProviderDiagnosticsPage controller={c} providerId={id} {...callbacks} />);
 function buttonAttributes(html: string, label: string): string {
-  const button = [...html.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)].find(match => match[2].replace(/<[^>]*>/g, "").trim() === label);
+  const button = [...html.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)].find(match => (match[1].match(/\baria-label="([^"]*)"/)?.[1] ?? match[2].replace(/<[^>]*>/g, "").trim()) === label);
   expect(button, label).toBeDefined();
   return button![1];
 }
@@ -44,6 +44,18 @@ describe("full-width provider workspace", () => {
   it("does not describe an untested current provider as healthy", () => {
     const html = render(<ProvidersPage controller={controller()} {...callbacks} />);
     expect(html).toContain("未测试"); expect(html).not.toContain("测试通过");
+  });
+  it("blocks switching after a configuration read failure while keeping inspection available", () => {
+    const html = render(<ProvidersPage controller={controller({ currentId: "", readError: "Current configuration could not be read" })} {...callbacks} />);
+    expect(buttonAttributes(html, "切换到 Relay")).toContain('disabled=""');
+    expect(buttonAttributes(html, "查看 Relay 详情")).not.toContain('disabled=""');
+    expect(buttonAttributes(html, "重试")).not.toContain('disabled=""');
+    expect(html).toContain("Current configuration could not be read");
+  });
+  it("allows an explicit switch when configuration reads are healthy despite an unrelated operation error", () => {
+    const html = render(<ProvidersPage controller={controller({ currentId: "", error: "A previous health test failed" })} {...callbacks} />);
+    expect(buttonAttributes(html, "切换到 Relay")).not.toContain('disabled=""');
+    expect(buttonAttributes(html, "查看 Relay 详情")).not.toContain('disabled=""');
   });
 });
 
@@ -78,6 +90,25 @@ describe("independent connection diagnostics", () => {
     expect(tabs).toHaveLength(2); expect(tabs.map(match => match[2])).toEqual(["0", "-1"]);
     for (const match of tabs) expect(html).toContain('id="' + match[1] + '"');
     expect(html).toContain('hidden=""'); expect(html).not.toContain("低 Token 验证设置");
+    expect(html).not.toContain("provider-response-probe"); expect(html).not.toContain("读取验证状态…");
+    expect(c.activate).not.toHaveBeenCalled(); expect(c.test).not.toHaveBeenCalled(); expect(callbacks.onSelect).not.toHaveBeenCalled();
+  });
+  it("compares every configuration while keeping selection separate from the current provider and test status", () => {
+    const c = controller({
+      providers: [provider(), provider({ id: "disabled", name: "Disabled", enabled: false }), provider({ id: "untested", name: "Untested" })],
+      health: {
+        relay: health({ status: "healthy", successRate: 100, latencyMs: 18, lastCheckedAt: 1793340000000 }),
+        disabled: health({ providerId: "disabled", status: "unhealthy", successRate: 25, lastError: "Selected synthetic failure", lastCheckedAt: 1793340000000 }),
+      },
+    });
+    const html = diagnostics(c, "disabled");
+    const rows = [...html.matchAll(/<tr data-provider-id="([^"]+)" data-selected="([^"]+)">([\s\S]*?)<\/tr>/g)];
+    expect(rows.map(row => [row[1], row[2]])).toEqual([["relay", "false"], ["disabled", "true"], ["untested", "false"]]);
+    expect(rows[0][3]).toContain("当前配置"); expect(rows[0][3]).toContain("测试通过"); expect(rows[0][3]).toContain("18 ms");
+    expect(rows[1][3]).toContain("已禁用"); expect(rows[1][3]).toContain("25.0%"); expect(rows[1][3]).not.toContain("当前配置");
+    expect(rows[2][3]).toContain("尚未测试"); expect(rows[2][3]).not.toContain("0.0%");
+    expect(html).toContain("选中证据"); expect(html).toContain("Selected synthetic failure");
+    expect(buttonAttributes(html, "测试连接")).toContain('disabled=""');
     expect(c.activate).not.toHaveBeenCalled(); expect(c.test).not.toHaveBeenCalled(); expect(callbacks.onSelect).not.toHaveBeenCalled();
   });
   it("keeps a missing diagnostic target explicit instead of silently selecting another", () => {

@@ -8,17 +8,17 @@ export interface ModalProps {
   open: boolean; title: string; description?: string; size?: "sm" | "md" | "lg";
   closeLabel?: string; onClose: () => void; children: ReactNode; footer?: ReactNode;
   busy?: boolean; role?: "dialog" | "alertdialog"; hideClose?: boolean;
-  initialFocusRef?: RefObject<HTMLElement | null>;
+  initialFocusRef?: RefObject<HTMLElement | null>; className?: string;
 }
 
-export function Modal({ open, title, description, size = "md", closeLabel = t("关闭弹窗"), onClose, children, footer, busy = false, role = "dialog", hideClose = false, initialFocusRef }: ModalProps) {
+export function Modal({ open, title, description, size = "md", closeLabel = t("关闭弹窗"), onClose, children, footer, busy = false, role = "dialog", hideClose = false, initialFocusRef, className }: ModalProps) {
   useLanguage();
   const id = useId();
   const panelRef = useRef<HTMLDivElement>(null);
   useDialogFocus(open, panelRef, onClose, busy, initialFocusRef);
   if (!open) return null;
   return <div className="xy-ui-overlay" role="presentation" onMouseDown={event => { if (!busy && event.target === event.currentTarget) onClose(); }}>
-    <div ref={panelRef} className="xy-ui-modal" data-size={size} role={role} aria-modal="true" aria-labelledby={id + "-title"} aria-describedby={description ? id + "-description" : undefined} aria-busy={busy} tabIndex={-1}>
+    <div ref={panelRef} className={["xy-ui-modal", className].filter(Boolean).join(" ")} data-size={size} role={role} aria-modal="true" aria-labelledby={id + "-title"} aria-describedby={description ? id + "-description" : undefined} aria-busy={busy} tabIndex={-1}>
       <header className="xy-ui-modal__header"><div><h2 className="xy-ui-modal__title" id={id + "-title"}>{title}</h2>{description && <p id={id + "-description"} className="xy-ui-modal__description">{description}</p>}</div>
         {!hideClose && <IconButton aria-label={closeLabel} onClick={onClose} disabled={busy}><X size={16} /></IconButton>}
       </header>

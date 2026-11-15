@@ -9,6 +9,7 @@ import { errorText } from "../../lib/error";
 import { routeTargetLabels, routeTargets, type ProxySettings, type ProxyStatus } from "../../types/proxy";
 import type { AppTakeoverStatus } from "../../types/takeover";
 import { usePageOperation } from "../shared/usePageOperation";
+import { useTaskDraft } from "./TaskNavigation";
 
 export type ProxyMutation = (work: () => Promise<ProxyStatus>) => Promise<ProxyStatus>;
 export function RoutingSettings({ desktop, status, runtimeBusy, runtimeError, mutateProxy, onRefresh }: { desktop: boolean; status: ProxyStatus | null; runtimeBusy: boolean; runtimeError: string; mutateProxy: ProxyMutation; onRefresh: () => Promise<void> }) {
@@ -20,6 +21,7 @@ export function RoutingSettings({ desktop, status, runtimeBusy, runtimeError, mu
   const savedConfiguration = status ? JSON.stringify({ ...status.settings, enabled: undefined }) : "";
   useEffect(() => { if (savedConfiguration) setDraft(JSON.parse(savedConfiguration) as ProxySettings); }, [savedConfiguration]);
   const busy = operation.busy || runtimeBusy;
+  useTaskDraft(Boolean(draft && savedConfiguration && JSON.stringify({ ...draft, enabled: undefined }) !== savedConfiguration), busy);
   const patch = (value: Partial<ProxySettings>) => setDraft(previous => previous ? { ...previous, ...value } : previous);
   const refresh = async () => { await onRefresh(); await takeovers.refetch({ throwOnError: true }); };
   if (!status || !draft) return <div className="section">{runtimeError || operation.error ? <><Badge tone="warning">{t("状态未知")}</Badge><p className="muted">{t("无法确认本地路由的实际运行状态，请重新读取后再操作。")}</p></> : <LoadingState label={t("正在读取本地路由状态…")} />}<Button variant="secondary" loading={busy} onClick={() => void operation.run(refresh)}>{t("重新读取")}</Button><InlineError message={operation.error} /></div>;
@@ -56,15 +58,18 @@ export function RoutingSettings({ desktop, status, runtimeBusy, runtimeError, mu
     <section className="settings-section"><div className="settings-section__heading"><h2>{t("本地路由")}</h2><p>{t("保存的启用偏好与实际进程状态分别展示。")}</p></div><div className="form-stack">
       <div className="section-heading"><div className="inline-actions"><Badge dot tone={status.running ? "success" : status.lastError ? "danger" : "neutral"}>{status.running ? t("运行中") : status.lastError ? t("启动异常") : t("已停止")}</Badge><span className="muted">{t("启动偏好：")}{status.settings.enabled ? t("启用") : t("关闭")}</span></div><div className="inline-actions"><Button variant="secondary" disabled={!desktop || busy} onClick={() => void toggle()}>{status.running ? t("停止路由") : t("启动路由")}</Button><Button variant="quiet" loading={busy} onClick={() => void operation.run(refresh)}>{t("刷新状态")}</Button></div></div>
       <code className="settings-address">{status.address}</code><InlineError message={status.lastError ?? ""} />
+      <details className="workspace-disclosure"><summary>{t("监听与路由选项")}</summary><div className="workspace-disclosure__body">
       <form className="form-stack" onSubmit={event => { event.preventDefault(); void save(); }}><fieldset className="settings-fieldset form-stack" disabled={!desktop || busy}>
-        <div className="form-grid"><Field label={t("监听地址")} description={t("仅支持回环地址。")}><Input value={draft.host} onChange={event => patch({ host: event.target.value })} required /></Field><Field label={t("监听端口")}><Input type="number" min={1024} max={65535} step={1} required value={Number.isNaN(draft.port) ? "" : draft.port} onChange={event => patch({ port: event.target.value === "" ? NaN : Number(event.target.value) })} /></Field></div>
+        <div className="settings-rows"><Field className="settings-row" label={t("监听地址")} description={t("仅支持回环地址。")}><Input value={draft.host} onChange={event => patch({ host: event.target.value })} required /></Field><Field className="settings-row" label={t("监听端口")}><Input type="number" min={1024} max={65535} step={1} required value={Number.isNaN(draft.port) ? "" : draft.port} onChange={event => patch({ port: event.target.value === "" ? NaN : Number(event.target.value) })} /></Field></div>
         <fieldset className="settings-targets"><legend>{t("协议路由目标")}</legend>{routeTargets.map(target => <label key={target}><input type="checkbox" checked={draft.routeTargets.includes(target)} onChange={event => patch({ routeTargets: event.target.checked ? [...draft.routeTargets, target] : draft.routeTargets.filter(value => value !== target) })} />{routeTargetLabels[target]}<code>/{target}</code></label>)}</fieldset>
         <div className="form-switch"><div className="form-switch__copy"><strong>{t("在工作台突出路由状态")}</strong><small>{t("保存首页路由显示偏好；底部运行状态始终可见。")}</small></div><Toggle aria-label={t("在工作台突出路由状态")} checked={draft.showInHome} onCheckedChange={showInHome => patch({ showInHome })} /></div>
-        {dirty && invalid && <InlineError message={invalid} />}<div className="inline-actions"><Button type="submit" disabled={!dirty || Boolean(invalid)} loading={operation.busy}>{t("保存路由配置")}</Button><Button variant="secondary" disabled={!dirty} onClick={() => setDraft(status.settings)}>{t("撤销修改")}</Button></div>
+        {dirty && invalid && <InlineError message={invalid} />}<div className="inline-actions settings-actions"><Button type="submit" disabled={!dirty || Boolean(invalid)} loading={operation.busy}>{t("保存路由配置")}</Button><Button variant="secondary" disabled={!dirty} onClick={() => setDraft(status.settings)}>{t("撤销修改")}</Button></div>
       </fieldset></form>
+      </div></details>
+      {dirty && invalid && <InlineError message={invalid} />}
       <InlineError message={operation.error} />{operation.message && <Toast title={operation.message} tone="success" onDismiss={() => operation.setMessage("")} />}
     </div></section>
-    <section className="settings-section"><div className="settings-section__heading"><h2>{t("客户端接管")}</h2><p>{t("写入或恢复对应 CLI 配置；不会仅凭安装状态推断已接管。")}</p></div><div className="form-stack">
+    <section className="settings-section" aria-labelledby="settings-takeover-title"><div className="settings-section__heading"><h2 id="settings-takeover-title">{t("客户端接管")}</h2></div><div className="form-stack"><p className="muted">{t("写入或恢复对应 CLI 配置；不会仅凭安装状态推断已接管。")}</p>
       {takeovers.isPending && <LoadingState label={t("正在读取客户端配置…")} />}{takeovers.error && <InlineError message={t("客户端状态读取失败：") + errorText(takeovers.error)} onRetry={() => void takeovers.refetch()} />}
       {takeovers.data?.map(item => <article className="settings-takeover" key={item.app}><div className="section-heading"><div className="inline-actions"><h3>{item.label}</h3><Badge tone={item.lastError ? "danger" : item.active ? "success" : "neutral"}>{item.lastError ? t("状态异常") : item.active ? t("已接管") : t("未接管")}</Badge></div><Button size="sm" variant="secondary" disabled={!desktop || busy || takeovers.isFetching || takeovers.isError} onClick={() => void toggleTakeover(item)}>{item.active ? t("恢复原配置") : t("接入路由")}</Button></div><p className="muted">{item.installed ? t("已检测到客户端配置") : t("未检测到现有配置")}</p>{item.configPaths.map(config => <code className="settings-path" key={config}>{config}</code>)}<InlineError message={item.lastError ?? ""} /></article>)}
     </div></section>

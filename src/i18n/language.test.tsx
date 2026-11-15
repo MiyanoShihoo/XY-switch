@@ -165,16 +165,28 @@ describe("interface language", () => {
     expect(language.currentLanguage()).toBe("en");
     expect(invokeMock).toHaveBeenCalledWith("set_interface_language", { preference: "en", resolvedLanguage: "en" });
   });
-  it("keeps all navigation entries and their stable view keys in both languages", async () => {
+  it("keeps every destination and its section navigation translated", async () => {
     const language = await import("./language");
     const { SideNav, navigation } = await import("../shell/SideNav");
+    const { ContextBar } = await import("../shell/ContextBar");
     for (const preference of ["zh-CN", "en"] as const) {
       await language.setLanguagePreference(preference);
       const html = renderToStaticMarkup(createElement(SideNav, { activeView: "providers", providerCount: 3, onNavigate: () => undefined }));
-      expect(html.match(/class="xy-shell-nav-item"/g)).toHaveLength(navigation.length);
-      for (const item of navigation) expect(html).toContain(`title="${language.t(item.label).replaceAll("&", "&amp;")}"`);
+      expect(html.match(/class="xy-shell-nav-item"/g)).toHaveLength(14);
+      for (const item of navigation) {
+        const label = language.t(item.label).replaceAll("&", "&amp;");
+        expect(html).toContain(`title="${label}"`);
+        expect(html).toContain(`data-view="${item.view}"`);
+        const context = renderToStaticMarkup(createElement(ContextBar, { activeView: item.view, onNavigate: () => undefined }));
+        if (item.view === "overview") {
+          expect(context).toContain(`<span class="xy-shell-location">${label}</span>`);
+          expect(context).not.toContain("<button");
+        } else {
+          expect(context).toContain(`data-view="${item.view}" data-active="true" aria-current="page"><span>${label}</span>`);
+        }
+      }
     }
-    expect(navigation.map(item => item.view)).toEqual(["providers", "clients", "accounts", "plugins", "marketplace", "mcp", "prompts", "skills", "diagnostics", "sessions", "usage", "governance", "settings"]);
+    expect(navigation.map(item => item.view)).toEqual(["overview", "providers", "clients", "accounts", "diagnostics", "plugins", "marketplace", "mcp", "prompts", "skills", "sessions", "usage", "settings", "governance"]);
   });
   it("localizes notifications in either direction while preserving opaque user values", async () => {
     const language = await import("./language");

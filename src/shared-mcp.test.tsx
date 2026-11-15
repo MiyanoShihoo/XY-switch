@@ -3,7 +3,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SharedApprovalDetails, SharedMcpPanel } from "./features/mcp/SharedMcpPanel";
-import { McpPage } from "./features/mcp/McpPage";
+import { McpConnectionDetails, McpPage } from "./features/mcp/McpPage";
+import { McpMountMatrix, mcpApplications } from "./features/mcp/McpMountMatrix";
 import { deleteMcpServer, saveMcpServer, setMcpAppEnabled } from "./lib/mcp-service";
 import type { McpServer } from "./types/mcp";
 import { SHARED_MCP_QUERY_KEYS, decideSharedMcp, loadSharedMcpPending, loadSharedMcpStatus, registerSharedMcp, revokeSharedMcp, setSharedMcpEnabled, sharedMcpErrorText } from "./lib/shared-mcp-service";
@@ -21,13 +22,13 @@ function approval(): SharedToolApproval {
     preview: { previewId: id, expiresAt: Date.now() + 60000, pluginId: "example.echo", version: "1.0.0", pluginDigest: "fixture-digest", client: "codex-desktop", tool: "echo", argumentsDigest: "arguments-digest", requiredPermissions: emptyPluginPermissions(), effect: "Returns the supplied JSON." } };
 }
 
-function renderPanel(running = true, withApproval = true, connections?: SharedMcpConnection[]): string {
+function renderPanel(running = true, withApproval = true, connections?: SharedMcpConnection[], pendingApproval: SharedToolApproval = approval()): string {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity, gcTime: Infinity } } });
   clients.push(client);
   const status: SharedMcpStatus = { enabled: running, running, address: "http://127.0.0.1:15722", versions: ["2026-07-28"], pendingCount: withApproval ? 1 : 0, lastError: null,
     connections: connections ?? [{ id, owner: "codex", clients: ["codex-desktop", "codex-cli"], serverId: `xy-shared-${id}`, active: false }] };
   client.setQueryData(SHARED_MCP_QUERY_KEYS.status, status);
-  client.setQueryData(SHARED_MCP_QUERY_KEYS.pending, withApproval ? [approval()] : []);
+  client.setQueryData(SHARED_MCP_QUERY_KEYS.pending, withApproval ? [pendingApproval] : []);
   return renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(SharedMcpPanel)));
 }
 
@@ -47,11 +48,44 @@ describe("shared MCP native authorization", () => {
     client.setQueryData(["mcp", "apps"], [{ app: "codex", installed: true, label: "Codex", configPath: "synthetic-config", lastError: null }]);
     client.setQueryData(SHARED_MCP_QUERY_KEYS.status, { enabled: false, running: false, connections: [], versions: [], pendingCount: 0, lastError: null });
     const html = renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(McpPage)));
-    const record = html.match(/<article class="mcp-record"[\s\S]*?<\/article>/)?.[0] ?? "";
+    const record = html.match(/<tr class="mcp-record"[\s\S]*?<\/tr>/)?.[0] ?? "";
     expect(record).toContain("共享插件连接请在共享插件服务中管理。");
-    const buttons = record.match(/<button[^>]*>/g) ?? [];
-    expect(buttons).toHaveLength(7);
-    expect(buttons.every(button => button.includes('disabled=""'))).toBe(true);
+    expect(record).toContain("管理共享连接");
+    expect(record.match(/<button[^>]*>/g)).toHaveLength(1);
+    expect(record).not.toContain('role="switch"');
+    expect(record).not.toContain("编辑配置");
+    expect(record).not.toContain("删除服务器");
+    expect(html).not.toContain('role="dialog"');
+    const details = renderToStaticMarkup(createElement(McpConnectionDetails, { server: shared, apps: [], busy: false,
+      onEdit: vi.fn(), onDelete: vi.fn(), onToggle: vi.fn(), onManageShared: vi.fn() }));
+    const buttons = details.match(/<button[^>]*>/g) ?? [];
+    expect(buttons).toHaveLength(8);
+    expect(buttons.filter(button => button.includes('disabled=""'))).toHaveLength(7);
+    expect(details).toContain("管理共享连接");
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it("keeps every client relationship visible independently of detection and health", () => {
+    const server: McpServer = { id: "qa-mcp", name: "QA service", description: "Fixture configuration", transport: "stdio", command: "node", args: [], url: null, env: {}, headers: {}, apps: { claude: false, codex: true, gemini: false, opencode: false, "claude-desktop": false }, builtIn: false, secretsConfigured: false };
+    const props = { servers: [server], apps: [{ app: "claude" as const, label: "Claude Code", installed: true, configPath: "synthetic-config", lastError: null }], appsPending: false, appsFailed: false, busy: false, onInspect: vi.fn(), onToggle: vi.fn() };
+    const html = renderToStaticMarkup(createElement(McpMountMatrix, props));
+    expect(html).toContain('role="table"');
+    for (const app of mcpApplications) expect(html).toContain(app.label);
+    const cells = [...html.matchAll(/<td[\s\S]*?<\/td>/g)].map(match => match[0]);
+    expect(cells).toHaveLength(5);
+    expect(cells[0]).toContain('aria-checked="false"');
+    expect(cells[0]).not.toContain('disabled=""');
+    expect(cells[1]).toContain('aria-checked="true"');
+    expect(cells[1]).toContain('disabled=""');
+    expect(cells[1]).toContain("已挂载");
+    expect(cells[1]).toContain("未检测到");
+    expect(html).not.toMatch(/健康|运行中/);
+    const failed = renderToStaticMarkup(createElement(McpMountMatrix, { ...props, appsFailed: true }));
+    const switches = (failed.match(/<button[^>]*role="switch"[^>]*>/g) ?? []);
+    expect(switches).toHaveLength(5);
+    expect(switches.every(button => button.includes('disabled=""'))).toBe(true);
+    expect(failed).toContain("已挂载");
+    expect(failed).toContain("读取失败");
   });
 
   it("requires desktop runtime for all reads and writes", async () => {
@@ -62,7 +96,10 @@ describe("shared MCP native authorization", () => {
     expect(invoke).not.toHaveBeenCalled();
     const html = renderPanel(false, false);
     expect(html).toContain("共享 MCP 操作需要桌面应用");
-    expect(html).toMatch(/<button(?=[^>]*role="switch")(?=[^>]*disabled="")[^>]*>/);
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>服务设置<\/button>/);
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>添加共享连接<\/button>/);
+    expect(html).not.toContain('role="switch"');
+    expect(html).not.toContain('role="dialog"');
     expect(html).not.toContain("共享 MCP 已启动");
   });
 
@@ -109,7 +146,8 @@ describe("shared MCP native authorization", () => {
     expect(html).toContain("需重新授权");
     expect(html).toContain("旧连接已停用，请清理后重新确认两种模式的授权范围。");
     expect(html).toContain("重试清理");
-    expect(html).toContain('<option value="claude-desktop-3p">Claude Desktop 3P</option>');
+    expect(html).toContain("添加共享连接");
+    expect(html).not.toContain("<select");
     expect(sharedMcpErrorText("shared_mcp_cleanup_required")).toContain("请先清理此配置的旧连接");
   });
 
@@ -157,14 +195,32 @@ describe("shared tool review and privacy", () => {
     expect(html).not.toContain("arguments-digest");
   });
 
-  it("offers review and cleanup without exposing arguments or connection tokens in the list", () => {
+  it("prioritizes pending review and keeps connection management in a separate task", () => {
     const html = renderPanel();
     expect(html).toContain("审阅调用");
-    expect(html).toContain("重试清理");
-    expect(html).toContain("待清理");
+    expect(html).toMatch(/还剩 \d+ 秒/);
+    expect(html).toContain("Codex Desktop / Codex CLI");
+    expect(html).not.toContain("重试清理");
+    expect(html).not.toContain("待清理");
     expect(html).not.toContain("[REDACTED_PERSONAL_1]");
     expect(html).not.toContain("arguments-digest");
     expect(html).not.toContain("http://127.0.0.1:15722");
+  });
+
+  it("defaults to connections when no review is pending, keeping cleanup available", () => {
+    const html = renderPanel(true, false);
+    expect(html).toContain("重试清理");
+    expect(html).toContain("待清理");
+    expect(html).not.toContain("暂无待审核调用");
+    expect(html).not.toContain("审阅调用</button>");
+  });
+
+  it("marks an expired pending call without presenting it as a live approval", () => {
+    const pending = approval();
+    pending.preview.expiresAt = Date.now() - 1;
+    const html = renderPanel(true, true, undefined, pending);
+    expect(html).toContain("已过期");
+    expect(html).not.toContain("还剩");
   });
 
   it("does not show cached approvals after the shared service has stopped", () => {

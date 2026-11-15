@@ -1,14 +1,16 @@
-import { translateMessage, useLanguage, t, localeTag } from "../../i18n/language";
-import { Button, Field, Input, Select, Textarea } from "../../ui";
+import { translateMessage, useLanguage, localeTag } from "../../i18n/language";
+import { t } from "../../i18n/language";
+import { AuditEvidenceInspector } from "./AuditEvidenceInspector";
+import { Button, Field, Input, Select, Tabs, Textarea } from "../../ui";
 import { useEffect, useRef, useState } from "react";
 import { analyzeModelAudit, analyzeModelReference, generateModelReference, loadModelReference } from "../../lib/model-audit-service";
-import { HARD_AUDIT_FLAGS, modelAuditStatus } from "../../lib/model-audit";
+
 import type { ModelFingerprint, PassiveAuditReport, Pretokenizer, ReferenceReport } from "../../types/model-audit";
 import type { UsageFilter, UsageLogEntry } from "../../types/usage";
 import "./audit.css";
 import { ShadowAuditPanel } from "./ShadowAuditPanel";
 
-export function ModelAuditPanel({ filter, logs }: { filter: UsageFilter; logs: UsageLogEntry[] }) {
+export function ModelAuditPanel({ filter, logs, providerNames }: { filter: UsageFilter; logs: UsageLogEntry[]; providerNames?: Map<string, string> }) {
   useLanguage();
   const [report, setReport] = useState<PassiveAuditReport | null>(null);
   const [busy, setBusy] = useState(false);
@@ -36,32 +38,38 @@ export function ModelAuditPanel({ filter, logs }: { filter: UsageFilter; logs: U
       if (generation.current === requestGeneration) setBusy(false);
     }
   };
-  const evidence = logs.filter((log) => log.audit?.flags.some((flag) => HARD_AUDIT_FLAGS.has(flag))).length;
-  const mismatches = logs.filter((log) => modelAuditStatus(log.audit) === "mismatched").length;
-  const untested = logs.filter((log) => !log.audit).length;
-  const gaps = logs.filter((log) => log.audit?.gaps.length).length;
   return (
     <section className="model-audit-panel" aria-labelledby="model-audit-title">
-      <div className="audit-panel-heading">
-        <div><h2 id="model-audit-title">{t("模型与用量审计")}</h2><p>{t("被动记录业务响应中的结构信息。模型名称来自上游自报，无法据此确认真实身份。")}</p></div>
-        <Button type="button" variant="primary" onClick={() => void analyze()} disabled={busy}>{busy ? t("分析中…") : t("分析当前筛选范围")}</Button>
-      </div>
-      <div className="audit-counts" aria-label={t("当前页审计计数")}>
-        <span>{t("当前页")} <strong>{logs.length}</strong> {t("次请求")}</span>
-        <span className={evidence ? "audit-evidence" : ""}>{t("硬证据")} <strong>{evidence}</strong> {t("次")}</span>
-        <span>{t("自报不一致")} <strong>{mismatches}</strong> {t("次")}</span>
-        <span className="audit-untested">{t("未采集")} <strong>{untested}</strong> {t("次 · 有缺口")} <strong>{gaps}</strong> {t("次")}</span>
-      </div>
-      <p className="audit-note">{t("未采集或检查有缺口不等于没问题。计数可能重叠；自报差异与硬证据分开统计。分析由你手动触发。")}</p>
-      {error && <p className="audit-error" role="alert">{t("分析未完成：")}{translateMessage(error)}</p>}
-      {report && <PassiveReport report={report} />}
-      <ShadowAuditPanel filter={filter} logs={logs} />
-      <details className="audit-reference-section">
-        <summary>{t("离线参照库分析")}</summary>
-        <ReferenceAnalysis />
-      </details>
+      <div className="audit-panel-heading"><div><h2 id="model-audit-title">{t("证据检查器")}</h2><p>{t("检查当前页的单条记录；统计分析使用已应用的完整筛选范围。")}</p></div></div>
+      <AuditEvidenceInspector logs={logs} providerNames={providerNames} />
+      <section className="audit-analysis" aria-labelledby="audit-analysis-title">
+        <div className="audit-panel-heading"><div><h3 id="audit-analysis-title">{t("筛选范围分析")}</h3><p>{t("被动记录业务响应中的结构信息。模型名称来自上游自报，无法据此确认真实身份。")}</p></div>
+          <Button type="button" variant="primary" onClick={() => void analyze()} disabled={busy}>{busy ? t("分析中…") : t("分析当前筛选范围")}</Button>
+        </div>
+        <p className="audit-note">{t("仅分析已保存的请求记录，不会自动发送探针。")}</p>
+        {error && <p className="audit-error" role="alert">{t("分析未完成：")}{translateMessage(error)}</p>}
+        {report && <PassiveReport report={report} />}
+      </section>
     </section>
   );
+}
+
+export function AuditToolsPanel({ filter, logs, onBusyChange }: { filter: UsageFilter; logs: UsageLogEntry[]; onBusyChange?: (busy: boolean) => void }) {
+  useLanguage();
+  const [tool, setTool] = useState("shadow");
+  const [shadowBusy, setShadowBusy] = useState(false);
+  const [referenceBusy, setReferenceBusy] = useState(false);
+  const busy = shadowBusy || referenceBusy;
+  useEffect(() => { onBusyChange?.(busy); }, [busy, onBusyChange]);
+  return <section className="usage-view audit-tools" aria-label={t("探测配置")}>
+    <Tabs id="audit-tools" label={t("探测工具")} value={tool} onChange={value => { if (!busy) setTool(value); }} items={[{ value: "shadow", label: t("影子采样"), disabled: busy && tool !== "shadow" }, { value: "reference", label: t("离线参照"), disabled: busy && tool !== "reference" }]} />
+    <div className="audit-tools__panel" role="tabpanel" id="audit-tools-panel-shadow" aria-labelledby="audit-tools-tab-shadow" hidden={tool !== "shadow"}>
+      <ShadowAuditPanel filter={filter} logs={logs} onBusyChange={setShadowBusy} />
+    </div>
+    <div className="audit-tools__panel" role="tabpanel" id="audit-tools-panel-reference" aria-labelledby="audit-tools-tab-reference" hidden={tool !== "reference"}>
+      <section className="audit-reference-section"><div className="audit-reference-heading"><h2>{t("离线参照库分析")}</h2></div><ReferenceAnalysis onBusyChange={setReferenceBusy} /></section>
+    </div>
+  </section>;
 }
 
 export function PassiveReport({ report }: { report: PassiveAuditReport }) {
@@ -77,15 +85,15 @@ export function PassiveReport({ report }: { report: PassiveAuditReport }) {
       <p>{t("优先比较同一渠道的不同时间窗；跨渠道只比较模型名与语言构成分桶相同的组。切分与时延每组至少需要 20 个完整、未批处理的可比响应；整段计费两组各需至少 20 个合格计费样本。差异不等于模型被替换。")}</p>
       <p className="audit-note">{t("计费比率统一使用 UTF-8 字节，排除推理用量未知、工具载荷、非文本或缺失字节记录。比值为两组均值的较大值 / 较小值，不表示涨跌方向；样本不足或指标缺失时显示不可比。")}</p>
       {comparisons.length > 0 ? (
-        <div className="audit-table-scroll"><table className="audit-table">
+        <div className="audit-table-scroll" role="region" aria-label={t("筛选范围分析结果")} tabIndex={0}><table className="audit-table audit-table--comparison">
           <thead><tr><th scope="col">{t("比较对象")}</th><th scope="col">{t("模型 / 构成")}</th><th scope="col">{t("两组有效样本")}</th><th scope="col">{t("切分与时延")}</th><th scope="col">{t("整段计费比较")}</th></tr></thead>
           <tbody>{comparisons.map((comparison, index) => {
             const billingComparable = comparison.billingSamplesLeft >= 20 && comparison.billingSamplesRight >= 20
               && comparison.tokenByteRatio != null && comparison.frameByteRatio != null && comparison.billingStatus !== "insufficient";
             return <tr key={`${comparison.kind}-${index}`}>
-            <td><strong>{comparison.kind === "peer" ? t("跨渠道") : t("跨时间")}</strong><br />{comparison.left}<br />{t("对比")} {comparison.right}</td>
-            <td>{comparison.requestedModel}<br />{compositionLabel(comparison.composition)}</td>
-            <td>{t("切分")} {comparison.samplesLeft} / {comparison.samplesRight}<br />{t("计费")} {comparison.billingSamplesLeft ?? 0} / {comparison.billingSamplesRight ?? 0}</td>
+            <td><strong>{comparison.kind === "peer" ? t("跨渠道") : t("跨时间")}</strong><br /><code>{comparison.left}</code><br />{t("对比")} <code>{comparison.right}</code></td>
+            <td><code>{comparison.requestedModel}</code><br />{compositionLabel(comparison.composition)}</td>
+            <td className="audit-table__number">{t("切分")} {comparison.samplesLeft} / {comparison.samplesRight}<br />{t("计费")} {comparison.billingSamplesLeft ?? 0} / {comparison.billingSamplesRight ?? 0}</td>
             <td>{t("帧长")} {ratio(comparison.deltaRatio)}<br />{t("首字")} {ratio(comparison.ttfbRatio)}<br /><span className={comparison.status === "insufficient" ? "audit-untested" : comparison.status === "changed" ? "audit-statistical" : "audit-clear"}>
               {comparison.status === "insufficient" ? t("未测到：样本不足") : comparison.status === "changed" ? t("存在统计差异") : t("未见明显差异")}
             </span></td>
@@ -97,8 +105,8 @@ export function PassiveReport({ report }: { report: PassiveAuditReport }) {
       ) : <p className="audit-untested">{t("未测到：没有可比较的渠道或时间组。这不等于没问题。")}</p>}
       {report.comparisons.length > 8 && <Button type="button" variant="secondary" size="sm" onClick={() => setShowAll(!showAll)}>{showAll ? t("收起比较") : t("展开全部 {value0} 组比较", { value0: report.comparisons.length })}</Button>}
       {report.groups.length > 0 && <details className="audit-group-details"><summary>{t("查看采样分组（")}{report.groups.length} {t("组）")}</summary>
-        <div className="audit-table-scroll"><table className="audit-table"><thead><tr><th scope="col">{t("渠道 / 请求模型")}</th><th scope="col">{t("时间窗 / 构成")}</th><th scope="col">{t("切分 / 计费 / 总样本")}</th><th scope="col">{t("平均帧字符 / 首字 ms")}</th><th scope="col">{t("平均 token/字节 · 字节/帧")}</th></tr></thead><tbody>
-          {report.groups.map((group, index) => <tr key={index}><td>{group.providerId}<br />{group.requestedModel}</td><td>{new Date(group.windowStart).toLocaleString(localeTag())}<br />{compositionLabel(group.composition)}</td><td>{group.comparableSamples} / {group.billingSamples ?? 0} / {group.samples}</td><td>{measurement(group.meanDeltaChars)} / {measurement(group.meanTtfbMs)}</td><td className="audit-billing-group">{billingMean(group.meanTokensPerByte, group.billingSamples)} / {billingMean(group.meanBytesPerFrame, group.billingSamples)}{!(group.billingSamples >= 20) && <><br /><span className="audit-untested">{t("计费样本不足 20")}</span></>}</td></tr>)}
+        <div className="audit-table-scroll" role="region" aria-label={t("渠道 / 请求模型")} tabIndex={0}><table className="audit-table audit-table--groups"><thead><tr><th scope="col">{t("渠道 / 请求模型")}</th><th scope="col">{t("时间窗 / 构成")}</th><th scope="col">{t("切分 / 计费 / 总样本")}</th><th scope="col">{t("平均帧字符 / 首字 ms")}</th><th scope="col">{t("平均 token/字节 · 字节/帧")}</th></tr></thead><tbody>
+          {report.groups.map((group, index) => <tr key={index}><td><code>{group.providerId}</code><br /><code>{group.requestedModel}</code></td><td>{new Date(group.windowStart).toLocaleString(localeTag())}<br />{compositionLabel(group.composition)}</td><td className="audit-table__number">{group.comparableSamples} / {group.billingSamples ?? 0} / {group.samples}</td><td className="audit-table__number">{measurement(group.meanDeltaChars)} / {measurement(group.meanTtfbMs)}</td><td className="audit-billing-group">{billingMean(group.meanTokensPerByte, group.billingSamples)} / {billingMean(group.meanBytesPerFrame, group.billingSamples)}{!(group.billingSamples >= 20) && <><br /><span className="audit-untested">{t("计费样本不足 20")}</span></>}</td></tr>)}
         </tbody></table></div>
       </details>}
       <p className="audit-note">{t("尚未排除网络拥塞、渠道缓冲、请求复杂度和采样偏差。帧批处理记录不参与切分与时延结论。")}</p>
@@ -107,7 +115,7 @@ export function PassiveReport({ report }: { report: PassiveAuditReport }) {
   );
 }
 
-function ReferenceAnalysis() {
+function ReferenceAnalysis({ onBusyChange }: { onBusyChange?: (busy: boolean) => void }) {
   useLanguage();
   const [observationPath, setObservationPath] = useState("");
   const [candidatePaths, setCandidatePaths] = useState("");
@@ -119,10 +127,14 @@ function ReferenceAnalysis() {
   const [busy, setBusy] = useState<"generate" | "analyze" | null>(null);
   const [error, setError] = useState("");
   const generation = useRef(0);
+  const operationPending = useRef(false);
   const invalidate = () => { generation.current += 1; setReport(null); setError(""); };
   useEffect(() => () => { generation.current += 1; }, []);
+  useEffect(() => { onBusyChange?.(busy !== null); }, [busy, onBusyChange]);
 
   const generate = async () => {
+    if (operationPending.current || !tokenizerPath.trim() || !model.trim()) return;
+    operationPending.current = true;
     const requestGeneration = ++generation.current;
     setBusy("generate"); setError(""); setReport(null);
     try {
@@ -130,9 +142,11 @@ function ReferenceAnalysis() {
       if (requestGeneration === generation.current) setGenerated((previous) => [...previous, reference]);
     } catch (cause) {
       if (requestGeneration === generation.current) setError(String(cause));
-    } finally { setBusy(null); }
+    } finally { operationPending.current = false; setBusy(null); }
   };
   const analyze = async () => {
+    if (operationPending.current || !observationPath.trim() || (!candidatePaths.trim() && !generated.length)) return;
+    operationPending.current = true;
     const requestGeneration = ++generation.current;
     setBusy("analyze"); setError(""); setReport(null);
     try {
@@ -142,14 +156,22 @@ function ReferenceAnalysis() {
       if (requestGeneration === generation.current) setReport(result);
     } catch (cause) {
       if (requestGeneration === generation.current) setError(String(cause));
-    } finally { setBusy(null); }
+    } finally { operationPending.current = false; setBusy(null); }
   };
   return (
     <div className="audit-reference-form">
       <p>{t("导入同一语料方案的观测指纹与候选指纹。这里只在本地计算；定位渠道需要你提供独立采集的观测指纹，不能从被动用量数字反推出真实模型。")}</p>
-      <p className="audit-note">{t("本地生成只读取分词器并使用固定测试语料；仅保存结构指纹，不保存业务正文、响应头值或工具参数。不会自动发送探针。")}</p>
+      <div className="audit-reference-workspace">
+      <section className="audit-reference-inputs" aria-labelledby="audit-reference-inputs-title">
+      <h3 id="audit-reference-inputs-title">{t("观测与候选")}</h3>
+      <p className="audit-note">{t("加载同一语料方案的文件，再比较候选。")}</p>
       <Field label={t("观测指纹 JSON 绝对路径")}><Input value={observationPath} disabled={busy !== null} onChange={(event) => { setObservationPath(event.target.value); invalidate(); }} placeholder="C:\\audit\\observation.json" spellCheck={false} /></Field>
       <Field label={t("候选指纹 JSON 绝对路径（每行一个）")}><Textarea rows={3} value={candidatePaths} disabled={busy !== null} onChange={(event) => { setCandidatePaths(event.target.value); invalidate(); }} placeholder="C:\\audit\\reference.json" spellCheck={false} /></Field>
+      <Button type="button" variant="primary" disabled={busy !== null || !observationPath.trim() || (!candidatePaths.trim() && generated.length === 0)} onClick={() => void analyze()}>{busy === "analyze" ? t("分析中…") : t("分析参照库")}</Button>
+      </section>
+      <section className="audit-reference-candidates" aria-labelledby="audit-reference-candidates-title">
+      <h3 id="audit-reference-candidates-title">{t("本地生成候选")}</h3>
+      <p className="audit-note">{t("本地生成只读取分词器并使用固定测试语料；仅保存结构指纹，不保存业务正文、响应头值或工具参数。不会自动发送探针。")}</p>
       <details className="audit-tokenizer-form"><summary>{t("从本地分词器生成候选指纹")}</summary>
         <Field label={t("分词器文件绝对路径")}><Input value={tokenizerPath} disabled={busy !== null} onChange={(event) => setTokenizerPath(event.target.value)} placeholder={t("C:\\\\audit\\\\tokenizer.json 或 vocab.tiktoken")} spellCheck={false} /></Field>
         <div className="audit-form-row"><Field label={t("候选名称")}><Input value={model} disabled={busy !== null} onChange={(event) => setModel(event.target.value)} placeholder={t("本地词表名称")} /></Field>
@@ -157,19 +179,21 @@ function ReferenceAnalysis() {
         <Button type="button" variant="secondary" size="sm" disabled={busy !== null || !tokenizerPath.trim() || !model.trim()} onClick={() => void generate()}>{busy === "generate" ? t("生成中…") : t("生成候选指纹")}</Button>
       </details>
       {generated.length > 0 && <ul className="audit-generated-references">{generated.map((reference, index) => <li key={`${reference.sourceSha256}-${index}`}><strong>{reference.model}</strong> · {reference.groups.length} {t("组 ·")} {reference.tokenizerKind}<br /><code>SHA-256 {reference.sourceSha256}</code><div>
-        <Button type="button" variant="secondary" size="sm" onClick={() => downloadReference(reference)}>{t("导出指纹 JSON")}</Button>
+        <Button type="button" variant="secondary" size="sm" disabled={busy !== null} onClick={() => downloadReference(reference)}>{t("导出指纹 JSON")}</Button>
         <Button type="button" variant="secondary" size="sm" disabled={busy !== null} onClick={() => { setGenerated((previous) => previous.filter((_, i) => i !== index)); invalidate(); }}>{t("移除")}</Button></div>
         {reference.limitations.map((limitation, item) => <p className="audit-note" key={item}>{translateMessage(limitation)}</p>)}
       </li>)}</ul>}
-      <div><Button type="button" variant="primary" disabled={busy !== null || !observationPath.trim() || (!candidatePaths.trim() && generated.length === 0)} onClick={() => void analyze()}>{busy === "analyze" ? t("分析中…") : t("分析参照库")}</Button></div>
+      {!generated.length && <p className="audit-note">{t("尚未生成候选；生成后会与文件中的候选一起分析。")}</p>}
+      </section>
+      </div>
       {error && <p className="audit-error" role="alert">{t("参照分析未完成：")}{translateMessage(error)}</p>}
       {report && <div className="audit-reference-report" aria-live="polite">
         <h3>{t("词表等价类排名")}</h3>
-        {report.status === "untested" ? <p className="audit-untested">{t("未测到：可比的稳定分词组不足。这不等于没问题。")}</p> : <div className="audit-table-scroll"><table className="audit-table"><thead><tr><th scope="col">{t("候选")}</th><th scope="col">{t("模型下的相对概率")}</th><th scope="col">{t("一致 / 可比组")}</th></tr></thead><tbody>
-          {report.candidates.map((candidate, index) => <tr key={`${candidate.model}-${index}`} className={candidate.outside ? "audit-outside-row" : ""}><td>{candidate.outside ? t("库外：不属于任何库内候选") : candidate.model}</td><td>{(candidate.probability * 100).toFixed(2)}%</td><td>{candidate.outside ? "—" : `${candidate.matched} / ${candidate.comparable}`}</td></tr>)}
+        {report.status === "untested" ? <p className="audit-untested">{t("未测到：可比的稳定分词组不足。这不等于没问题。")}</p> : <div className="audit-table-scroll" role="region" aria-label={t("词表等价类排名")} tabIndex={0}><table className="audit-table audit-table--ranking"><thead><tr><th scope="col">{t("候选")}</th><th scope="col" className="audit-table__number">{t("模型下的相对概率")}</th><th scope="col" className="audit-table__number">{t("一致 / 可比组")}</th></tr></thead><tbody>
+          {report.candidates.map((candidate, index) => <tr key={`${candidate.model}-${index}`} className={candidate.outside ? "audit-outside-row" : ""}><td>{candidate.outside ? t("库外：不属于任何库内候选") : <code>{candidate.model}</code>}</td><td className="audit-table__number">{(candidate.probability * 100).toFixed(2)}%</td><td className="audit-table__number">{candidate.outside ? "—" : `${candidate.matched} / ${candidate.comparable}`}</td></tr>)}
         </tbody></table></div>}
         <p>{t("概率依赖候选库、先验和似然配置，不是客观概率。全部匹配只能落在词表等价类里；即使只有一个候选，也不能确认具体模型。库外档始终保留。")}</p>
-        <p className="audit-note">{t("参与比较：")}{report.comparedGroups.join("、") || t("无")}</p>
+        <p className="audit-note">{t("参与比较：")}<code>{report.comparedGroups.join("、") || t("无")}</code></p>
         {report.limitations.length > 0 && <ul className="audit-limitations">{report.limitations.map((limitation, index) => <li key={index}>{translateMessage(limitation)}</li>)}</ul>}
       </div>}
     </div>

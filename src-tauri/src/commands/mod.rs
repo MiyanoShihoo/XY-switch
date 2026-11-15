@@ -1,4 +1,5 @@
 pub mod config;
+pub mod channel_groups;
 pub mod credentials;
 pub mod health;
 pub mod mcp;

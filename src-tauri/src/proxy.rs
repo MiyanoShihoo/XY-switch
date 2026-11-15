@@ -354,23 +354,19 @@ fn strip_artifact_tool(object: &mut Map<String, Value>) {
     }
 }
 
-fn prepare_payload(body: &[u8], provider: &Provider) -> Result<(Value, String), ProxyError> {
-    let mut payload: Value = serde_json::from_slice(body).map_err(|_| {
-        ProxyError::new(
+fn reject_channel_group_model(model: Option<&str>) -> Result<(), ProxyError> {
+    if model.is_some_and(crate::channel_groups::is_virtual_model) {
+        return Err(ProxyError::new(
             StatusCode::BAD_REQUEST,
-            "invalid_json",
-            "Request body must be a JSON object.",
-        )
-    })?;
-    let object = payload.as_object_mut().ok_or_else(|| {
-        ProxyError::new(
-            StatusCode::BAD_REQUEST,
-            "invalid_json",
-            "Request body must be a JSON object.",
-        )
-    })?;
-    let requested_model = object.get("model").and_then(Value::as_str);
-    let model = requested_model
+            "channel_group_pilot_only",
+            "Channel group virtual models are available for offline pilot simulation only.",
+        ));
+    }
+    Ok(())
+}
+
+fn resolve_request_model(provider: &Provider, requested_model: Option<&str>) -> String {
+    requested_model
         .and_then(|requested| {
             provider.advanced.model_mappings.iter().find(|mapping| {
                 mapping.model.eq_ignore_ascii_case(requested)
@@ -387,7 +383,28 @@ fn prepare_payload(body: &[u8], provider: &Provider) -> Result<(Value, String), 
         .or_else(|| {
             xai_responses::passthrough_model(&provider.endpoint, &provider.model, requested_model)
         })
-        .unwrap_or_else(|| provider.model.clone());
+        .unwrap_or_else(|| provider.model.clone())
+}
+
+fn prepare_payload(body: &[u8], provider: &Provider) -> Result<(Value, String), ProxyError> {
+    let mut payload: Value = serde_json::from_slice(body).map_err(|_| {
+        ProxyError::new(
+            StatusCode::BAD_REQUEST,
+            "invalid_json",
+            "Request body must be a JSON object.",
+        )
+    })?;
+    let object = payload.as_object_mut().ok_or_else(|| {
+        ProxyError::new(
+            StatusCode::BAD_REQUEST,
+            "invalid_json",
+            "Request body must be a JSON object.",
+        )
+    })?;
+    let requested_model = object.get("model").and_then(Value::as_str);
+    reject_channel_group_model(requested_model)?;
+    let model = resolve_request_model(provider, requested_model);
+    reject_channel_group_model(Some(&model))?;
     object.insert("model".to_string(), Value::String(model.clone()));
     if provider.advanced.claude.disable_artifact_tool {
         strip_artifact_tool(object);
@@ -607,6 +624,7 @@ fn prepare_upstream_request(
     }
 
     apply_body_overrides(provider, &mut payload);
+    reject_channel_group_model(payload.get("model").and_then(Value::as_str))?;
 
     let url = if provider.advanced.is_full_url {
         reqwest::Url::parse(&provider.endpoint).map_err(|_| {
@@ -1495,6 +1513,87 @@ async fn finalize_upstream(
     })
 }
 
+struct ForwardCandidates {
+    diagnostic: Option<String>,
+    selected: Provider,
+    providers: Result<Vec<Provider>, ProxyError>,
+}
+
+fn forward_candidates(
+    state: &ProxyState,
+    headers: &axum::http::HeaderMap,
+) -> Result<ForwardCandidates, ProxyError> {
+    let diagnostic = headers
+        .get("x-xy-diagnostic-provider")
+        .map(|h| h.to_str().map(str::to_owned))
+        .transpose()
+        .map_err(|_| {
+            ProxyError::new(
+                StatusCode::BAD_REQUEST,
+                "invalid_diagnostic_target",
+                "Invalid diagnostic target",
+            )
+        })?;
+    let selected = match diagnostic.as_deref() {
+        Some(id) => state.database.get_provider(id),
+        None => state.database.current_provider(),
+    }
+    .map_err(|error| ProxyError::new(StatusCode::INTERNAL_SERVER_ERROR, "database_error", error))?
+    .ok_or_else(|| {
+        ProxyError::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "provider_not_selected",
+            "No provider is selected.",
+        )
+    })?;
+    let providers = state
+        .database
+        .list_providers()
+        .map_err(|error| {
+            ProxyError::new(StatusCode::INTERNAL_SERVER_ERROR, "database_error", error)
+        })
+        .map(|providers| {
+            let mut providers: Vec<_> = providers
+                .into_iter()
+                .filter(|provider| {
+                    provider.enabled && diagnostic.as_ref().is_none_or(|id| &provider.id == id)
+                })
+                .collect();
+            providers.sort_by_key(|provider| if provider.id == selected.id { 0 } else { 1 });
+            providers
+        });
+    Ok(ForwardCandidates {
+        diagnostic,
+        selected,
+        providers,
+    })
+}
+
+fn reject_channel_group_candidates(
+    candidates: &ForwardCandidates,
+    source: Option<&Value>,
+) -> Result<(), ProxyError> {
+    if candidates.diagnostic.is_some() {
+        return Ok(());
+    }
+    let requested_model = source
+        .and_then(|source| source.get("model"))
+        .and_then(Value::as_str);
+    for provider in std::iter::once(&candidates.selected)
+        .chain(candidates.providers.as_ref().ok().into_iter().flatten())
+    {
+        reject_channel_group_model(Some(&resolve_request_model(provider, requested_model)))?;
+        reject_channel_group_model(
+            provider
+                .advanced
+                .body_overrides
+                .get("model")
+                .and_then(Value::as_str),
+        )?;
+    }
+    Ok(())
+}
+
 async fn forward(
     state: ProxyState,
     protocol: ClientProtocol,
@@ -1504,6 +1603,20 @@ async fn forward(
     scope: crate::governance::tasks::TaskScope,
     connection: crate::governance::tasks::Cancellation,
 ) -> Result<Response, ProxyError> {
+    let candidates = {
+        let source = serde_json::from_slice::<Value>(&body).ok();
+        reject_channel_group_model(
+            source.as_ref().and_then(|source| source.get("model")).and_then(Value::as_str),
+        )?;
+        reject_channel_group_model(operation.as_deref().map(|operation| {
+            operation.rsplit_once(':').map_or(operation, |(model, _)| model)
+        }))?;
+        let candidates = forward_candidates(&state, &headers);
+        if let Ok(candidates) = &candidates {
+            reject_channel_group_candidates(candidates, source.as_ref())?;
+        }
+        candidates
+    };
     let mut progress = ForwardProgress::new();
     let context = crate::governance::tasks::Identity::from_request(&headers, &body, &scope.0,
         headers.contains_key("x-xy-diagnostic-provider"))
@@ -1525,7 +1638,7 @@ async fn forward(
             "request_cancelled", "The client disconnected; the task was cancelled.").at_stage("client_response")),
         _ = context.signal.cancelled() => Err(ProxyError::new(StatusCode::REQUEST_TIMEOUT,
             "request_cancelled", "The task was cancelled.").at_stage("client_response")),
-        result = forward_inner(&state, protocol, headers, body, operation, &mut progress) => result,
+        result = forward_inner(&state, protocol, headers, body, operation, candidates, &mut progress) => result,
     };
     match result {
         Ok(response) => Ok(crate::proxy_connection::track_response(response, guard)),
@@ -1678,6 +1791,7 @@ async fn forward_inner(
     headers: axum::http::HeaderMap,
     body: Bytes,
     operation: Option<String>,
+    candidates: Result<ForwardCandidates, ProxyError>,
     progress: &mut ForwardProgress,
 ) -> Result<Response, ProxyError> {
     if headers.contains_key("x-xy-switch-loopback") {
@@ -1687,19 +1801,11 @@ async fn forward_inner(
             "Infinite proxy loop detected",
         ));
     }
-    let diagnostic = headers.get("x-xy-diagnostic-provider").map(|h|h.to_str().map(str::to_owned)).transpose()
-        .map_err(|_|ProxyError::new(StatusCode::BAD_REQUEST,"invalid_diagnostic_target","Invalid diagnostic target"))?;
-    let selected = match diagnostic.as_deref(){Some(id)=>state.database.get_provider(id),None=>state.database.current_provider()}
-        .map_err(|error| {
-            ProxyError::new(StatusCode::INTERNAL_SERVER_ERROR, "database_error", error)
-        })?
-        .ok_or_else(|| {
-            ProxyError::new(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "provider_not_selected",
-                "No provider is selected.",
-            )
-        })?;
+    let ForwardCandidates {
+        diagnostic,
+        selected,
+        providers: candidates,
+    } = candidates?;
     progress.provider_id = Some(selected.id.clone());
     if !selected.enabled {
         return Err(ProxyError::new(
@@ -1737,16 +1843,7 @@ async fn forward_inner(
     progress.base_privacy = progress.diagnostics.privacy.clone();
 
     progress.stage = "provider_selection";
-    let mut candidates: Vec<Provider> = state
-        .database
-        .list_providers()
-        .map_err(|error| {
-            ProxyError::new(StatusCode::INTERNAL_SERVER_ERROR, "database_error", error)
-        })?
-        .into_iter()
-        .filter(|provider| provider.enabled && diagnostic.as_ref().is_none_or(|id| &provider.id == id))
-        .collect();
-    candidates.sort_by_key(|provider| if provider.id == selected.id { 0 } else { 1 });
+    let candidates = candidates?;
 
     let mut last_failure = None;
     let mut last_error = None;
@@ -3445,6 +3542,10 @@ mod tests {
     }
 
 }
+
+#[cfg(test)]
+#[path = "channel_group_proxy_tests.rs"]
+mod channel_group_proxy_tests;
 
 #[cfg(test)]
 #[path = "governance/proxy_tests.rs"]

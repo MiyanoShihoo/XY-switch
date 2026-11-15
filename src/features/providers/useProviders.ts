@@ -14,13 +14,14 @@ export function useProviders(onRuntimeChanged: () => Promise<void>) {
   const [busy, setBusy] = useState(false);
   const [testing, setTesting] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [readError, setReadError] = useState("");
   const [message, setMessage] = useState("");
   const [health, setHealth] = useState<Record<string, ProviderHealth>>({});
   const mounted = useRef(true), operation = useRef(false), testingRef = useRef(false), refreshGeneration = useRef(0);
   const callback = useRef(onRuntimeChanged); callback.current = onRuntimeChanged;
   const refresh = useCallback(async () => {
     const generation = ++refreshGeneration.current;
-    setLoading(true); setError("");
+    setLoading(true); setError(""); setReadError("");
     try {
       const [items, selected, checks] = await Promise.all([loadProviders(), loadCurrentProvider(), loadProviderHealth()]);
       if (!mounted.current || generation !== refreshGeneration.current) return false;
@@ -30,7 +31,13 @@ export function useProviders(onRuntimeChanged: () => Promise<void>) {
       setCurrentId(list.some(p => p.id === selected) ? selected : "");
       setHealth(Object.fromEntries(checks.map(item => [item.providerId, item])));
       return true;
-    } catch (e) { if (mounted.current && generation === refreshGeneration.current) setError(t("供应商读取失败：") + errorText(e)); return false; }
+    } catch (e) {
+      if (mounted.current && generation === refreshGeneration.current) {
+        const message = t("供应商读取失败：") + errorText(e);
+        setCurrentId(""); setReadError(message); setError(message);
+      }
+      return false;
+    }
     finally { if (mounted.current && generation === refreshGeneration.current) setLoading(false); }
   }, []);
   useEffect(() => { mounted.current = true; void refresh(); return () => { mounted.current = false; refreshGeneration.current += 1; }; }, [refresh]);
@@ -39,7 +46,7 @@ export function useProviders(onRuntimeChanged: () => Promise<void>) {
     let disposed = false;
     const cleanups: (() => void)[] = [];
     const register = (promise: Promise<() => void>) => { void promise.then(stop => { if (disposed) stop(); else cleanups.push(stop); }).catch(e => setError(t("托盘事件监听失败：") + errorText(e))); };
-    register(listen("provider-changed", () => { void refresh(); void callback.current().catch(e => setError(errorText(e))); }));
+    register(listen("provider-changed", () => { void refresh(); void callback.current().catch(() => undefined); }));
     register(listen<string>("provider-switch-error", event => setError(t("托盘供应商切换失败：") + event.payload)));
     return () => { disposed = true; cleanups.forEach(stop => stop()); };
   }, [refresh]);
@@ -48,12 +55,15 @@ export function useProviders(onRuntimeChanged: () => Promise<void>) {
     operation.current = true; setBusy(true); setError(""); setMessage("");
     try { await work(); } catch (e) { setError(errorText(e)); } finally { operation.current = false; setBusy(false); }
   };
-  const activate = (id: string) => run(async () => {
-    const provider = providers.find(p => p.id === id);
-    if (!provider?.enabled || id === currentId) return;
-    await saveSelectedProvider(id); setCurrentId(id); setMessage(t("已设为当前：") + provider.name);
-    try { await callback.current(); } catch (e) { setError(t("配置已切换，但运行状态读取失败：") + errorText(e)); }
-  });
+  const activate = (id: string) => {
+    if (loading || readError) return Promise.resolve();
+    return run(async () => {
+      const provider = providers.find(p => p.id === id);
+      if (!provider?.enabled || id === currentId) return;
+      await saveSelectedProvider(id); setCurrentId(id); setReadError(""); setMessage(t("已设为当前：") + provider.name);
+      await callback.current().catch(() => undefined);
+    });
+  };
   const copy = (source: Provider) => run(async () => {
     const duplicate = duplicateProvider(source, providers);
     await saveProvider(duplicate); setProviders(items => [...items, duplicate]); setMessage(t("已复制为 ") + duplicate.name + t("，API Key 未复制"));
@@ -65,8 +75,12 @@ export function useProviders(onRuntimeChanged: () => Promise<void>) {
       await deleteProvider(provider.id);
       const remaining = providers.filter(p => p.id !== provider.id);
       setProviders(remaining); removed = true; setMessage(t("已删除 ") + provider.name);
-      try { const id = await loadCurrentProvider(); setCurrentId(remaining.some(p => p.id === id) ? id : ""); await callback.current(); }
-      catch (e) { if (currentId === provider.id) setCurrentId(""); setError(t("配置已删除，但当前状态读取失败：") + errorText(e)); }
+      try { const id = await loadCurrentProvider(); setCurrentId(remaining.some(p => p.id === id) ? id : ""); setReadError(""); }
+      catch (e) {
+        const message = t("配置已删除，但当前状态读取失败：") + errorText(e);
+        setCurrentId(""); setReadError(message); setError(message);
+      }
+      await callback.current().catch(() => undefined);
     });
     return removed;
   };
@@ -85,6 +99,6 @@ export function useProviders(onRuntimeChanged: () => Promise<void>) {
     finally { testingRef.current = false; setTesting(null); }
   };
   const saved = (provider: Provider) => { setProviders(items => items.some(p => p.id === provider.id) ? items.map(p => p.id === provider.id ? provider : p) : [...items, provider]); setMessage(t("已保存 ") + provider.name); };
-  return { providers, currentId, loading, busy, testing, error, message, health, refresh, activate, copy, remove, reorder, test, saved, dismissMessage: () => setMessage("") };
+  return { providers, currentId, loading, busy, testing, error, readError, message, health, refresh, activate, copy, remove, reorder, test, saved, dismissMessage: () => setMessage("") };
 }
 export type ProvidersController = ReturnType<typeof useProviders>;

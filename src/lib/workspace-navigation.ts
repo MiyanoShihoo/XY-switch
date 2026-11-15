@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 
-export type AppView = "providers" | "provider-detail" | "diagnostics" | "clients" | "accounts" | "plugins" | "marketplace" | "mcp" | "prompts" | "skills" | "sessions" | "usage" | "governance" | "settings";
+export type AppView = "overview" | "providers" | "provider-detail" | "diagnostics" | "clients" | "accounts" | "plugins" | "marketplace" | "mcp" | "prompts" | "skills" | "sessions" | "usage" | "governance" | "settings" | "agents";
 export interface WorkspaceRoute { view: AppView; providerId?: string; }
-const pages = new Set<AppView>(["providers", "diagnostics", "clients", "accounts", "plugins", "marketplace", "mcp", "prompts", "skills", "sessions", "usage", "governance", "settings"]);
+const pages = new Set<AppView>(["overview", "providers", "diagnostics", "clients", "accounts", "plugins", "marketplace", "mcp", "prompts", "skills", "sessions", "usage", "governance", "settings", "agents"]);
 
 export function parseWorkspaceRoute(hash: string): WorkspaceRoute | null {
-  // The initial unfragmented URL is the providers home entry in browser history.
-  if (hash === "" || hash === "#") return { view: "providers" };
+  if (hash === "" || hash === "#") return { view: "clients" };
   const parts = hash.replace(/^#/, "").split("/");
   try {
     if (parts.length === 3 && parts[0] === "providers" && parts[2] === "configuration" && parts[1]) {
@@ -27,7 +26,7 @@ export function workspaceRouteHash(route: WorkspaceRoute): string {
 }
 
 export function useWorkspaceNavigation() {
-  const [route, setRoute] = useState<WorkspaceRoute>(() => (typeof window !== "undefined" && parseWorkspaceRoute(window.location.hash)) || { view: "providers" });
+  const [route, setRoute] = useState<WorkspaceRoute>(() => (typeof window !== "undefined" && parseWorkspaceRoute(window.location.hash)) || { view: "clients" });
   useEffect(() => {
     const update = () => { const next = parseWorkspaceRoute(window.location.hash); if (next) setRoute(next); };
     window.addEventListener("hashchange", update);

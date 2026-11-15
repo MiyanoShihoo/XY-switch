@@ -14,6 +14,6 @@ export function ResponseModelEvidence({ audit, local = false, compact = false }:
     <div className="response-model-evidence__line"><span className="response-model-evidence__label">{t("真实响应模型")}</span><Badge tone="warning">{evidence.verifiedModel ?? evidence.identityLabel}</Badge></div>
     <small className="response-model-evidence__comparison" data-warning={evidence.status === "mismatched" || evidence.status === "conflicting" || undefined}>{evidence.comparison}{evidence.partial ? t(" · 响应未完成") : ""}</small>
     {!compact && <><p className="page-description">{evidence.judgment.summary}</p><p className="page-description">{t("下一步：")}{evidence.judgment.nextStep}</p><p className="page-description">{evidence.identityReason}{t("本次结果不代表同供应商的其他请求。")}</p></>}
-    {!compact && !local && audit?.verification && <VerificationDetails evidence={audit.verification} />}
+    {!compact && !local && audit?.verification && <details className="response-model-evidence__details"><summary>{t("探测详情")}</summary><VerificationDetails evidence={audit.verification} /></details>}
   </div>;
 }

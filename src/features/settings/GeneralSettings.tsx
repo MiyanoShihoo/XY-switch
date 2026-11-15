@@ -8,6 +8,7 @@ import { usePlatformCapabilities } from "../../lib/platform-service";
 import type { ThemePreference } from "../../lib/theme";
 import { LanguageSettings } from "./LanguageSettings";
 import { usePageOperation } from "../shared/usePageOperation";
+import { useTaskDraft } from "./TaskNavigation";
 
 export function GeneralSettings({ desktop, themePreference, onThemeChange }: { desktop: boolean; themePreference: ThemePreference; onThemeChange: (theme: ThemePreference) => void }) {
   useLanguage();
@@ -16,6 +17,7 @@ export function GeneralSettings({ desktop, themePreference, onThemeChange }: { d
   const preferences = useQuery({ queryKey: ["preferences"], queryFn: loadPreferences, retry: false, refetchOnWindowFocus: false });
   const autostart = useQuery({ queryKey: ["autostart"], queryFn: loadAutostart, enabled: desktop && platform.data?.autostart === true, retry: false, refetchOnWindowFocus: false });
   const operation = usePageOperation();
+  useTaskDraft(false, operation.busy);
   const [autostartUnknown, setAutostartUnknown] = useState(false);
   const changeAutostart = (enabled: boolean) => operation.run(async () => {
     try {
@@ -31,14 +33,21 @@ export function GeneralSettings({ desktop, themePreference, onThemeChange }: { d
   const knownAutostart = !autostartUnknown && !autostart.isError && autostart.data !== undefined;
   return <div className="settings-sections">
     {platform.error && <InlineError message={t("平台能力读取失败：") + errorText(platform.error)} onRetry={() => void platform.refetch()} />}
-    <section className="settings-section"><div className="settings-section__heading"><h2>{t("外观与窗口")}</h2><p>{t("主题立即生效，系统行为以实际保存状态为准。")}</p></div><div className="form-stack">
-      <Field label={t("颜色主题")}><Select value={themePreference} onChange={event => onThemeChange(event.target.value as ThemePreference)}><option value="system">{t("跟随系统")}</option><option value="light">{t("浅色")}</option><option value="dark">{t("深色")}</option></Select></Field>
+    <section className="settings-section settings-section--editor"><div className="settings-section__heading"><h2>{t("立即生效")}</h2><p>{t("外观与语言")}</p><p>{t("选择后立即生效并保存。")}</p></div><div className="form-stack">
+      <fieldset className="settings-theme"><legend>{t("颜色主题")}</legend><div className="settings-theme__choices">
+        {(["system", "light", "dark"] as const).map(theme => <label className="settings-theme__choice" key={theme} data-theme-choice={theme}>
+          <input type="radio" name="settings-theme" value={theme} checked={themePreference === theme} onChange={() => onThemeChange(theme)} />
+          <span>{t(theme === "system" ? "跟随系统" : theme === "light" ? "浅色" : "深色")}</span>
+        </label>)}
+      </div></fieldset>
+      <LanguageSettings />
+    </div></section>
+    <section className="settings-section settings-section--editor"><div className="settings-section__heading"><h2>{t("下次系统登录")}</h2><p>{t("自启设置写入后回读实际状态，下次登录系统时使用。")}</p></div><div className="form-stack">
       <div className="form-switch"><div className="form-switch__copy"><strong>{t("开机自启")}</strong><small>{t("读取 Windows 注册表，不使用本地开关模拟状态。")}</small></div>{platform.data && !platform.data.autostart ? <Badge>{t("当前平台不支持")}</Badge> : knownAutostart ? <Toggle aria-label={t("开机自启")} checked={autostart.data!} onCheckedChange={value => void changeAutostart(value)} disabled={!desktop || !platform.data?.autostart || operation.busy || autostart.isFetching} /> : <Badge>{autostart.isPending ? t("读取中") : t("状态未知")}</Badge>}</div>
       {platform.data?.autostart && (autostart.error || autostartUnknown) && <InlineError message={autostartUnknown ? t("写入后的实际自启状态无法读取。") : t("自启状态读取失败：") + errorText(autostart.error)} onRetry={() => { void operation.run(async () => { const actual = await loadAutostart(); client.setQueryData(["autostart"], actual); setAutostartUnknown(false); }); }} />}
       <InlineError message={operation.error} />{operation.message && <Toast title={operation.message} tone="success" onDismiss={() => operation.setMessage("")} />}
-      <LanguageSettings />
     </div></section>
-    <section className="settings-section"><div className="settings-section__heading"><h2>{t("应用偏好")}</h2><p>{t("偏好保存在本地数据库中，由后端实际读取。")}</p></div><div className="form-stack">
+    <section className="settings-section settings-section--editor"><div className="settings-section__heading"><h2>{t("保存后应用的偏好")}</h2><p>{t("先修改草稿，再保存；各项的生效时机分别列出。")}</p></div><div className="form-stack">
       {preferences.isPending && <LoadingState label={t("正在读取应用偏好…")} />}
       {preferences.error && <InlineError message={t("偏好读取失败：") + errorText(preferences.error)} onRetry={() => void preferences.refetch()} />}
       {preferences.data && <PreferencesForm traySupported={platform.data?.systemTray === true} value={preferences.data} disabled={!desktop || preferences.isError || preferences.isFetching} onSaved={value => client.setQueryData(["preferences"], value)} />}
@@ -55,11 +64,16 @@ function PreferencesForm({ value, disabled, onSaved, traySupported }: { value: A
   const request = { ...draft, requestTimeoutSecs: Number(timeout) };
   const invalid = validatePreferences(request);
   const dirty = JSON.stringify(request) !== JSON.stringify(value);
+  useTaskDraft(dirty, operation.busy);
   return <form className="form-stack" onSubmit={event => { event.preventDefault(); if (invalid) { operation.setError(invalid); return; } void operation.run(async () => onSaved(await savePreferences(request)), t("偏好已保存。日志等级需重启应用；请求超时在下次启动路由时生效。")); }}>
     <fieldset disabled={disabled || operation.busy} className="settings-fieldset form-stack">
       <div className="form-switch"><div className="form-switch__copy"><strong>{t("关闭窗口时最小化到托盘")}</strong><small>{t("仅在系统托盘可用时生效；无托盘时正常关闭，不会隐藏失联。")}</small></div><Toggle aria-label={t("关闭窗口时最小化到托盘")} disabled={!traySupported} checked={traySupported && draft.minimizeToTray} onCheckedChange={checked => setDraft(previous => ({ ...previous, minimizeToTray: checked }))} /></div>
-      <div className="form-grid"><Field label={t("请求超时（秒）")} description={t("15–600 秒，保存后在下次启动路由时生效。")} error={dirty && invalid ? invalid : undefined}><Input type="number" min={minRequestTimeoutSecs} max={maxRequestTimeoutSecs} step={1} required value={timeout} onChange={event => setTimeoutText(event.target.value)} /></Field><Field label={t("日志等级")} description={t("重启应用后生效。")}><Select value={draft.logLevel} onChange={event => setDraft(previous => ({ ...previous, logLevel: event.target.value as LogLevel }))}>{logLevels.map(level => <option key={level} value={level}>{level.toUpperCase()}</option>)}</Select></Field></div>
-      <div className="inline-actions"><Button type="submit" loading={operation.busy} disabled={!dirty || Boolean(invalid)}>{t("保存偏好")}</Button><Button variant="secondary" disabled={!dirty} onClick={() => { setDraft(value); setTimeoutText(String(value.requestTimeoutSecs)); operation.setError(""); }}>{t("撤销修改")}</Button></div>
+      <div className="settings-preferences"><h3>{t("下次启动路由")}</h3>
+      <div className="settings-rows"><Field className="settings-row" label={t("请求超时（秒）")} description={t("15–600 秒，保存后在下次启动路由时生效。")} error={dirty && invalid ? invalid : undefined}><Input type="number" min={minRequestTimeoutSecs} max={maxRequestTimeoutSecs} step={1} required value={timeout} onChange={event => setTimeoutText(event.target.value)} /></Field></div></div>
+      <div className="settings-preferences"><h3>{t("重启应用")}</h3><div className="settings-rows"><Field className="settings-row" label={t("日志等级")} description={t("重启应用后生效。")}><Select value={draft.logLevel} onChange={event => setDraft(previous => ({ ...previous, logLevel: event.target.value as LogLevel }))}>{logLevels.map(level => <option key={level} value={level}>{level.toUpperCase()}</option>)}</Select></Field></div>
+      </div>
+      {dirty && invalid && <InlineError message={invalid} />}
+      <div className="settings-savebar"><span role="status" className={dirty ? "settings-savebar__dirty" : "muted"}>{dirty ? t("有未保存的偏好更改") : t("与已保存偏好一致")}</span><div className="inline-actions"><Button type="submit" loading={operation.busy} disabled={!dirty || Boolean(invalid)}>{t("保存偏好")}</Button><Button variant="secondary" disabled={!dirty} onClick={() => { setDraft(value); setTimeoutText(String(value.requestTimeoutSecs)); operation.setError(""); }}>{t("撤销修改")}</Button></div></div>
     </fieldset><InlineError message={operation.error} />{operation.message && <Toast tone="success" title={operation.message} onDismiss={() => operation.setMessage("")} />}
   </form>;
 }

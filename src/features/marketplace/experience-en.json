@@ -1,0 +1,13 @@
+{
+  "安装前审查": "Review before installation",
+  "当前显示公开目录中的资料。完整权限、权限变化与本机签名验证将在安装预览中读取。": "These details come from the public catalog. Preview installation to review all permissions, permission changes, and local signature verification.",
+  "版本与来源": "Version and source",
+  "插件标识": "Plugin ID",
+  "调整搜索内容或筛选条件，然后应用筛选。": "Adjust the search or filters, then apply them.",
+  "候选插件详情": "Candidate plugin details",
+  "返回插件结果": "Back to plugin results",
+  "选择一个候选插件": "Select a candidate plugin",
+  "在结果中选择插件，查看用途、客户端和版本资料。": "Select a result to review its purpose, supported clients, and version.",
+  "安装预览已过期，请取消并重新预览。": "This installation preview has expired. Cancel and preview again.",
+  "此插件的运行方式暂不受支持，可以安装但不能启用。": "This plugin can be installed, but its runtime is not supported and it cannot be enabled."
+}

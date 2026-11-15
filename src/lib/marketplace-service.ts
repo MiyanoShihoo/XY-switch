@@ -724,7 +724,7 @@ export class MarketplaceClient {
       const preview = await previewPluginInstall(JSON.stringify(release));
       this.#guard(generation);
       if (preview.validation.digest !== release.digest || preview.signingKeyId !== release.signingKeyId
-        || !hexDigest.test(preview.signingKeyFingerprint) || preview.expiresAt * 1000 <= this.#now()
+        || !hexDigest.test(preview.signingKeyFingerprint) || preview.expiresAt <= this.#now()
         || JSON.stringify(manifest(preview.validation.manifest)) !== JSON.stringify(release.package.manifest)) fail("invalid_response");
       const plan = freeze({ origin: this.origin, published: release, preview });
       this.#plans.set(plan, generation);
@@ -751,7 +751,7 @@ export class MarketplaceClient {
     if (generation === undefined || plan.origin !== this.origin) fail("confirmation");
     this.#guard(generation);
     if (!options.confirmed || !Array.isArray(options.clients) || !options.clients.length || new Set(options.clients).size !== options.clients.length
-      || options.clients.some(client => !plan.published.package.manifest.clients.includes(client)) || plan.preview.expiresAt * 1000 <= this.#now()
+      || options.clients.some(client => !plan.published.package.manifest.clients.includes(client)) || plan.preview.expiresAt <= this.#now()
       || options.enable !== undefined && typeof options.enable !== "boolean") fail("confirmation");
     this.#plans.delete(plan);
     try {
@@ -761,7 +761,7 @@ export class MarketplaceClient {
         || canonicalMarketplacePackage(current.package) !== canonicalMarketplacePackage(plan.published.package)) fail("conflict");
       await this.#checkWithdrawal(plan);
       this.#guard(generation);
-      if (plan.preview.expiresAt * 1000 <= this.#now()) fail("confirmation");
+      if (plan.preview.expiresAt <= this.#now()) fail("confirmation");
       const installed = await confirmPluginInstall({ previewId: plan.preview.previewId, digest: plan.published.digest,
         acceptedPermissions: plan.published.package.manifest.permissions, clients: [...options.clients], confirmed: true, enable: options.enable ?? false });
       await this.#checkWithdrawal(plan);

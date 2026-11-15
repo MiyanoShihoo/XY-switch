@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Plus, RefreshCw, Search, Settings2 } from "lucide-react";
 import { useLanguage, t, translateMessage } from "../../i18n/language";
 import { ConfirmActionDialog } from "../../components/ConfirmActionDialog";
-import { Badge, Button, Card, Field, InlineError, Select, Textarea } from "../../ui";
+import { Badge, Button, EmptyState, Field, InlineError, Input, LoadingState, Modal, Select, Tabs, Textarea } from "../../ui";
 import {
   applyPluginWithdrawal, configureTrustedPluginKey, confirmPluginInstall, disablePlugin, executePluginTool,
   isPluginDesktop, listInstalledPlugins, listTrustedPluginKeys, maxPluginEnvelopeBytes, PluginServiceError,
@@ -16,7 +17,8 @@ import {
 } from "../../types/plugins";
 import { usePageOperation } from "../shared/usePageOperation";
 import { pluginClientLabels } from "./clients";
-import { InstalledPluginCard } from "./InstalledPluginCard";
+import { InstalledPluginCard, InstalledPluginDetails } from "./InstalledPluginCard";
+import { PluginCallEvidence, PluginWorkspace, toolsForPackage, type PluginTask } from "./PluginWorkspace";
 import { InstallReviewDialog, ToolReviewDialog, TrustedKeyDialog, WithdrawalReviewDialog } from "./PluginReviewDialogs";
 import {
   confirmInstallReview, confirmKeyReview, confirmToolReview, confirmWithdrawalReview, readWithdrawalReview,
@@ -25,6 +27,7 @@ import {
 import "./plugins.css";
 
 interface InstallationReview { preview: InstallPreview; initialClients: PluginClient[]; source: string | null }
+type PluginPanel = "import" | "trust" | "withdrawal";
 type PendingAction = { kind: "revoke"; key: TrustedSigningKey }
   | { kind: "uninstall"; plugin: InstalledPlugin }
   | { kind: "disable"; plugin: InstalledPlugin; client: PluginClient | null };
@@ -45,6 +48,14 @@ export function PluginsPage() {
   const op = usePageOperation();
   const generation = useRef(0);
   const mounted = useRef(true);
+  const [panel, setPanel] = useState<PluginPanel | null>(null);
+  const [search, setSearch] = useState("");
+  const [installationFilter, setInstallationFilter] = useState("all");
+  const [selectedPluginId, setSelectedPluginId] = useState<string | null>(null);
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
+  const [task, setTask] = useState<PluginTask>("clients");
+  const directoryHeading = useRef<HTMLHeadingElement>(null);
+  const returnPoint = useRef<{ trigger: HTMLButtonElement; positions: { element: Element; top: number; left: number }[] } | null>(null);
   const [publishedJson, setPublishedJson] = useState("");
   const [withdrawalJson, setWithdrawalJson] = useState("");
   const [keyEditor, setKeyEditor] = useState(false);
@@ -64,10 +75,16 @@ export function PluginsPage() {
     enabled: desktop, retry: false, refetchOnWindowFocus: false });
   const tools = useQuery({ queryKey: pluginQueryKeys.tools(toolClient),
     queryFn: () => toolClient ? pluginToolsForClient(toolClient) : Promise.resolve([]),
-    enabled: desktop && toolClient !== "", retry: false, refetchOnWindowFocus: false });
-  const selectedTool = tools.data?.find(tool => tool.client === toolClient && toolKey(tool) === selectedToolKey);
+    enabled: desktop && workspaceOpen && task === "tools" && toolClient !== "", retry: false, refetchOnWindowFocus: false });
   const busy = op.busy || !desktop;
   const hasDialog = keyEditor || installationReview !== null || withdrawalReview !== null || toolReview !== null || pendingAction !== null;
+  const visible = installed.data?.filter(plugin => (installationFilter === "all" || (installationFilter === "installed" ? plugin.installed : !plugin.installed))
+    && [plugin.id, plugin.manifest?.name, plugin.manifest?.description]
+      .some(value => value?.toLowerCase().includes(search.trim().toLowerCase()))) ?? [];
+  const selectedPlugin = visible.find(plugin => plugin.id === selectedPluginId);
+  const inspecting = workspaceOpen && !!selectedPlugin;
+  const packageTools = toolsForPackage(selectedPlugin, toolClient, tools.data);
+  const selectedTool = packageTools.find(tool => toolKey(tool) === selectedToolKey);
 
   const clearReviews = useCallback(() => {
     generation.current += 1;
@@ -80,8 +97,14 @@ export function PluginsPage() {
   }, []);
   useEffect(() => {
     clearReviews(); setToolResult(null);
-  }, [clearReviews, installed.dataUpdatedAt, installed.errorUpdatedAt, keys.dataUpdatedAt, keys.errorUpdatedAt,
-    tools.dataUpdatedAt, tools.errorUpdatedAt]);
+  }, [clearReviews, installed.dataUpdatedAt, installed.errorUpdatedAt, keys.dataUpdatedAt, keys.errorUpdatedAt]);
+  useEffect(() => { clearReviews(); }, [clearReviews, tools.dataUpdatedAt, tools.errorUpdatedAt]);
+  useEffect(() => {
+    if (!selectedPluginId || selectedPlugin) return;
+    clearReviews(); setWorkspaceOpen(false); setSelectedPluginId(null); setPendingAction(null);
+    setArgumentsJson("{}"); setSelectedToolKey(""); setToolClient(""); setToolResult(null);
+    if (workspaceOpen) requestAnimationFrame(() => directoryHeading.current?.focus());
+  }, [clearReviews, selectedPluginId, selectedPlugin, workspaceOpen]);
 
   const run = (work: () => Promise<void>, success = "") => op.run(async () => {
     try { await work(); } catch (cause) { throw new Error(pluginErrorText(cause)); }
@@ -103,7 +126,7 @@ export function PluginsPage() {
       const confirmation = confirmInstallReview(review.preview, choices);
       clearReviews();
       await confirmPluginInstall(confirmation);
-      if (review.source !== null) setPublishedJson("");
+      if (review.source !== null) { setPublishedJson(""); setPanel(null); }
       await refresh();
     }, t("插件安装状态已更新。"));
   };
@@ -185,30 +208,114 @@ export function PluginsPage() {
       const confirmation = confirmToolReview(review, current, argumentsDigest, accepted);
       const revision = clearReviews(); setArgumentsJson("{}"); setToolResult(null);
       const result = await executePluginTool(current.client, confirmation);
-      if (mounted.current && generation.current === revision) setToolResult(result);
+      if (mounted.current && generation.current === revision) {
+        setToolResult(result); setTask("evidence"); setSelectedToolKey(""); setToolClient("");
+      }
     });
   };
 
-  return <div className="plugins-page">
-    <header className="plugins-section-header"><div><h2>{t("本地插件")}</h2>
-      <p>{t("导入已签名的文本插件，按客户端授权，并逐次确认工具调用。")}</p></div>
-      <Button variant="secondary" disabled={busy} onClick={() => { void run(async () => { clearReviews(); await refresh(); }); }}>{t("刷新")}</Button></header>
+  const clearToolDraft = () => {
+    clearReviews(); setArgumentsJson("{}"); setSelectedToolKey(""); setToolClient("");
+  };
+  const openPanel = (next: PluginPanel) => { clearToolDraft(); op.setError(""); op.setMessage(""); setPanel(next); };
+  const selectTask = (next: PluginTask) => { clearToolDraft(); op.setError(""); op.setMessage(""); setTask(next); };
+  const openTools = (client: PluginClient) => { selectTask("tools"); setToolClient(client); };
+  const openPlugin = (plugin: InstalledPlugin, trigger: HTMLButtonElement) => {
+    const positions: { element: Element; top: number; left: number }[] = [];
+    for (let element: Element | null = trigger; element; element = element.parentElement) {
+      positions.push({ element, top: element.scrollTop, left: element.scrollLeft });
+    }
+    returnPoint.current = { trigger, positions };
+    clearToolDraft(); setToolResult(null); op.setError(""); op.setMessage("");
+    setSelectedPluginId(plugin.id); setTask("clients"); setWorkspaceOpen(true);
+  };
+  const backToDirectory = () => {
+    clearToolDraft(); setToolResult(null); setWorkspaceOpen(false);
+    requestAnimationFrame(() => {
+      const saved = returnPoint.current;
+      (saved?.trigger.isConnected ? saved.trigger : directoryHeading.current)?.focus({ preventScroll: true });
+      saved?.positions.forEach(({ element, top, left }) => { element.scrollTop = top; element.scrollLeft = left; });
+    });
+  };
+
+  return <div className="workspace-page plugins-page">
+    <header className="page-heading"><div className="page-heading__copy"><h1>{t("本地插件")}</h1>
+      <p className="page-description">{t("选择一个包，管理客户端授权、版本与可调用工具。")}</p></div>
+      <div className="page-actions"><Button variant="secondary" size="sm" icon={<Settings2 size={14} />} disabled={op.busy} onClick={() => openPanel("trust")}>{t("插件管理")}</Button>
+        <Button size="sm" icon={<Plus size={14} />} disabled={busy} onClick={() => openPanel("import")}>{t("导入签名插件包")}</Button></div></header>
     {!desktop && <p className="plugins-notice" role="status">{t("本地插件安装、信任配置与执行需要桌面应用。")}</p>}
-    {op.message && <p className="plugins-notice" role="status">{translateMessage(op.message)}</p>}
-    <InlineError message={hasDialog ? "" : translateMessage(op.error)} />
-    <div className="plugins-import-grid">
-      <Card><header className="plugins-section-header"><h3>{t("发布者信任")}</h3>
+    {op.message && !panel && !hasDialog && !inspecting && <p className="plugins-notice" role="status">{translateMessage(op.message)}</p>}
+    <InlineError message={panel || hasDialog || inspecting ? "" : translateMessage(op.error)} />
+    <div className="plugins-workbench" data-inspecting={inspecting}>
+    <section className="plugins-directory" aria-label={t("已安装插件")} hidden={inspecting}>
+      <div className="plugins-directory-heading"><h2 ref={directoryHeading} tabIndex={-1}>{t("包目录")}</h2><span>{visible.length} / {installed.data?.length ?? 0}</span></div>
+      <div className="plugins-directory-toolbar"><Input aria-label={t("搜索已安装插件")} leading={<Search size={14} />} placeholder={t("按名称、标识或描述搜索")} value={search} onChange={event => setSearch(event.target.value)} />
+        <Button variant="secondary" size="sm" icon={<RefreshCw size={14} />} disabled={busy || installed.isFetching} onClick={() => { void run(async () => { clearReviews(); await refresh(); }); }}>{t("刷新")}</Button></div>
+      <Tabs label={t("插件状态筛选")} value={installationFilter} onChange={setInstallationFilter} items={[
+        { value: "all", label: t("全部"), count: installed.data?.length ?? 0 },
+        { value: "installed", label: t("已安装"), count: installed.data?.filter(plugin => plugin.installed).length ?? 0 },
+        { value: "history", label: t("仅历史记录"), count: installed.data?.filter(plugin => !plugin.installed).length ?? 0 },
+      ]} />
+      {desktop && installed.isPending && <LoadingState label={t("正在读取本地插件…")} />}
+      {installed.error && <InlineError message={translateMessage(pluginErrorText(installed.error))} />}
+      {!(desktop && installed.isPending) && !installed.error && !visible.length && <EmptyState title={installed.data?.length ? t("没有匹配的插件") : t("尚未安装本地插件")}
+        description={installed.data?.length ? t("尝试其他名称，或清除搜索条件。") : t("先在插件管理中核对发布者信任，再导入签名包。")}
+        action={installed.data?.length ? <Button variant="secondary" size="sm" onClick={() => { setSearch(""); setInstallationFilter("all"); }}>{t("清除筛选")}</Button>
+          : <Button variant="secondary" size="sm" disabled={op.busy} onClick={() => openPanel("trust")}>{t("发布者信任")}</Button>} />}
+      {visible.length > 0 && <div className="plugins-installed-list" role="list">{visible.map(plugin => <InstalledPluginCard key={plugin.id} plugin={plugin} busy={op.busy} selected={selectedPlugin?.id === plugin.id}
+        onOpen={trigger => openPlugin(plugin, trigger)} />)}</div>}
+    </section>
+    {inspecting && selectedPlugin && <PluginWorkspace plugin={selectedPlugin} task={task} busy={op.busy} onTask={selectTask} onBack={backToDirectory}>
+      <InlineError message={panel || hasDialog ? "" : translateMessage(op.error)} />
+      {op.message && !panel && !hasDialog && <p className="plugins-notice" role="status">{translateMessage(op.message)}</p>}
+      {(task === "clients" || task === "permissions" || task === "versions") && <InstalledPluginDetails key={selectedPlugin.id} plugin={selectedPlugin} busy={busy} task={task}
+        onReviewClients={client => requestInstallationReview(() => previewInstalledPlugin(selectedPlugin.id), client ? [client] : [])}
+        onDisable={client => requestAction({ kind: "disable", plugin: selectedPlugin, client })}
+        onUninstall={() => requestAction({ kind: "uninstall", plugin: selectedPlugin })}
+        onRollback={version => requestInstallationReview(() => previewPluginRollback(selectedPlugin.id, version))}
+        onOpenTools={openTools} />}
+        {task === "tools" && <section className="plugins-panel form-stack"><h3>{t("已验证工具调用")}</h3><p className="plugins-notice">{t("这里只列出此包在所选客户端已授权的当前版本工具。每次调用仍需独立预览和确认。")}</p>
+      <div className="plugins-tool-selectors"><Field label={t("调用客户端")} required><Select value={toolClient} disabled={busy}
+        onChange={event => { const next = event.target.value; if (next === "" || pluginClients.includes(next as PluginClient)) {
+          clearReviews(); setToolResult(null); setSelectedToolKey(""); setArgumentsJson("{}"); setToolClient(next as PluginClient | "");
+        } }}><option value="">{t("选择调用客户端")}</option>{selectedPlugin.manifest?.clients.map(client => <option key={client} value={client} disabled={!selectedPlugin.enabledClients.includes(client)}>{pluginClientLabels[client]}</option>)}</Select></Field>
+        <Field label={t("已验证工具")} required><Select value={selectedToolKey} disabled={busy || !toolClient || tools.isPending}
+          onChange={event => { clearReviews(); setToolResult(null); setArgumentsJson("{}"); setSelectedToolKey(event.target.value); }}>
+          <option value="">{t("选择已验证工具")}</option>{packageTools.map(tool => <option key={toolKey(tool)} value={toolKey(tool)}>
+            {tool.pluginId} · {tool.tool.name} ({tool.version})</option>)}</Select></Field></div>
+      {tools.error && <InlineError message={translateMessage(pluginErrorText(tools.error))} />}
+      {desktop && toolClient && tools.isPending && <LoadingState label={t("正在读取已验证工具…")} />}
+      {toolClient && !tools.isPending && !tools.error && packageTools.length === 0 && <p>{t("此包在所选客户端没有可调用的已验证工具。")}</p>}
+      <Button variant="quiet" onClick={() => selectTask("clients")} disabled={busy}>{t("审核客户端授权")}</Button>
+      {selectedTool && <><p>{selectedTool.tool.description}</p><details><summary>{t("工具输入格式")}</summary>
+        <pre className="plugins-text-preview">{JSON.stringify(selectedTool.tool.inputSchema, null, 2)}</pre></details></>}
+      <Field label={t("工具参数 JSON")} required><Textarea value={argumentsJson} rows={5} maxLength={64 * 1024} disabled={busy || !selectedTool}
+        spellCheck={false} onChange={event => { clearReviews(); setToolResult(null); setArgumentsJson(event.target.value); }} /></Field>
+      <Button disabled={busy || !selectedTool || !argumentsJson.trim()} onClick={previewTool}>{t("预览本次工具调用")}</Button>
+    </section>}
+      {task === "evidence" && <PluginCallEvidence plugin={selectedPlugin} result={toolResult} onTools={() => selectTask("tools")} />}
+    </PluginWorkspace>}
+    </div>
+    {panel && !hasDialog && <Modal open className="plugins-dialog" size="lg" title={panel === "import" ? t("导入签名插件包") : t("插件管理")} busy={op.busy} onClose={() => { clearReviews(); setPanel(null); setPublishedJson(""); setWithdrawalJson(""); }}>
+      <div className="plugins-panel-stack">
+        {panel !== "import" && <Tabs label={t("插件管理选项")} value={panel} onChange={value => openPanel(value as PluginPanel)} items={[
+          { value: "trust", label: t("发布者信任"), disabled: op.busy },
+          { value: "withdrawal", label: t("签名撤回通知"), disabled: op.busy },
+        ]} />}
+        <InlineError message={translateMessage(op.error)} />
+        {op.message && <p className="plugins-notice" role="status">{translateMessage(op.message)}</p>}
+        {panel === "trust" && <section className="plugins-panel form-stack"><header className="plugins-section-header"><h3>{t("发布者信任")}</h3>
         <Button variant="secondary" disabled={busy} onClick={() => { clearReviews(); op.setError(""); setKeyEditor(true); }}>{t("添加信任密钥")}</Button></header>
         <p className="plugins-notice">{t("信任只来自本地配置的公钥；请独立核对指纹。")}</p>
-        {desktop && keys.isPending && <p role="status">{t("正在读取信任密钥…")}</p>}
+        {desktop && keys.isPending && <LoadingState label={t("正在读取信任密钥…")} />}
         {keys.error && <InlineError message={translateMessage(pluginErrorText(keys.error))} />}
         {keys.data?.length === 0 && <p>{t("尚未配置信任密钥。")}</p>}
         {keys.data?.map(key => <div className="plugins-trusted-key" key={key.id}><div className="plugins-section-header">
           <strong>{key.label} · {key.id}</strong><Badge tone={key.enabled ? "success" : "warning"}>{key.enabled ? t("已信任") : t("已吊销")}</Badge>
           <Button variant="danger" size="sm" disabled={busy || !key.enabled} onClick={() => requestAction({ kind: "revoke", key })}>{t("吊销信任")}</Button></div>
           <code className="plugins-digest">{key.fingerprint}</code></div>)}
-      </Card>
-      <Card><h3>{t("导入签名插件包")}</h3><p className="plugins-notice">{t("仅接收 UTF-8 JSON 文本包，最多 2 MiB；所有文件都会接受路径与隐私检查。")}</p>
+      </section>}
+        {panel === "import" && <section className="plugins-panel form-stack"><h3>{t("导入签名插件包")}</h3><p className="plugins-notice">{t("仅接收 UTF-8 JSON 文本包，最多 2 MiB；所有文件都会接受路径与隐私检查。")}</p>
         <Field label={t("选择签名包 JSON 文件")}><input type="file" accept=".json,application/json" disabled={busy}
           onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) importDocument(file); }} /></Field>
         <Field label={t("签名包 JSON")} description={t("保留原始 JSON；宿主会拒绝重复字段和篡改的摘要，包内公钥不能建立信任。")}
@@ -217,45 +324,13 @@ export function PluginsPage() {
         <Button disabled={busy || !publishedJson.trim()} onClick={() => {
           const source = publishedJson; requestInstallationReview(() => previewPluginInstall(source), [], source);
         }}>{t("验证签名并预览安装")}</Button>
-      </Card>
-    </div>
-    <section aria-label={t("已安装插件")}><header className="plugins-section-header"><h3>{t("已安装插件")}</h3>
-      <span>{t("已安装及历史记录：{count}", { count: installed.data?.length ?? 0 })}</span></header>
-      {desktop && installed.isPending && <p role="status">{t("正在读取本地插件…")}</p>}
-      {installed.error && <InlineError message={translateMessage(pluginErrorText(installed.error))} />}
-      {installed.data?.length === 0 && <Card><p>{t("尚未安装本地插件。请先配置信任密钥，再导入签名包。")}</p></Card>}
-      <div className="plugins-installed-list">{installed.data?.map(plugin => <InstalledPluginCard key={plugin.id} plugin={plugin} busy={busy}
-        onReviewClients={client => requestInstallationReview(() => previewInstalledPlugin(plugin.id), client ? [client] : [])}
-        onDisable={client => requestAction({ kind: "disable", plugin, client })}
-        onUninstall={() => requestAction({ kind: "uninstall", plugin })}
-        onRollback={version => requestInstallationReview(() => previewPluginRollback(plugin.id, version))} />)}</div>
-    </section>
-    <Card><h3>{t("已验证工具调用")}</h3><p className="plugins-notice">{t("这里只列出所选客户端已启用且验证通过的工具。安装授权不会自动批准工具调用。")}</p>
-      <div className="plugins-tool-selectors"><Field label={t("调用客户端")} required><Select value={toolClient} disabled={busy}
-        onChange={event => { const next = event.target.value; if (next === "" || pluginClients.includes(next as PluginClient)) {
-          clearReviews(); setToolResult(null); setSelectedToolKey(""); setArgumentsJson("{}"); setToolClient(next as PluginClient | "");
-        } }}><option value="">{t("选择调用客户端")}</option>{pluginClients.map(client => <option key={client} value={client}>{pluginClientLabels[client]}</option>)}</Select></Field>
-        <Field label={t("已验证工具")} required><Select value={selectedToolKey} disabled={busy || !toolClient || tools.isPending}
-          onChange={event => { clearReviews(); setToolResult(null); setArgumentsJson("{}"); setSelectedToolKey(event.target.value); }}>
-          <option value="">{t("选择已验证工具")}</option>{tools.data?.filter(tool => tool.client === toolClient).map(tool => <option key={toolKey(tool)} value={toolKey(tool)}>
-            {tool.pluginId} · {tool.tool.name} ({tool.version})</option>)}</Select></Field></div>
-      {tools.error && <InlineError message={translateMessage(pluginErrorText(tools.error))} />}
-      {desktop && toolClient && tools.isPending && <p role="status">{t("正在读取已验证工具…")}</p>}
-      {toolClient && tools.data?.length === 0 && <p>{t("此客户端没有已启用且验证通过的工具。")}</p>}
-      {selectedTool && <><p>{selectedTool.tool.description}</p><details><summary>{t("工具输入格式")}</summary>
-        <pre className="plugins-text-preview">{JSON.stringify(selectedTool.tool.inputSchema, null, 2)}</pre></details></>}
-      <Field label={t("工具参数 JSON")} required><Textarea value={argumentsJson} rows={5} maxLength={64 * 1024} disabled={busy || !selectedTool}
-        spellCheck={false} onChange={event => { clearReviews(); setToolResult(null); setArgumentsJson(event.target.value); }} /></Field>
-      <Button disabled={busy || !selectedTool || !argumentsJson.trim()} onClick={previewTool}>{t("预览本次工具调用")}</Button>
-      {toolResult && <section className="plugins-review" aria-label={t("工具返回结果")}><h4>{t("工具返回结果")}</h4>
-        <p>{toolResult.pluginId} · {toolResult.tool} · {pluginClientLabels[toolResult.client]}</p>
-        <p className="plugins-notice">{toolResult.redacted ? t("输出已检查并脱敏。") : t("输出已通过宿主隐私检查。")}</p>
-        <pre className="plugins-text-preview">{typeof toolResult.value === "string" ? toolResult.value : JSON.stringify(toolResult.value, null, 2)}</pre></section>}
-    </Card>
-    <Card><h3>{t("签名撤回通知")}</h3><p className="plugins-notice">{t("导入发布者签名的撤回通知。宿主会核对版本、摘要、原因及原发布者密钥。")}</p>
+      </section>}
+        {panel === "withdrawal" && <section className="plugins-panel form-stack"><h3>{t("签名撤回通知")}</h3><p className="plugins-notice">{t("导入发布者签名的撤回通知。宿主会核对版本、摘要、原因及原发布者密钥。")}</p>
       <Field label={t("撤回通知 JSON")} required><Textarea value={withdrawalJson} rows={4} maxLength={4096} disabled={busy} spellCheck={false}
         onChange={event => { clearReviews(); setWithdrawalJson(event.target.value); }} /></Field>
-      <Button variant="secondary" disabled={busy || !withdrawalJson.trim()} onClick={requestWithdrawalReview}>{t("审核撤回通知")}</Button></Card>
+      <Button variant="secondary" disabled={busy || !withdrawalJson.trim()} onClick={requestWithdrawalReview}>{t("审核撤回通知")}</Button></section>}
+      </div>
+    </Modal>}
     {keyEditor && <TrustedKeyDialog input={keyInput} review={keyReview} busy={op.busy} error={op.error}
       onChange={input => { clearReviews(); setKeyInput(input); }} onPreview={previewKey} onConfirm={confirmKey}
       onClose={() => { clearReviews(); setKeyEditor(false); setKeyInput({ id: "", label: "", publicKey: "" }); }} />}

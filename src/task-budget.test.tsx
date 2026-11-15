@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { TaskDetailView, TaskSummaryView } from "./features/governance/TaskPanel";
+import { TaskDetailView, TaskSummaryView, taskNeedsReview } from "./features/governance/TaskPanel";
 import { budgetReasonLabel, taskIdentityLabel } from "./features/governance/task-format";
 import { setLanguagePreference } from "./i18n/language";
 import type { ProxyTask, ProxyTaskDetail } from "./types/governance";
@@ -20,18 +20,38 @@ const detail: ProxyTaskDetail = {
   ],
 };
 
+function renderedFacts(html: string) {
+  return Array.from(html.matchAll(/<dt>(.*?)<\/dt><dd>(.*?)<\/dd>/g), ([, label, value]) => [label, value.replace(/<[^>]*>/g, "")]);
+}
+
 beforeEach(async () => { await setLanguagePreference("zh-CN"); });
 afterEach(async () => { await setLanguagePreference("system"); });
 
 describe("persistent task budget presentation", () => {
+  it("keeps cancelled tasks with unsettled cost in the review queue", () => {
+    const settled = { ...task, unknownCostAttempts: 0, unreservedAttempts: 0, activeAttempts: 0 };
+    expect(taskNeedsReview(settled)).toBe(false);
+    expect(taskNeedsReview({ ...settled, unknownCostAttempts: 1 })).toBe(true);
+    expect(taskNeedsReview({ ...settled, unreservedAttempts: 1 })).toBe(true);
+    expect(taskNeedsReview({ ...settled, cancelled: false, activeAttempts: 1 })).toBe(true);
+  });
+
+  it("keeps the full task identity available for selection", () => {
+    const taskId = "codex-turn-" + "complete-task-identity-".repeat(16);
+    const html = renderToStaticMarkup(<TaskSummaryView task={{ ...task, id: taskId }} />);
+    expect(renderedFacts(html)).toContainEqual(["任务标识", taskId]);
+    expect(html).toContain(`<code class="gov-id" tabindex="0">${taskId}</code>`);
+  });
+
   it("keeps microdollar overages, absent limits and zero limits distinct", () => {
     const html = renderToStaticMarkup(<TaskSummaryView task={{ ...task, attempts: 0, maxAttempts: null, maxMicrousd: 0, reservedMicrousd: 1, committedMicrousd: 2, knownMicrousd: 0 }} />);
-    expect(html).toContain("任务累计尝试 / 上限</dt><dd>0 / 未设置");
-    expect(html).toContain("0.000002");
-    expect(html).toContain("0.000001");
-    expect(html).toContain("已知实际费用</dt><dd>US$0.00");
-    expect(html).toContain("费用未结清的尝试</dt><dd>2");
-    expect(html).toContain("历史无预留尝试</dt><dd>1");
+    const facts = renderedFacts(html);
+    expect(facts).toContainEqual(["任务累计尝试 / 上限", "0 / 未设置"]);
+    expect(facts).toContainEqual(["任务累计占用 / 上限", "US$0.000002/US$0.00"]);
+    expect(facts).toContainEqual(["累计预留费用", "US$0.000001"]);
+    expect(facts).toContainEqual(["已知实际费用", "US$0.00"]);
+    expect(facts).toContainEqual(["费用未结清的尝试", "2"]);
+    expect(facts).toContainEqual(["历史无预留尝试", "1"]);
     expect(html).not.toContain("NaN");
   });
 
@@ -42,9 +62,10 @@ describe("persistent task budget presentation", () => {
     expect(html).toContain("尝试 3 · 已取消");
     for (const identifier of ["send-one", "send-two", "send-three", "client-one", "client-retry", "primary", "fallback"]) expect(html).toContain(identifier);
     expect(html).toContain("0.000006");
-    expect(html).toContain("实际费用</dt><dd>未知");
-    expect(html).toContain("预留费用</dt><dd>未预留");
-    expect(html).toContain("用量状态</dt><dd>部分 · — / —");
+    const facts = renderedFacts(html);
+    expect(facts).toContainEqual(["实际费用", "未知"]);
+    expect(facts).toContainEqual(["预留费用", "未预留"]);
+    expect(facts).toContainEqual(["用量状态", "部分 · — / —"]);
     expect(html).toContain("任务已取消，后续重试已阻断。");
     expect(html).toContain("&lt;script&gt;private()&lt;/script&gt;");
     expect(html).not.toContain("<script>");
@@ -65,7 +86,7 @@ describe("persistent task budget presentation", () => {
     expect(html).toContain("Task details");
     expect(html).toContain("Task committed cost / limit");
     expect(html).toContain("Codex conversation turn");
-    expect(html).toContain("Actual cost</dt><dd>Unknown");
+    expect(renderedFacts(html)).toContainEqual(["Actual cost", "Unknown"]);
     expect(html).not.toMatch(/\p{Script=Han}/u);
     expect(budgetReasonLabel("budget_exact_custom_price_required")).toBe("The dispatched model has no exact custom price.");
     expect(budgetReasonLabel("task_identity_required")).toBe("A stable task ID is required to count client retries together.");

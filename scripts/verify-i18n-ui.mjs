@@ -22,10 +22,16 @@ async function switchTo(language) {
   await c.waitFor(`document.documentElement.lang===${JSON.stringify(language)}`);
 }
 async function nav(source) {
-  const label = await tr(source);
-  await c.waitFor('Boolean(document.querySelector('+JSON.stringify('.xy-shell-nav-item[title='+JSON.stringify(label)+']')+'))');
-  await c.click('.xy-shell-nav-item[title=' + JSON.stringify(label) + ']');
-  await c.waitFor(`document.querySelector('.xy-shell-nav-item[aria-current=page]')?.title===${JSON.stringify(label)}`);
+  const views = { '总览': 'overview', '供应商': 'providers', 'MCP 服务器': 'mcp', '提示词': 'prompts', 'Skills': 'skills', '会话': 'sessions', '用量与审计': 'usage', '设置': 'settings' };
+  assert(views[source], 'Unknown page ' + source);
+  if (await c.evaluate('Boolean(document.querySelector(".xy-shell-menu")?.getClientRects().length)')) {
+    if (await c.evaluate('document.querySelector(".xy-shell-menu").getAttribute("aria-expanded")!=="true"')) await c.click('.xy-shell-menu');
+    await c.click('.xy-shell-root > .xy-ui-drawer-shell .xy-shell-nav-item[data-view=' + JSON.stringify(views[source]) + ']');
+  } else if (views[source] === 'overview') {
+    await c.click('.xy-shell-activity[data-default-view=overview]');
+  } else await c.workspace(views[source]);
+  await c.waitFor('document.querySelector(".xy-shell-root")?.dataset.workspaceView===' + JSON.stringify(views[source]));
+  await c.waitFor('!document.querySelector(".xy-shell-root > .xy-ui-drawer-shell")');
   await pause(100);
   await c.waitFor('!document.querySelector(".xy-shell-main .xy-ui-loading")');
 }
@@ -79,7 +85,7 @@ try {
   await run('native-language-control-and-persistence', async()=>{
     await nav('设置');await c.fill(await field('请求超时（秒）'),'120');
     await c.fill('select[aria-label="界面语言"]','en');await c.waitFor('document.documentElement.lang==="en"');
-    assert.equal(await c.evaluate('document.querySelector(".settings-page input[type=number]").value'),'120','language must not remount settings draft');
+    assert.equal(await c.evaluate('document.querySelector('+JSON.stringify(await field('请求超时（秒）'))+').value'),'120','language must not remount settings draft');
     await c.evaluate('window.__XY_QA__.fail.set_interface_language="QA save failed: opaque 中文 JSON"');
     await c.fill('select[aria-label="Interface language"]','zh-CN');await c.waitFor('document.body.innerText.includes("QA save failed: opaque 中文 JSON")');
     assert.equal(await c.evaluate('document.documentElement.lang'),'en');
@@ -99,8 +105,9 @@ try {
     assert.equal(await c.evaluate('window.__i18nQaSearch.value'),'Relay');
     await c.fill('input[aria-label="Search providers"]','');await nav('提示词');await c.button(await tr('添加提示词'));
     await c.fill(await field('名称'),'中文 User name');await c.fill(await field('提示词内容'),'未保存正文\nconst model = "我的模型";');
-    await c.evaluate('void(window.__i18nQaDraft=document.querySelector("[role=dialog] textarea"))');
-    await switchTo('zh-CN');assert.equal(await c.evaluate('document.querySelector("[role=dialog] textarea")===window.__i18nQaDraft'),true);
+    await c.evaluate('void(window.__i18nQaDraft=document.querySelector(".prompt-editor textarea"))');
+    assert.equal(await c.evaluate('window.__i18nQaDraft instanceof HTMLTextAreaElement'),true);
+    await switchTo('zh-CN');assert.equal(await c.evaluate('document.querySelector(".prompt-editor textarea")===window.__i18nQaDraft'),true);
     assert.equal(await c.evaluate('window.__i18nQaDraft.value'),'未保存正文\nconst model = "我的模型";');
     await switchTo('en');assert.equal(await c.evaluate('window.__i18nQaDraft.value'),'未保存正文\nconst model = "我的模型";');
     await noOverflow();await c.screenshot(join(output,'unsaved-prompt-en.png'));await c.button(await tr('取消'));
@@ -113,6 +120,7 @@ try {
     await c.evaluate('Object.defineProperty(navigator,"languages",{configurable:true,value:["zh-TW","en-US"]});window.dispatchEvent(new Event("languagechange"))');
     await c.waitFor('document.documentElement.lang==="zh-CN"');await c.waitFor('window.__XY_QA__.resolvedLanguage==="zh-CN"');
     await switchTo('en');await nav('提示词');
+    await c.waitFor('Boolean(document.querySelector(".prompt-filters")?.getClientRects().length)');
     const diagnostic = 'HTTP 502 {"model":"我的模型","path":"opaque 中文"}';
     await c.evaluate('window.__XY_QA__.fail.list_prompts='+JSON.stringify('网络请求失败：'+diagnostic));await c.button(await tr('刷新'));
     await c.waitFor('document.querySelector(".xy-ui-inline-error")?.innerText.includes("HTTP 502")');
@@ -121,11 +129,11 @@ try {
     await c.evaluate('delete window.__XY_QA__.fail.list_prompts');await c.button(await tr('刷新'));await c.waitFor('!document.querySelector(".xy-ui-inline-error")');
     await c.button(await tr('添加提示词'));await c.fill(await field('名称'),'诊断 QA');await c.fill(await field('提示词内容'),'opaque 正文');
     await c.evaluate('window.__XY_QA__.fail.save_prompt='+JSON.stringify('网络请求失败：'+diagnostic));await c.button(await tr('保存提示词'));
-    await c.waitFor('document.querySelector("[role=dialog] .xy-ui-inline-error")?.innerText.includes("HTTP 502")');await switchTo('en');
-    const saveError=await c.evaluate('document.querySelector("[role=dialog] .xy-ui-inline-error").innerText');assert(saveError.includes('Network request failed: '));assert(saveError.includes(diagnostic));
+    await c.waitFor('document.querySelector(".prompt-editor .xy-ui-inline-error")?.innerText.includes("HTTP 502")');await switchTo('en');
+    const saveError=await c.evaluate('document.querySelector(".prompt-editor .xy-ui-inline-error").innerText');assert(saveError.includes('Network request failed: '));assert(saveError.includes(diagnostic));
     await c.evaluate('delete window.__XY_QA__.fail.save_prompt');await c.button(await tr('取消'));
   });
-  const pages=['供应商','MCP 服务器','提示词','Skills','会话','用量与审计','设置'];
+  const pages=['总览','供应商','MCP 服务器','提示词','Skills','会话','用量与审计','设置'];
   for(const language of ['zh-CN','en']) for(const [width,height] of [[1180,760],[820,600],[390,844]]) for(const theme of ['light','dark']) {
     await run(`layout-${language}-${width}-${theme}`,async()=>{
       await switchTo(language);await c.viewport(width,height);
@@ -136,7 +144,15 @@ try {
         snapshots.push({language,width,height,theme,page,scrollWidth:snapshot.scrollWidth});
         await c.screenshot(join(output,`${language}-${width}-${theme}-${i}.png`));
         if(page==='提示词')assert(snapshot.text.includes('代码审查'),'user prompt names remain Chinese');
-        if(page==='MCP 服务器')assert(snapshot.text.includes('合成 MCP 服务'),'user MCP description remains Chinese');
+        if(page==='MCP 服务器') {
+          await c.button(await tr('连接详情') + ' · Memory QA');
+          await c.waitFor('document.querySelector(".mcp-targets")?.innerText.includes("合成 MCP 服务")');
+          assert.equal(await c.evaluate('document.querySelector(".mcp-record[data-selected=true] .mcp-service-select")?.getAttribute("aria-pressed")'),'true');
+          await c.evaluate('document.querySelector(".mcp-targets").scrollIntoView({block:"start"})');
+          await noOverflow();
+          if(language==='en')await noLeaks();
+          await c.screenshot(join(output,`${language}-${width}-${theme}-mcp-details.png`));
+        }
       }
     });
   }

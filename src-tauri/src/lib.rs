@@ -1,9 +1,11 @@
 #[cfg(test)]
 mod acl_regression_tests;
 mod accounts;
+mod agents;
 mod adapters;
 mod backup_crypto;
 mod cancellation;
+mod channel_groups;
 mod commands;
 mod client_config;
 mod clients;
@@ -39,6 +41,7 @@ mod shadow_audit_runtime;
 mod shared_mcp;
 mod skills_local;
 mod streaming;
+mod startup;
 mod takeover;
 mod tool_bridge;
 #[cfg(desktop)]
@@ -153,7 +156,16 @@ pub fn run() {
         }
         return;
     }
+    let mut context = application_context();
+    if let Err(error) = startup::prepare_context(&mut context) {
+        eprintln!("XY Switch startup failed: {error}");
+        std::process::exit(1);
+    }
     let builder = tauri::Builder::default();
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _, _| {
+        tray::show_main_window(app);
+    }));
     #[cfg(target_os = "android")]
     let builder = builder.plugin(tauri_plugin_xy_credentials::init());
     builder
@@ -207,6 +219,7 @@ pub fn run() {
                 codex_home_override
             };
             let codex_home = takeover::resolve_codex_home(&home_dir, codex_home_override)?;
+            app.manage(agents::AgentMonitorState(agents::AgentMonitor::new(database.clone(), &home_dir, &codex_home)));
             let client_settings = clients::ClientManager::settings(&database)?;
             let client_path_overrides = (std::env::var_os("OPENCODE_CONFIG"), std::env::var_os("XDG_CONFIG_HOME"));
             #[cfg(debug_assertions)]
@@ -295,6 +308,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             app_version,
+            agents::get_agent_snapshot,
+            agents::get_agent_events,
+            agents::set_agent_retention,
             marketplace_transport::marketplace_begin_request,
             marketplace_transport::marketplace_request,
             marketplace_transport::marketplace_cancel_request,
@@ -366,6 +382,11 @@ pub fn run() {
             commands::config::export_config,
             commands::config::import_config,
             commands::providers::list_providers,
+            commands::channel_groups::channel_groups_list,
+            commands::channel_groups::channel_groups_save,
+            commands::channel_groups::channel_groups_set_enabled,
+            commands::channel_groups::channel_groups_recorded_events,
+            commands::channel_groups::channel_groups_simulate,
             commands::providers::save_provider,
             commands::providers::reorder_providers,
             commands::providers::delete_provider,
@@ -467,7 +488,7 @@ pub fn run() {
             commands::prompts::set_prompt_enabled,
             open_external_url
         ])
-        .build(application_context())
+        .build(context)
         .expect("failed to build XY Switch")
         .run(|app, event| {
             if matches!(event, tauri::RunEvent::ExitRequested { .. }) {

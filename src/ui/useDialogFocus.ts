@@ -1,6 +1,9 @@
 import { useEffect, useRef, type RefObject } from "react";
 
 const dialogs: HTMLElement[] = [];
+const updateDialogLayers = () => dialogs.forEach((panel, index) => {
+  panel.parentElement?.style.setProperty("--xy-dialog-layer", String(index));
+});
 const focusable = 'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], summary, [tabindex]:not([tabindex="-1"])';
 let previousOverflow = "";
 
@@ -14,6 +17,7 @@ export function useDialogFocus(open: boolean, panelRef: RefObject<HTMLElement | 
     const previous = document.activeElement;
     if (!dialogs.length) { previousOverflow = document.body.style.overflow; document.body.style.overflow = "hidden"; }
     dialogs.push(panel);
+    updateDialogLayers();
     const controls = () => Array.from(panel.querySelectorAll<HTMLElement>(focusable)).filter(el => {
       if (el.hidden || el.tabIndex < 0 || !el.getClientRects().length || getComputedStyle(el).visibility === "hidden") return false;
       // Closed details may retain layout rectangles; only their own summary is a tab stop.
@@ -51,6 +55,8 @@ export function useDialogFocus(open: boolean, panelRef: RefObject<HTMLElement | 
       document.removeEventListener("keydown", onKey, true);
       document.removeEventListener("focusin", onFocus, true);
       const index = dialogs.indexOf(panel); if (index >= 0) dialogs.splice(index, 1);
+      panel.parentElement?.style.removeProperty("--xy-dialog-layer");
+      updateDialogLayers();
       if (!dialogs.length) document.body.style.overflow = previousOverflow;
       if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
     };

@@ -9,12 +9,15 @@ import { loadAppPaths, loadAppVersion } from "../../lib/app-info-service";
 import { errorText } from "../../lib/error";
 import { usePageOperation } from "../shared/usePageOperation";
 import { ProjectRepository } from "./ProjectRepository";
+import { useTaskDraft } from "./TaskNavigation";
 
 export function DataSettings({ desktop, onImported }: { desktop: boolean; onImported: () => Promise<void> }) {
   useLanguage();
   const fileInput = useRef<HTMLInputElement>(null);
+  const [task, setTask] = useState<"backup" | "restore" | null>(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const operation = usePageOperation();
+  useTaskDraft(Boolean(pendingFile), operation.busy);
   const confirmImport = () => operation.run(async () => {
     if (!pendingFile) return;
     let result;
@@ -33,13 +36,20 @@ export function DataSettings({ desktop, onImported }: { desktop: boolean; onImpo
     catch (cause) { throw new Error(t("导入已完成，但界面刷新失败：") + errorText(cause)); }
   });
   return <div className="settings-sections"><section className="settings-section"><div className="settings-section__heading"><h2>{t("配置备份")}</h2><p>{t("导入前确认文件；导入后刷新当前工作台数据。")}</p></div><div className="form-stack">
-    <p>{t("导出的 v2 JSON 包含供应商、提示词、自定义定价、MCP 与路由设置，仍可导入旧版 v1 备份。供应商 API Key 单独保存在凭据管理器；参考价目录和历史用量不随配置备份迁移。")}</p>
-    <p>{t("导入前会先校验整包配置；磁盘写入或客户端同步失败可能只完成部分导入，错误信息会注明进度。")}</p>
-    <div className="inline-actions"><Button icon={<Download size={15} />} variant="secondary" disabled={!desktop || operation.busy} onClick={() => void operation.run(async () => downloadConfig(await exportConfig()), t("已生成配置导出文件"))}>{t("导出配置")}</Button><Button icon={<Upload size={15} />} disabled={!desktop || operation.busy} onClick={() => fileInput.current?.click()}>{t("导入配置")}</Button></div>
+    {!task ? <div className="settings-choice-list" aria-label={t("选择数据任务")}>
+      <button type="button" onClick={() => setTask("backup")}><Download size={20} aria-hidden="true" /><span><strong>{t("备份当前配置")}</strong><small>{t("生成不含凭据的普通 JSON 文件，供迁移或恢复使用。")}</small></span></button>
+      <button type="button" onClick={() => setTask("restore")}><Upload size={20} aria-hidden="true" /><span><strong>{t("从配置文件恢复")}</strong><small>{t("先了解覆盖范围，再选择文件并确认导入。")}</small></span></button>
+    </div> : <section className="settings-data-task">
+      <div className="section-heading"><h3>{task === "backup" ? t("备份当前配置") : t("从配置文件恢复")}</h3><Button variant="quiet" disabled={operation.busy || Boolean(pendingFile)} onClick={() => { setTask(null); operation.setError(""); operation.setMessage(""); }}>{t("重新选择任务")}</Button></div>
+      <div className="settings-data-scope"><strong>{t("普通配置 JSON 的范围")}</strong><p>{t("导出的 v2 JSON 包含供应商、提示词、自定义定价、MCP 与路由设置，仍可导入旧版 v1 备份。供应商 API Key 单独保存在凭据管理器；参考价目录和历史用量不随配置备份迁移。")}</p></div>
+      {task === "restore" && <><p className="notice">{t("导入前会先校验整包配置；磁盘写入或客户端同步失败可能只完成部分导入，错误信息会注明进度。")}</p><p>{t("同 ID 配置可能被更新，MCP 选择可能同步到客户端，启用的路由配置可能启动监听。选择文件后还需确认。")}</p></>}
+      <div className="inline-actions">{task === "backup" ? <Button icon={<Download size={15} />} disabled={!desktop || operation.busy} onClick={() => void operation.run(async () => downloadConfig(await exportConfig()), t("已生成配置导出文件"))}>{t("导出配置")}</Button> : <Button icon={<Upload size={15} />} disabled={!desktop || operation.busy} onClick={() => fileInput.current?.click()}>{t("选择配置备份")}</Button>}</div>
+    </section>}
     <input hidden ref={fileInput} type="file" accept=".json,application/json" aria-label={t("选择配置备份")} disabled={!desktop || operation.busy} onChange={event => { const file = event.target.files?.[0]; event.currentTarget.value = ""; if (file) { operation.setError(""); operation.setMessage(""); setPendingFile(file); } }} />
     <InlineError message={operation.error} />{operation.message && <Toast title={operation.message} tone={operation.error ? "warning" : "success"} onDismiss={() => operation.setMessage("")} />}
     {translateMessage(operation.error).startsWith(t("导入已完成")) && <Button variant="secondary" loading={operation.busy} onClick={() => void operation.run(onImported, t("工作台数据已刷新"))}>{t("重新刷新工作台")}</Button>}
-  </div></section><AppInformation pathsOnly />
+  </div></section>
+    <details className="workspace-disclosure"><summary>{t("数据位置")}</summary><div className="workspace-disclosure__body"><AppInformation pathsOnly /></div></details>
     {pendingFile && <ConfirmActionDialog title={t("导入配置备份？")} message={t("文件：") + pendingFile.name + t("。同 ID 的配置和自定义定价可能被更新，MCP 选择可能同步到客户端，启用的路由配置可能启动监听。凭据不会从此文件恢复，历史费用不会重算。")} confirmLabel={t("确认导入")} busy={operation.busy} error={operation.error} onCancel={() => setPendingFile(null)} onConfirm={() => void confirmImport()} />}
   </div>;
 }
@@ -63,10 +73,9 @@ function AboutApplication() {
 
 function DataLocations() {
   useLanguage();
-  const pathsOnly = true;
   const paths = useQuery({ queryKey: ["app-paths"], queryFn: loadAppPaths, retry: false, refetchOnWindowFocus: false });
   const operation = usePageOperation();
-  return <section className="settings-section"><div className="settings-section__heading"><h2>{pathsOnly ? t("数据位置") : t("关于 XY Switch")}</h2><p>{pathsOnly ? t("以下路径由当前进程返回，不使用机器路径占位。") : t("本地 AI 客户端配置与协议路由工作台。")}</p></div><div className="form-stack">
+  return <section className="settings-section" aria-label={t("数据位置")}><p className="muted">{t("以下路径由当前进程返回，不使用机器路径占位。")}</p><div className="form-stack">
     {paths.isPending && <LoadingState label={t("正在读取数据路径…")} />}{paths.error && <InlineError message={t("路径读取失败：") + errorText(paths.error)} onRetry={() => void paths.refetch()} />}
     {paths.data ? <dl className="settings-path-list">{([[t("数据目录"), paths.data.dataDir], [t("数据库"), paths.data.databasePath], [t("用户目录"), paths.data.homeDir], [t("Codex 配置目录"), paths.data.codexHome]] as const).map(([label, value]) => <div key={label}><dt>{label}</dt><dd><code>{value}</code><Button variant="quiet" size="sm" icon={<Copy size={14} />} aria-label={t("复制") + label} onClick={() => void operation.run(() => navigator.clipboard.writeText(value), label + t("已复制"))}>{t("复制")}</Button></dd></div>)}</dl> : !paths.isPending && !paths.error && <p className="muted">{t("浏览器预览不提供本机数据路径。")}</p>}
     <InlineError message={operation.error} />{operation.message && <Toast title={operation.message} tone="success" onDismiss={() => operation.setMessage("")} />}

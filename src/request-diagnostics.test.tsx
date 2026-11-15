@@ -61,7 +61,7 @@ describe("request forwarding evidence presentation", () => {
       summary: { totalRequests: 1, successCount: 0, unknownCostRequests: 0, totalInputTokens: 0, totalOutputTokens: 0, totalCacheReadTokens: 0, totalCacheCreationTokens: 0, totalCostUsd: "0", avgLatencyMs: 2 },
       logs: [rejection], trends: [], providerStats: [], modelStats: [], sync: { codexImported: 0, harnessImported: 0, warnings: [] },
     });
-    const html = renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(UsagePage, { providers: [] })));
+    const html = renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(UsagePage, { providers: [], initialView: "logs" })));
     expect(html).toContain("未选择供应商");
     expect(html).toContain("本地拒绝 · 503");
     expect(html).not.toContain("HTTP 503");
@@ -111,7 +111,7 @@ describe("request forwarding evidence presentation", () => {
     expect(html).toContain("单任务总尝试上限已耗尽。");
     expect(html).toContain("任务累计与上限（记录快照）");
     expect(html).toContain("最新累计和状态请查看硬预算中的最近任务");
-    expect(html).toContain("任务累计尝试 / 上限</dt><dd>3 / 3");
+    expect(html).toMatch(/任务累计尝试 \/ 上限<\/dt><dd>(?:<[^>]+>)*3 \/ 3/);
     expect(html).toContain("client-retry");
     expect(html).not.toContain("HTTP 402");
     await setLanguagePreference("en");

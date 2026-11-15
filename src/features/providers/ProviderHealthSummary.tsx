@@ -5,7 +5,7 @@ import { healthDisplay } from "../../lib/health-format";
 import type { Provider, ProviderHealth } from "../../types/provider";
 export function ProviderHealthSummary({ provider, health, busy, testing, onTest, onConfigure }: { provider: Provider; health?: ProviderHealth; busy: boolean; testing: boolean; onTest: () => void; onConfigure: () => void }) {
   useLanguage();
-  const display = healthDisplay(provider, health);
+  const display = healthDisplay({ ...provider, enabled: true }, health);
   const tone = testing ? "info" : display.tone === "healthy" ? "success" : display.tone === "danger" ? "danger" : display.tone === "warning" ? "warning" : "neutral";
   const checked = health?.lastCheckedAt ? new Date(health.lastCheckedAt < 1e12 ? health.lastCheckedAt * 1000 : health.lastCheckedAt).toLocaleString(localeTag(), { hour12: false }) : t("无记录");
   return <section className="provider-detail-card provider-health-summary" aria-labelledby="provider-health-title">
@@ -13,6 +13,7 @@ export function ProviderHealthSummary({ provider, health, busy, testing, onTest,
     <dl className="provider-health-metrics"><div><dt>{t("延迟")}</dt><dd>{health?.latencyMs != null ? <>{health.latencyMs}<span> ms</span></> : "—"}</dd></div><div><dt>{t("成功率")}</dt><dd>{health && health.status !== "unknown" ? health.successRate.toFixed(1) + "%" : "—"}</dd></div><div><dt>{t("测试时间")}</dt><dd className="provider-health-date">{checked}</dd></div></dl>
     {health?.lastError && <InlineError message={translateMessage(health.lastError)} />}
     {!health?.lastCheckedAt && <p className="page-description">{t("没有连接测试记录。启用或切换配置不代表请求可用。")}</p>}
+    <p className="page-description">{t("连接测试会带凭据读取模型目录；目录可达不代表模型生成、流式输出或用量已经验证。")}</p>
     {!provider.enabled && <p className="notice">{t("该供应商已禁用，可查看历史结果；启用后才能发起连接测试。")}</p>}
     <div className="provider-health-footer"><p className="page-description">{t("仅测试选中的供应商，不改变当前配置。")}</p><Button variant="quiet" size="sm" icon={<ArrowUpRight size={16} />} onClick={onConfigure}>{t("查看配置")}</Button></div>
   </section>;

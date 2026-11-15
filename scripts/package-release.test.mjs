@@ -176,7 +176,11 @@ test("application and ACL tests share the single embedded Tauri context", async 
   const lib = await fs.readFile(new URL("../src-tauri/src/lib.rs", import.meta.url), "utf8");
   const acl = await fs.readFile(new URL("../src-tauri/src/acl_regression_tests.rs", import.meta.url), "utf8");
   assert.equal((lib.match(/tauri::generate_context!/g) || []).length, 1);
-  assert.match(lib, /\.build\(application_context\(\)\)/);
+  const context = lib.indexOf('let mut context = application_context();');
+  const preparation = lib.indexOf('startup::prepare_context(&mut context)', context);
+  const build = lib.indexOf('.build(context)', preparation);
+  assert(context >= 0 && preparation > context && build > preparation,
+    'Build the application with the single embedded context after preparing its identity');
   assert.match(acl, /super::application_context\(\)/);
   assert.doesNotMatch(acl, /tauri::generate_context!/);
 });

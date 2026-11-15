@@ -8,6 +8,45 @@ use tauri::State;
 
 const MAX_MODEL_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 
+pub(super) struct ModelAccess {
+    pub status_code: u16,
+    pub models: Vec<DiscoveredModel>,
+}
+
+#[derive(Debug)]
+pub(super) struct ModelAccessError {
+    pub status_code: Option<u16>,
+    pub kind: String,
+    pub message: String,
+}
+
+impl ModelAccessError {
+    fn local(kind: &str, message: String) -> Self {
+        Self { status_code: None, kind: kind.into(), message }
+    }
+
+    fn http(status_code: u16) -> Self {
+        Self {
+            status_code: Some(status_code),
+            kind: format!("http_{status_code}"),
+            message: format!("模型探索失败：HTTP {status_code}"),
+        }
+    }
+
+    fn transport(error: reqwest::Error, status_code: Option<u16>) -> Self {
+        let kind = if error.is_timeout() { "timeout" } else if error.is_connect() { "connect" } else { "request" };
+        Self {
+            status_code,
+            kind: kind.into(),
+            message: format!("模型探索请求失败：{}", crate::network::describe_error(error)),
+        }
+    }
+
+    fn payload(status_code: u16, message: String) -> Self {
+        Self { status_code: Some(status_code), kind: "invalid_model_list".into(), message }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelDiscoveryRequest {
@@ -271,18 +310,31 @@ pub fn delete_provider(
 pub async fn discover_provider_models(
     request: ModelDiscoveryRequest,
 ) -> Result<Vec<DiscoveredModel>, String> {
-    let discovery_type = discovery_provider_type(&request.provider_type, &request.upstream_format)?;
+    check_model_access(request, Duration::from_secs(30)).await
+        .map(|access| access.models)
+        .map_err(|error| error.message)
+}
+
+pub(super) async fn check_model_access(
+    request: ModelDiscoveryRequest,
+    timeout: Duration,
+) -> Result<ModelAccess, ModelAccessError> {
+    let discovery_type = discovery_provider_type(&request.provider_type, &request.upstream_format)
+        .map_err(|message| ModelAccessError::local("configuration", message))?;
     let api_key = match request.api_key.filter(|key| !key.trim().is_empty()) {
         Some(key) => key,
-        None => credential_store::get_api_key(&request.provider_id)?
-            .ok_or_else(|| "请先配置 API Key".to_string())?,
+        None => credential_store::get_api_key(&request.provider_id)
+            .map_err(|message| ModelAccessError::local("credential_store", message))?
+            .ok_or_else(|| ModelAccessError::local("api_key_missing", "请先配置 API Key".into()))?,
     };
-    let urls = model_list_urls(&request.endpoint, discovery_type)?;
+    let urls = model_list_urls(&request.endpoint, discovery_type)
+        .map_err(|message| ModelAccessError::local("configuration", message))?;
     let client = crate::network::client_builder()
-        .connect_timeout(Duration::from_secs(10))
-        .timeout(Duration::from_secs(30))
+        .redirect(reqwest::redirect::Policy::none())
+        .connect_timeout(timeout.min(Duration::from_secs(10)))
+        .timeout(timeout)
         .build()
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| ModelAccessError::transport(error, None))?;
     let mut last_status = None;
     for url in urls {
         let request_builder = match discovery_type {
@@ -293,12 +345,8 @@ pub async fn discover_provider_models(
             "gemini" => client.get(url).header("x-goog-api-key", &api_key),
             _ => client.get(url).bearer_auth(&api_key),
         };
-        let response = request_builder.send().await.map_err(|error| {
-            format!(
-                "模型探索请求失败：{}",
-                crate::network::describe_error(error)
-            )
-        })?;
+        let mut response = request_builder.send().await
+            .map_err(|error| ModelAccessError::transport(error, None))?;
         let status = response.status();
         if matches!(
             status,
@@ -308,23 +356,23 @@ pub async fn discover_provider_models(
             continue;
         }
         if !status.is_success() {
-            return Err(format!("模型探索失败：HTTP {}", status.as_u16()));
+            return Err(ModelAccessError::http(status.as_u16()));
         }
-        let bytes = response
-            .bytes()
-            .await
-            .map_err(|error| format!("读取模型列表失败：{error}"))?;
-        if bytes.len() > MAX_MODEL_RESPONSE_BYTES {
-            return Err("供应商返回的模型列表过大".to_string());
+        let mut bytes = Vec::new();
+        while let Some(chunk) = response.chunk().await
+            .map_err(|error| ModelAccessError::transport(error, Some(status.as_u16())))? {
+            if chunk.len() > MAX_MODEL_RESPONSE_BYTES.saturating_sub(bytes.len()) {
+                return Err(ModelAccessError::payload(status.as_u16(), "供应商返回的模型列表过大".into()));
+            }
+            bytes.extend_from_slice(&chunk);
         }
         let payload = serde_json::from_slice(&bytes)
-            .map_err(|error| format!("模型列表不是有效 JSON：{error}"))?;
-        return parse_models(discovery_type, payload);
+            .map_err(|error| ModelAccessError::payload(status.as_u16(), format!("模型列表不是有效 JSON：{error}")))?;
+        let models = parse_models(discovery_type, payload)
+            .map_err(|message| ModelAccessError::payload(status.as_u16(), message))?;
+        return Ok(ModelAccess { status_code: status.as_u16(), models });
     }
-    Err(format!(
-        "模型探索失败：所有候选地址均返回 HTTP {}",
-        last_status.unwrap_or(404)
-    ))
+    Err(ModelAccessError::http(last_status.unwrap_or(404)))
 }
 
 #[cfg(test)]

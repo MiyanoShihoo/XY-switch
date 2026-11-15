@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useId, type ReactNode } from "react";
 import { useLanguage, t } from "../../i18n/language";
 import { formatSessionTime } from "../../lib/session-format";
 import type { SessionMessage, SessionToolEvent } from "../../types/session";
@@ -25,7 +25,23 @@ function ToolDetails({ tool, callTarget }: { tool?: SessionToolEvent | null; cal
   </div>;
 }
 
-export function SessionTranscript({ messages }: { messages: SessionMessage[] }) {
+function highlightContent(content: string, search: string) {
+  if (!search) return content;
+  const parts: ReactNode[] = [];
+  const source = content.toLocaleLowerCase();
+  const needle = search.toLocaleLowerCase();
+  let offset = 0;
+  let found = source.indexOf(needle);
+  while (found !== -1) {
+    parts.push(content.slice(offset, found), <mark key={found}>{content.slice(found, found + search.length)}</mark>);
+    offset = found + search.length;
+    found = source.indexOf(needle, offset);
+  }
+  parts.push(content.slice(offset));
+  return parts;
+}
+
+export function SessionTranscript({ messages, search = "", activeIndex }: { messages: SessionMessage[]; search?: string; activeIndex?: number }) {
   useLanguage();
   const prefix = useId();
   const calls = new Map<string, string>();
@@ -45,10 +61,10 @@ export function SessionTranscript({ messages }: { messages: SessionMessage[] }) 
     const callTarget = approvedCall && approvedCall.callId === tool?.callId ? approvedCall.target
       : tool?.callId && !call ? calls.get(tool.callId) : undefined;
     if (call && tool.callId) calls.set(tool.callId, id);
-    return <article className="session-message" data-role={message.role} id={call ? id : undefined} key={index}>
+    return <article className="session-message" data-role={message.role} data-message-index={index} data-search-current={activeIndex === index || undefined} id={call ? id : undefined} tabIndex={-1} key={index}>
       <div className="session-message__meta"><strong>{message.role}</strong><time>{formatSessionTime(message.ts)}</time></div>
       {(tool || message.role === "tool") && <ToolDetails tool={tool} callTarget={callTarget} />}
-      <pre>{message.content}</pre>
+      <pre>{highlightContent(message.content, search)}</pre>
     </article>;
   })}</>;
 }

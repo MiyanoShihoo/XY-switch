@@ -19,19 +19,31 @@ const scrub = value => String(value).replaceAll(passphrase, '[redacted]').replac
 const reports = [];
 let c, activeStep = 'connect';
 const panel = 'document.querySelector(".encrypted-sync-settings")';
+const preview = panel + '.querySelector("[role=dialog]")';
+const activePanel = '(' + preview + ' ?? ' + panel + '.querySelector("[role=tabpanel]"))';
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 process.env.APP_URL = 'http://tauri.localhost';
 const invoke = (command, payload = {}) => c.evaluate(`window.__TAURI_INTERNALS__.invoke(${JSON.stringify(command)},${JSON.stringify(payload)})`);
-const button = label => c.button(label, panel);
-const buttonExpr = label => `[...${panel}.querySelectorAll("button")].find(e=>e.textContent.trim()===${JSON.stringify(label)})`;
+const button = label => c.button(label, activePanel);
+const buttonExpr = label => `[...${activePanel}.querySelectorAll("button")].find(e=>e.getClientRects().length>0&&!e.closest("details:not([open])")&&e.textContent.trim()===${JSON.stringify(label)})`;
 async function disabled(label, expected = true) { assert.equal(await c.evaluate(`Boolean(${buttonExpr(label)}?.disabled)`), expected, label); }
 async function fill(label, value) {
-  const id = await c.evaluate(`[...${panel}.querySelectorAll("label")].find(e=>e.textContent.trim()===${JSON.stringify(label)})?.htmlFor`);
+  const id = await c.evaluate(`[...${activePanel}.querySelectorAll("label")].find(e=>e.getClientRects().length>0&&!e.closest("details:not([open])")&&e.textContent.trim()===${JSON.stringify(label)})?.htmlFor`);
   assert(id, `Missing native field: ${label}`);
   await c.fill(`[id=${JSON.stringify(id)}]`, value);
 }
 const confirm = word => fill('输入确认文字 · ' + word, word);
 const message = value => c.waitFor(`${panel}?.innerText.includes(${JSON.stringify(value)})`, 30_000);
+async function openSync() {
+  await c.workspace('settings');
+  await c.waitFor('Boolean(document.querySelector("#settings-tab-sync"))');
+  if (await c.evaluate('document.querySelector("#settings-tab-sync").getClientRects().length>0')) await c.click('#settings-tab-sync');
+  else {
+    await c.waitFor('document.querySelector(".settings-mobile-category select")?.getClientRects().length>0');
+    await c.fill('.settings-mobile-category select', 'sync');
+  }
+  await c.waitFor('Boolean(document.querySelector("#encrypted-sync-panel-exchange"))');
+}
 async function noSecrets() {
   assert.equal(await c.evaluate('[...document.querySelectorAll("input[type=password]")].every(e=>e.value==="")'), true, 'UI must clear passphrase inputs');
   const storage = await c.evaluate('JSON.stringify({local:Object.entries(localStorage),session:Object.entries(sessionStorage)})');
@@ -102,26 +114,27 @@ try {
   await invoke('set_interface_language', { preference: 'zh-CN', resolvedLanguage: 'zh-CN' });
   await c.evaluate('localStorage.setItem("xy-switch:language","zh-CN")');
   await c.call('Page.reload');
-  await c.waitFor('document.documentElement.lang === "zh-CN" && Boolean(document.querySelector(".provider-workspace"))', 60_000);
+  await c.waitFor('document.documentElement.lang === "zh-CN" && Boolean(document.querySelector(".overview-page, .provider-workspace"))', 60_000);
   await step('production-ipc-and-synthetic-fixture', async () => {
     await invoke('load_session_favorites', { legacy: null, legacyAvailable: true });
     for (const provider of sourceProviders) await invoke('save_provider', { provider });
     await invoke('set_session_favorite', { favorite, enabled: true });
     for (const pricing of [price, keepPrice]) await invoke('save_model_pricing', { pricing });
-    await c.click('.xy-shell-nav-item[title="设置"]'); await c.click('#settings-tab-sync');
+    await openSync();
     await c.waitFor(`Boolean(${buttonExpr('预览加密导出')}) && !${buttonExpr('预览加密导出')}.disabled`);
   });
   await step('native-save-picker-and-independent-decryption', async () => {
     await button('预览加密导出'); await message('加密导出预览');
     await disabled('确认并另存加密文件');
-    const previewText = await c.evaluate(panel + '.textContent');
+    const previewText = await c.evaluate(preview + '.textContent');
     assert(previewText.includes('qa-native-model-0')); assert(!previewText.includes('LOCAL-ONLY-'));
     await shot('export-preview');
     await fill('加密口令', passphrase); await fill('再次输入加密口令', passphrase);
     await confirm('EXPORT'); await disabled('确认并另存加密文件');
-    await c.click('.encrypted-sync-settings .gov-check input'); await disabled('确认并另存加密文件', false);
+    await c.click('.encrypted-sync-settings [role="dialog"] .gov-check input'); await disabled('确认并另存加密文件', false);
     await dialog('save', 'native-save-dialog', '确认并另存加密文件');
     await message('加密文件已保存');
+    await c.waitFor('!' + preview);
     const data = await readFile(file); exported = decryptSync(data, passphrase);
     assert.deepEqual(Object.keys(exported).sort(), ['favorites', 'prices', 'providers', 'schema']); assert.equal(exported.schema, 1);
     assert(!data.includes(Buffer.from('qa-native-model-0')) && !data.includes(Buffer.from('Native source')));
@@ -162,24 +175,25 @@ try {
   await step('native-import-preview-explicit-choices-and-backup', async () => {
     await fill('加密口令', passphrase);
     await dialog('open', 'native-import-dialog', '选择加密文件并预览');
-    await c.waitFor('document.querySelectorAll(".sync-change select").length === 5', 30_000);
+    await c.waitFor(preview + '?.querySelectorAll(".sync-change select").length === 5', 30_000);
     assert.deepEqual(await state(), before, 'A preview must not apply imported data');
-    await confirm('IMPORT'); await c.click('.encrypted-sync-settings .gov-check input');
+    await confirm('IMPORT'); await c.click('.encrypted-sync-settings [role="dialog"] .gov-check input');
     await disabled('确认合并所选变更');
-    const selects = await c.evaluate('[...document.querySelectorAll(".sync-change select")].map(e=>({id:e.id,label:e.closest(".sync-change").textContent}))');
+    const selects = await c.evaluate('[...' + preview + '.querySelectorAll(".sync-change select")].map(e=>({id:e.id,label:e.closest(".sync-change").textContent}))');
     for (let index = 0; index < selects.length; index++) {
       const row = selects[index];
       await c.fill(`[id=${JSON.stringify(row.id)}]`, row.label.includes('qa-native-keep-local') ? 'local' : 'incoming');
       await disabled('确认合并所选变更');
     }
-    assert.equal(await c.evaluate(panel + '.querySelector(".gov-check input").checked'), false, 'Changing import choices must clear review');
-    const confirmationCleared = await c.evaluate('(() => { const label = [...' + panel + '.querySelectorAll("label")].find(e => e.textContent.trim() === "输入确认文字 · IMPORT"); return Boolean(label) && document.getElementById(label.htmlFor)?.value === ""; })()');
+    assert.equal(await c.evaluate(preview + '.querySelector(".gov-check input").checked'), false, 'Changing import choices must clear review');
+    const confirmationCleared = await c.evaluate('(() => { const label = [...' + preview + '.querySelectorAll("label")].find(e => e.textContent.trim() === "输入确认文字 · IMPORT"); return Boolean(label) && document.getElementById(label.htmlFor)?.value === ""; })()');
     assert.equal(confirmationCleared, true, 'Changing import choices must clear confirmation');
     await confirm('IMPORT'); await disabled('确认合并所选变更');
-    await c.click('.encrypted-sync-settings .gov-check input');
+    await c.click('.encrypted-sync-settings [role="dialog"] .gov-check input');
     await c.waitFor(buttonExpr('确认合并所选变更') + '?.disabled === false', 10_000);
     await disabled('确认合并所选变更', false); await shot('import-choices');
     await button('确认合并所选变更'); await message('已合并 4 项');
+    await c.waitFor('!' + preview);
     after = await state(); assert.equal(after.backups.length, 1); assert.equal(after.backups[0].used, false);
     const merged = after.providers.find(p => p.id === sourceProviders[0].id);
     assert.equal(merged.name, sourceProviders[0].name); assert.equal(merged.model, sourceProviders[0].model);
@@ -195,11 +209,16 @@ try {
     await shot('import-complete');
   });
   await step('native-rollback-preview-and-persisted-restoration', async () => {
+    await c.waitFor('!' + preview + ' && document.querySelector("#encrypted-sync-tab-backups")?.disabled === false');
+    await c.click('#encrypted-sync-tab-backups');
+    await c.waitFor('Boolean(document.querySelector("#encrypted-sync-panel-backups"))');
+    await c.waitFor(buttonExpr('预览同步回滚') + '?.disabled === false', 30_000);
     await button('预览同步回滚'); await message('ROLLBACK SYNC');
     assert.deepEqual(await state(), after); await disabled('确认回滚同步');
-    await confirm('ROLLBACK SYNC'); await c.click('.encrypted-sync-settings .gov-check input');
+    await confirm('ROLLBACK SYNC'); await c.click('.encrypted-sync-settings [role="dialog"] .gov-check input');
     await disabled('确认回滚同步', false); await shot('rollback-preview');
     await button('确认回滚同步'); await message('同步变更已回滚');
+    await c.waitFor('!' + preview);
     const restored = await state();
     assert.deepEqual(restored.providers.filter(p => sourceProviders.some(s => s.id === p.id)), before.providers);
     assert.deepEqual(restored.prices, before.prices); assert.deepEqual(restored.favorites, before.favorites);

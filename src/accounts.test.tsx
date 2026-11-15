@@ -2,9 +2,11 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AccountsPage, AccountPolicyFields, accountPolicyValid } from "./features/accounts/AccountsPage";
+import { AccountsPage, AccountPolicyFields, accountActionConfirmation, accountPolicyValid } from "./features/accounts/AccountsPage";
+import { AccountDetailsDialog } from "./features/accounts/AccountDetailsDialog";
+import { accountParticipation, accountPolicyCandidates } from "./features/accounts/account-policy";
 import { ACCOUNT_QUERY_KEYS, captureAccountDestination, clearCredentialField, loadAccountProviders, selectAccountImport, submitAccountSettings, submitApiKey, submitSelectedImport } from "./features/accounts/account-actions";
-import { AccountQuotaView, accountCanRefresh, accountDestinationLabel, accountDestinationSnapshot, accountStatusLabel, knownQuotaWindows, localRevocationMessage, safeAccountLabel, validAccountAlias } from "./features/accounts/account-presentation";
+import { AccountQuotaSummary, AccountQuotaView, accountCanRefresh, accountDestinationLabel, accountDestinationSnapshot, accountStatusLabel, knownQuotaWindows, localRevocationMessage, quotaEvidenceExpired, safeAccountLabel, validAccountAlias } from "./features/accounts/account-presentation";
 import { AccountServiceError, DEFAULT_ACCOUNT_POLICY, accountErrorText, addAccount, chooseAccountImport, getAccountPolicy, importAccount, listAccounts, refreshAccount, replaceAccountCredentials, revokeAccount, saveAccountPolicy, updateAccount } from "./lib/accounts-service";
 import type { AccountInfo, AccountPolicy, QuotaSnapshot, SelectedAccountImport } from "./types/accounts";
 import type { ClientConnection } from "./types/clients";
@@ -48,6 +50,13 @@ function renderPage(accounts: AccountInfo[] = [], connections?: ClientConnection
   return renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(AccountsPage)));
 }
 
+function renderAccountDetails(current: AccountInfo, connections?: ClientConnection[]): string {
+  return renderToStaticMarkup(createElement(AccountDetailsDialog, {
+    account: current, providerLabel: "测试供应商", nativeRows: connections, timestamp: Math.floor(Date.now() / 1000),
+    disabled: false, accountsReady: true, busy: false, onClose: vi.fn(), onEdit: vi.fn(), onRefresh: vi.fn(), onNativeSync: vi.fn(), onRevoke: vi.fn(),
+  }));
+}
+
 function nativeConnection(overrides: Partial<ClientConnection> = {}): ClientConnection {
   return { id: "codex-cli", label: "Codex CLI", configOwner: "codex", configPaths: [], configDetected: true,
     takeoverTarget: "codex", mcpTarget: "codex", loginMethod: "codex_device_code", loginInstructions: "",
@@ -62,6 +71,7 @@ function nativeAccount(overrides: Partial<AccountInfo> = {}): AccountInfo {
 beforeEach(() => {
   vi.resetAllMocks();
   vi.stubGlobal("window", { __TAURI_INTERNALS__: {} });
+  vi.stubGlobal("navigator", { language: "zh-CN", languages: ["zh-CN"] });
 });
 afterEach(() => {
   for (const client of queryClients.splice(0)) client.clear();
@@ -201,6 +211,27 @@ describe("memory-only API key forms", () => {
 });
 
 describe("approved provider destinations", () => {
+  it.each([
+    { language: "zh-CN", destinationLabel: "授权请求地址：", scope: "供应商地址改变后需重新批准", rejected: "请求地址不可用于账号授权" },
+    { language: "en-US", destinationLabel: "Authorize request destination: ", scope: "A changed provider destination requires renewed approval", rejected: "This destination cannot be authorized for an account" },
+  ])("shows the complete safe destination in every $language editor confirmation", ({ language, destinationLabel, scope, rejected }) => {
+    vi.stubGlobal("navigator", { language, languages: [language] });
+    const destination = "https://provider.example.test:8443/subscription/v1/";
+    for (const mode of ["add", "import", "edit", "replace"] as const) {
+      const editor = { mode, id: "synthetic-account", expectedRevision: 4, alias: "Work account", providerId, kind: "apiKey" as const, enabled: true, availableModels: [], allowRefresh: false };
+      const copy = accountActionConfirmation({ kind: "editor", editor, approvedDestination: destination });
+      expect(copy.message).toContain("\n\n" + destinationLabel + destination + "\n\n");
+      expect(copy.message).toContain(scope);
+      if (language === "en-US") expect(copy.message).not.toMatch(/\p{Script=Han}/u);
+      for (const unsafe of ["https://user:private@provider.example.test/v1", "https://provider.example.test/v1?token=synthetic-secret"]) {
+        const rejectedCopy = accountActionConfirmation({ kind: "editor", editor, approvedDestination: unsafe });
+        expect(rejectedCopy.message).toContain(rejected);
+        expect(rejectedCopy.message).not.toContain(unsafe);
+      }
+    }
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
   it("keeps the approved destination snapshot when the provider changes before submission", async () => {
     const provider = { id: providerId, name: "测试供应商", enabled: true, endpoint: approvedDestination };
     const form = { mode: "add" as const, alias: "工作账号", providerId, approvedDestination: captureAccountDestination(provider) };
@@ -252,8 +283,9 @@ describe("approved provider destinations", () => {
     const current = account({ kind: "oauth", destinationApproved: false, status: "destinationApprovalRequired", canRefresh: true, allowRefresh: true });
     const html = renderPage([current]);
     expect(html).toContain("请求地址待批准");
-    expect(html).toContain("重新批准请求地址");
-    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>刷新凭据<\/button>/);
+    const details = renderAccountDetails(current);
+    expect(details).toContain("重新批准请求地址");
+    expect(details).toMatch(/<button[^>]*disabled=""[^>]*>刷新凭据<\/button>/);
     expect(accountCanRefresh(current, Math.floor(Date.now() / 1000))).toBe(false);
     const form = { id: current.id, expectedRevision: current.revision, alias: current.alias, providerId,
       approvedDestination: "https://changed.example.test/v2", enabled: true, availableModels: [] };
@@ -271,7 +303,8 @@ describe("native-managed account synchronization", () => {
   it("presents synchronized state without claiming HTTP rotation or subscription inference", () => {
     const codex = nativeAccount({ status: "available" });
     const opencode = nativeAccount({ id: "synthetic-opencode", client: "openCodeCli" });
-    const html = renderPage([codex, opencode], [nativeConnection(), nativeConnection({ id: "opencode-cli", configOwner: "opencode" })]);
+    const connections = [nativeConnection(), nativeConnection({ id: "opencode-cli", configOwner: "opencode" })];
+    const html = renderPage([codex, opencode], connections);
     expect(accountStatusLabel("available", "nativeManaged")).toBe("原生状态已同步");
     expect(accountStatusLabel("available", "apiKey")).toBe("可参与选择");
     expect(html).toContain("原生状态需要重新同步");
@@ -279,8 +312,13 @@ describe("native-managed account synchronization", () => {
     expect(html).toContain("登录仍由原生客户端管理");
     expect(html).toContain("尚不参与网关的 HTTP 账号轮换");
     expect(html).not.toContain('data-status="available">可参与选择');
-    expect(html).toMatch(/<button(?![^>]*disabled)[^>]*>通过 Codex 刷新<\/button>/);
-    expect(html).toMatch(/<button(?![^>]*disabled)[^>]*>同步 OpenCode 状态<\/button>/);
+    const details = renderAccountDetails(codex, connections) + renderAccountDetails(opencode, connections);
+    expect(html).not.toContain("通过 Codex 刷新</button>");
+    expect(html).not.toContain("同步 OpenCode 状态</button>");
+    expect(details).toMatch(/<button(?![^>]*disabled)[^>]*>通过 Codex 刷新<\/button>/);
+    expect(details).toMatch(/<button(?![^>]*disabled)[^>]*>同步 OpenCode 状态<\/button>/);
+    expect(details).toContain("尚不参与网关的 HTTP 账号轮换");
+    expect(details).not.toContain("刷新凭据</button>");
     expect(html).not.toContain("刷新凭据</button>");
     expect(invoke).not.toHaveBeenCalled();
   });
@@ -309,7 +347,10 @@ describe("native-managed account synchronization", () => {
       const cache = accountClient([current], connections);
       const html = renderToStaticMarkup(createElement(QueryClientProvider, { client: cache }, createElement(AccountsPage)));
       expect(html).toContain("原生登录进行中");
-      expect(html).toMatch(codex ? /<button[^>]*disabled=""[^>]*>通过 Codex 刷新<\/button>/ : /<button[^>]*disabled=""[^>]*>同步 OpenCode 状态<\/button>/);
+      const details = renderAccountDetails(current, connections);
+      expect(details).toContain("原生登录进行中");
+      expect(html).not.toContain(codex ? "通过 Codex 刷新</button>" : "同步 OpenCode 状态</button>");
+      expect(details).toMatch(codex ? /<button[^>]*disabled=""[^>]*>通过 Codex 刷新<\/button>/ : /<button[^>]*disabled=""[^>]*>同步 OpenCode 状态<\/button>/);
       expect(nativeAccountCanSync(current, connections)).toBe(false);
       await expect(submitNativeAccountSync(cache, current.id, true, () => true)).rejects.toThrow("原生账号暂不能同步");
       cache.setQueryData(CLIENT_CONNECTIONS_QUERY_KEY, connections.map(row => ({ ...row, loginStatus: "cancelled" })));
@@ -421,6 +462,65 @@ describe("selected-file import", () => {
 });
 
 describe("account metadata, quota and integration boundaries", () => {
+  it("shows the saved provider policy beside account quota while keeping edits in their dialogs", () => {
+    const current = account({ quota: evidence(Math.floor(Date.now() / 1000), 8) });
+    const html = renderPage([current]);
+    expect(html).toContain("工作账号");
+    expect(html).toContain("测试供应商");
+    expect(html).toContain("尚未验证授权");
+    expect(html).toContain('aria-label="查看账号 工作账号"');
+    expect(html).toContain('aria-haspopup="dialog"');
+    expect(html).toContain("网关请求账号");
+    for (const label of ["添加 API key", "导入指定文件", "编辑策略"]) expect(html).toContain(label + "</button>");
+    expect(html).toContain('aria-label="账号选择策略"');
+    expect(html).toContain('aria-label="设置账号 工作账号"');
+    expect(html).not.toContain('role="dialog"');
+    expect(html).not.toMatch(/<input\b/);
+    expect([...html.matchAll(/<select\b[^>]*>/g)]).toHaveLength(1);
+    expect(html).toMatch(/<select[^>]*aria-label="供应商与账号"/);
+    expect(html).toContain("实际账号选择策略");
+    expect(html).toContain("轮换账号");
+    expect(html).toContain("轮换候选");
+    expect(html).toContain("已保存策略");
+    expect(html).not.toContain("失败冷却（秒）</dt>");
+    expect(html).toContain("剩余 8 / 上限 100");
+    expect(html).toContain("额度窗口 1");
+    for (const detail of ["账号设置</button>", "更新 API key</button>", "刷新凭据</button>", "撤销本地引用</button>", "保持会话账号亲和"]) expect(html).not.toContain(detail);
+    const details = renderAccountDetails(current);
+    expect(details).toContain('role="dialog"');
+    expect(details).not.toContain('role="tablist"');
+    expect(details).toContain("授权与状态");
+    expect(details).toContain("额度明细");
+    expect(details).toContain("剩余 8 / 上限 100");
+    expect(details).not.toMatch(/<(?:section|div)[^>]*hidden=""/);
+    expect(details).toContain("本地引用与清理</h3>");
+    expect(details).toMatch(/<button(?![^>]*disabled)[^>]*data-variant="danger"[^>]*>撤销本地引用<\/button>/);
+    expect(details).toContain("不会撤销供应商授权、退出原生客户端或删除来源文件");
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it("does not present a default policy as loaded or mix native and other-provider candidates", () => {
+    const current = account();
+    const entries = [current, account({ id: "other-provider-account", providerId: "other-provider" }),
+      nativeAccount({ id: "native-account" }), account({ id: "disabled-account", enabled: false }),
+      account({ id: "revoked-account", status: "revoked" })];
+    expect(accountPolicyCandidates(entries, providerId)).toEqual([current]);
+    expect(accountPolicyCandidates(entries, "")).toEqual([]);
+    expect(accountParticipation(current, providerId)).toBe("策略尚未读取");
+    const fixed: AccountPolicy = { ...DEFAULT_ACCOUNT_POLICY, mode: "fixed", fixedAccountId: current.id };
+    expect(accountParticipation(current, providerId, fixed)).toBe("固定选择");
+    for (const excluded of entries.slice(1)) expect(accountParticipation(excluded, providerId, fixed)).toBe("不参与选择");
+    const client = accountClient([current]);
+    client.removeQueries({ queryKey: ACCOUNT_QUERY_KEYS.policy(providerId), exact: true });
+    const html = renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(AccountsPage)));
+    expect(html).toContain("正在读取账号策略…");
+    expect(html).toContain("策略尚未读取");
+    expect(html).not.toContain("轮换账号");
+    expect(html).not.toContain("轮换候选");
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>编辑策略<\/button>/);
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
   it("renders only metadata and hides emails, token-looking aliases, quota IDs and native references", () => {
     const token = "sk-synthetic-hidden-12345678";
     const current = Object.assign(account({ alias: "synthetic-person@example.test", kind: "nativeManaged", client: "codexDesktop", source: "nativeClient", quota: evidence(Math.floor(Date.now() / 1000), 5) }), {
@@ -430,7 +530,10 @@ describe("account metadata, quota and integration boundaries", () => {
     expect(html).toContain("未命名账号");
     expect(html).toContain("原生客户端管理");
     expect(html).toContain("尚未验证授权");
-    for (const sensitive of [current.email, token, current.refreshToken, current.nativeReference, "private-window-id"]) expect(html).not.toContain(sensitive);
+    const details = renderAccountDetails(current);
+    expect(details).toContain("未命名账号");
+    expect(details).toContain("尚未验证授权");
+    for (const sensitive of [current.email, token, current.refreshToken, current.nativeReference, "private-window-id"]) expect(html + details).not.toContain(sensitive);
     expect(safeAccountLabel(token)).toBe("未命名账号");
     expect(safeAccountLabel("Bearer synthetic-hidden")).toBe("未命名账号");
     expect(validAccountAlias(current.email)).toBe(false);
@@ -450,6 +553,7 @@ describe("account metadata, quota and integration boundaries", () => {
     ];
     for (const quota of snapshots) {
       expect(knownQuotaWindows(quota, timestamp)).toEqual([]);
+      expect(quotaEvidenceExpired(quota, timestamp)).toBe(false);
       const html = renderToStaticMarkup(createElement(AccountQuotaView, { quota, timestamp }));
       expect(html).toContain("额度未知");
       expect(html).not.toContain("剩余 0");
@@ -466,7 +570,39 @@ describe("account metadata, quota and integration boundaries", () => {
     expect(html).toContain("证据有效至");
     expect(html).not.toContain("额度未知");
     const expiredWindow = { ...quota, observedAt: timestamp - 10, windows: [{ ...quota.windows[0], resetsAt: timestamp - 1 }] };
-    expect(knownQuotaWindows(expiredWindow, timestamp)).toEqual([]);
+    for (const expired of [expiredWindow, evidence(timestamp - 300)]) {
+      expect(knownQuotaWindows(expired, timestamp)).toEqual([]);
+      expect(quotaEvidenceExpired(expired, timestamp)).toBe(true);
+      const summary = renderToStaticMarkup(createElement(AccountQuotaSummary, { quota: expired, timestamp }));
+      const details = renderToStaticMarkup(createElement(AccountQuotaView, { quota: expired, timestamp }));
+      expect(summary).toContain("额度证据已过期，不能视为零。");
+      expect(details).toContain("已有证据已过期，请更新额度证据");
+      expect(summary + details).not.toContain("剩余 0");
+      expect(summary + details).not.toContain("private-window-id");
+    }
+  });
+
+  it("distinguishes expired credentials from unknown and unreadable expiry timestamps", () => {
+    const timestamp = Math.floor(Date.now() / 1000);
+    const expired = renderAccountDetails(account({ expiresAt: timestamp - 1 }));
+    expect(expired).toMatch(/data-expired="true">[^<]+ · 已过期<\/dd>/);
+    for (const expiresAt of [null, -1, Number.NaN, Number.MAX_SAFE_INTEGER]) {
+      const unknown = renderAccountDetails(account({ expiresAt }));
+      expect(unknown).toContain('data-expired="false">未知</dd>');
+      expect(unknown).not.toContain("Invalid Date");
+    }
+    const valid = renderAccountDetails(account({ expiresAt: timestamp + 300 }));
+    expect(valid).not.toContain('data-expired="true"');
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it("renders account authorization, expired evidence and cleanup scope in English", () => {
+    vi.stubGlobal("navigator", { language: "en-US", languages: ["en-US"] });
+    const timestamp = Math.floor(Date.now() / 1000);
+    const html = renderAccountDetails(account({ alias: "Work account", kind: "oauth", expiresAt: timestamp - 1, quota: evidence(timestamp - 300) }));
+    for (const label of ["Authorization and status", "Quota details", "Expired", "Quota is unknown because the evidence has expired", "unknown does not mean zero", "Local reference and cleanup", "Provider authorization, native client sign-in, and the source file will remain unchanged."]) expect(html).toContain(label);
+    expect(html).not.toContain("Remaining 0");
+    expect(invoke).not.toHaveBeenCalled();
   });
 
   it("enables refresh only for a registered, authorized OAuth callback outside cooldown", () => {
@@ -478,7 +614,8 @@ describe("account metadata, quota and integration boundaries", () => {
       expect(accountCanRefresh({ ...oauth, ...change }, timestamp)).toBe(false);
     }
     expect(accountCanRefresh({ ...oauth, cooldownUntil: timestamp }, timestamp)).toBe(true);
-    const html = renderPage([account({ kind: "oauth", status: "loginRequired" }), account({ id: "synthetic-native", kind: "nativeManaged", source: "nativeClient" })]);
+    const html = renderAccountDetails(account({ kind: "oauth", status: "loginRequired" }))
+      + renderAccountDetails(account({ id: "synthetic-native", kind: "nativeManaged", source: "nativeClient" }));
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*>刷新凭据<\/button>/);
     expect(html).toContain("此账号尚无可用的授权刷新接口");
     expect(html).toContain("请在对应原生客户端完成登录或更新授权");
@@ -511,10 +648,10 @@ describe("account metadata, quota and integration boundaries", () => {
     const activeHtml = renderPage([account({ cleanupPending: true })]);
     expect(activeHtml).toContain("当前账号引用仍有效");
     expect(activeHtml).not.toContain("本地引用保持撤销");
-    expect(activeHtml).toMatch(/<button[^>]*>撤销本地引用<\/button>/);
+    expect(renderAccountDetails(account({ cleanupPending: true }))).toMatch(/<button[^>]*>撤销本地引用<\/button>/);
     const revokedHtml = renderPage([account({ status: "revoked", cleanupPending: true })]);
     expect(revokedHtml).toContain("本地引用保持撤销");
-    expect(revokedHtml).toMatch(/<button[^>]*>重试本地清理<\/button>/);
+    expect(renderAccountDetails(account({ status: "revoked", cleanupPending: true }))).toMatch(/<button[^>]*>重试本地清理<\/button>/);
     expect(revokedHtml).not.toContain("当前账号引用仍有效");
   });
 });

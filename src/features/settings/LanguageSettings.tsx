@@ -17,7 +17,7 @@ export function LanguageSettings() {
     finally { lock.current = false; setBusy(false); }
   };
   return <div className="form-stack">
-    <Field label={t("界面语言")} description={t("立即切换中英文界面并保存选择；不会修改供应商名称、提示词正文或原始日志。")}>
+    <Field className="settings-row" label={t("界面语言")} description={t("立即切换中英文界面并保存选择；不会修改供应商名称、提示词正文或原始日志。")}>
       <Select aria-label={t("界面语言")} value={preference} disabled={busy} onChange={event => void change(event.target.value as LanguagePreference)}>
         <option value="system">{t("跟随系统")}</option><option value="zh-CN">简体中文</option><option value="en">English</option>
       </Select>

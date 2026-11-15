@@ -1,0 +1,13 @@
+{
+  "日期快捷范围": "Quick date range",
+  "查看 {name} 的请求": "View requests for {name}",
+  "查看请求": "View requests",
+  "模型 / 供应商": "Model / provider",
+  "结果 / 成本": "Result / cost",
+  "查看证据": "View evidence",
+  "返回请求记录": "Back to requests",
+  "查看请求记录": "View request records",
+  "{count} 条未成功": "{count} unsuccessful",
+  "{value}（已知部分）": "{value} (known portion)",
+  "未知 token 未计入；已知部分仅包含已记录数值。": "Unknown tokens are excluded; a known portion includes only recorded values."
+}

@@ -77,11 +77,19 @@ async function launch(name, legacy = false) {
   await client.screenshot(join(output, name + '.png'));
 }
 async function routing() {
-  await client.click('.xy-shell-nav-item[data-view="settings"]');
-  await client.waitFor('Boolean(document.querySelector("#settings-tab-routing"))'); await client.click('#settings-tab-routing');
-  await client.waitFor('Boolean(document.querySelector(".settings-takeover"))');
+  await client.workspace('settings');
+  await client.waitFor('Boolean(document.querySelector("#settings-tab-routing"))');
+  if (await client.evaluate('document.querySelector("#settings-tab-routing").getClientRects().length>0')) await client.click('#settings-tab-routing');
+  else {
+    await client.waitFor('document.querySelector(".settings-mobile-category select")?.getClientRects().length>0');
+    await client.fill('.settings-mobile-category select', 'routing');
+  }
+  const disclosure = '[...document.querySelectorAll("#settings-panel-routing details.workspace-disclosure")].find(element=>element.querySelector(":scope > summary")?.textContent.trim()==="客户端接管")';
+  await client.waitFor('Boolean(' + disclosure + ')');
+  if (!await client.evaluate(disclosure + '.open')) await client.clickExpression(disclosure + '.querySelector(":scope > summary")');
+  await client.waitFor(disclosure + '.open && ' + takeoverPanel + '?.getClientRects().length>0');
 }
-const takeoverPanel = '[...document.querySelectorAll(".settings-takeover")].find(panel=>panel.querySelector("h3")?.textContent.trim()==="Codex")';
+const takeoverPanel = '[...document.querySelectorAll("#settings-panel-routing .settings-takeover")].find(panel=>panel.querySelector("h3")?.textContent.trim()==="Codex")';
 async function expectTakeover(active) {
   const rows = await invoke('list_app_takeovers'); const row = rows.find(value => value.app === 'codex');
   assert(row); assert.equal(row.active, active); assert.equal(row.lastError, null);

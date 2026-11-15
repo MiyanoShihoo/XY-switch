@@ -1,4 +1,5 @@
-import { translateMessage, useLanguage, t } from "../../i18n/language";
+import { translateMessage, useLanguage } from "../../i18n/language";
+import { t } from "../../i18n/language";
 import { Button, Field, Input, Select, Toggle } from "../../ui";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { analyzeShadowAudit, getShadowAuditSettings, saveShadowAuditSetting } from "../../lib/model-audit-service";
@@ -8,14 +9,34 @@ import type { UsageFilter, UsageLogEntry } from "../../types/usage";
 
 const EMPTY_SETTING: ShadowAuditSetting = { enabled: false, providerId: "", model: "", tokenizerPath: "", pretokenizer: null };
 
-export function ShadowAuditPanel({ filter, logs }: { filter: UsageFilter; logs: UsageLogEntry[] }) {
+export function ShadowAuditPanel({ filter, logs, onBusyChange }: { filter: UsageFilter; logs: UsageLogEntry[]; onBusyChange?: (busy: boolean) => void }) {
   useLanguage();
   const [settings, setSettings] = useState<ShadowAuditStatus[]>([]);
   const [draft, setDraft] = useState<ShadowAuditSetting>({ ...EMPTY_SETTING });
+  const [savedDraft, setSavedDraft] = useState<ShadowAuditSetting>({ ...EMPTY_SETTING });
+  const [nextDraft, setNextDraft] = useState<ShadowAuditSetting | null>(null);
+  const confirmationRef = useRef<HTMLDivElement>(null);
+  const editorRef = useRef<HTMLInputElement>(null);
+  const editFocus = useRef(false);
+  const operationPending = useRef(false);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(savedDraft);
+  const edit = (value: ShadowAuditSetting) => {
+    if (operationPending.current || blocked) return;
+    if (dirty) { setNextDraft(value); return; }
+    setDraft(value); setSavedDraft(value); setMessage(""); editFocus.current = true;
+  };
   const [loaded, setLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
+  const busy = loading || saving || analyzing;
+  const blocked = busy || Boolean(nextDraft);
+  const navigationBlocked = loading || saving || Boolean(nextDraft);
+  useEffect(() => { onBusyChange?.(navigationBlocked); }, [navigationBlocked, onBusyChange]);
+  useEffect(() => {
+    if (nextDraft) confirmationRef.current?.focus();
+    else if (!blocked && editFocus.current) { editFocus.current = false; editorRef.current?.focus(); }
+  }, [nextDraft, draft, blocked]);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [report, setReport] = useState<ShadowAuditReport | null>(null);
@@ -33,25 +54,34 @@ export function ShadowAuditPanel({ filter, logs }: { filter: UsageFilter; logs: 
   }, [filter]);
 
   const load = async () => {
+    if (operationPending.current || blocked) return;
+    operationPending.current = true;
     setLoading(true); setError("");
     try { setSettings(await getShadowAuditSettings()); setLoaded(true); }
     catch (cause) { setError(t("配置读取失败：{value0}", { value0: String(cause) })); }
-    finally { setLoading(false); }
+    finally { operationPending.current = false; setLoading(false); }
   };
 
-  const save = async (value: ShadowAuditSetting) => {
+  const save = async (value: ShadowAuditSetting, adopt = false) => {
+    if (operationPending.current || blocked) return;
+    operationPending.current = true;
     setSaving(true); setError(""); setMessage("");
     try {
       const saved = await saveShadowAuditSetting(shadowSettingRequest(value));
       setSettings((previous) => [...previous.filter((entry) => entry.providerId !== saved.providerId || entry.model !== saved.model), saved]);
       setLoaded(true);
+      if (adopt || (!dirty && draft.providerId === saved.providerId && draft.model === saved.model)) {
+        const clean = shadowSettingRequest(saved); setDraft(clean); setSavedDraft(clean);
+      }
       setMessage(saved.error ? t("配置已保存，但分词器当前不可用；请查看配置错误。") : saved.enabled ? t("已保存启用配置，仅采集此后符合条件的新轮次。") : t("已保存停用配置。"));
       analysisGeneration.current += 1; setReport(null); setAnalyzing(false);
     } catch (cause) { setError(t("配置保存失败：{value0}", { value0: String(cause) })); }
-    finally { setSaving(false); }
+    finally { operationPending.current = false; setSaving(false); }
   };
 
   const analyze = async () => {
+    if (operationPending.current || blocked) return;
+    operationPending.current = true;
     const requestGeneration = ++analysisGeneration.current;
     setAnalyzing(true); setError(""); setReport(null);
     try {
@@ -59,32 +89,42 @@ export function ShadowAuditPanel({ filter, logs }: { filter: UsageFilter; logs: 
       if (requestGeneration === analysisGeneration.current) setReport(result);
     } catch (cause) {
       if (requestGeneration === analysisGeneration.current) setError(t("差分分析未完成：{value0}", { value0: String(cause) }));
-    } finally { if (requestGeneration === analysisGeneration.current) setAnalyzing(false); }
+    } finally { operationPending.current = false; if (requestGeneration === analysisGeneration.current) setAnalyzing(false); }
   };
 
   return (
-    <details className="audit-reference-section audit-shadow-section" onToggle={(event) => { if (event.currentTarget.open && !loaded && !loading) void load(); }}>
-      <summary>{t("被动影子差分（默认关闭）")}</summary>
+    <section className="audit-shadow-section" aria-label={t("被动影子差分（默认关闭）")}>
+      <div className="audit-panel-heading"><div><h2>{t("被动影子差分（默认关闭）")}</h2></div></div>
       <div className="audit-reference-form">
         <p>{t("按渠道与实际转发模型启用后，后台用本地分词器计算相邻轮次的新增文本，并与上游输入 token 增量比较。它只观察正常业务，不发送探针。")}</p>
+        <details className="audit-limitations-disclosure"><summary>{t("采样范围与限制")}</summary>
         <p className="audit-note">{t("仅匹配新产生、完整结束且只追加的纯文本对话。缓存、工具/多模态、缺失用量或无法唯一配对的轮次会被排除。匹配只在有界内存中进行，正文不持久化；重启、过期或达到容量上限会失去基线。历史正文不能补算。")}</p>
         <p className="audit-note">{t("前缀核对仅覆盖客户端请求和本地实际转发内容，无法据此证明远端没有改写系统提示词。")}</p>
-        <div className="audit-shadow-actions"><Button type="button" variant="secondary" size="sm" onClick={() => void load()} disabled={loading || saving}>{loading ? t("读取中…") : t("刷新配置")}</Button></div>
+        </details>
+        {nextDraft && <div className="audit-draft-confirmation" role="alert" ref={confirmationRef} tabIndex={-1}>
+          <strong>{t("配置草稿尚未保存")}</strong><div className="audit-shadow-actions"><Button variant="secondary" disabled={busy} onClick={() => { if (operationPending.current) return; editFocus.current = true; setNextDraft(null); }}>{t("继续编辑")}</Button><Button variant="danger" disabled={busy} onClick={() => { if (operationPending.current) return; setDraft(nextDraft); setSavedDraft(nextDraft); setNextDraft(null); editFocus.current = true; }}>{t("放弃草稿并切换")}</Button></div>
+        </div>}
+        <div className="audit-shadow-workspace">
+        <section className="audit-shadow-catalog" aria-label={t("配置目录")}>
+        <div className="usage-section-heading"><h3>{t("配置目录")}</h3><Button type="button" variant="secondary" size="sm" onClick={() => void load()} disabled={blocked}>{loading ? t("读取中…") : loaded ? t("刷新配置") : t("读取配置")}</Button></div>
+        {!loaded && !loading && <p className="audit-note">{t("尚未读取保存的配置；新规则默认停用。")}</p>}
         {loaded && settings.length === 0 && <p className="audit-untested">{t("尚未配置，影子采样默认关闭。")}</p>}
-        {settings.length > 0 && <div className="audit-table-scroll"><table className="audit-table"><thead><tr><th scope="col">{t("渠道 / 实际转发模型")}</th><th scope="col">{t("采样状态")}</th><th scope="col">{t("分词器")}</th><th scope="col">{t("操作")}</th></tr></thead><tbody>
+        {settings.length > 0 && <div className="audit-table-scroll" role="region" aria-label={t("被动影子差分（默认关闭）")} tabIndex={0}><table className="audit-table audit-table--settings"><thead><tr><th scope="col">{t("渠道 / 实际转发模型")}</th><th scope="col">{t("采样状态")}</th><th scope="col">{t("分词器")}</th><th scope="col">{t("操作")}</th></tr></thead><tbody>
           {settings.map((setting) => <tr key={JSON.stringify([setting.providerId, setting.model])}>
-            <td>{setting.providerId}<br />{setting.model}</td>
+            <td><code>{setting.providerId}</code><br /><code>{setting.model}</code></td>
             <td className={setting.error ? "audit-error" : setting.enabled ? "audit-clear" : "audit-untested"}>{setting.error ? t("配置不可用") : setting.enabled ? t("已启用") : t("已停用")}<br />{t("后台丢弃")} {setting.droppedRequests} {t("次")}</td>
-            <td className="audit-shadow-source"><span>{setting.tokenizerPath || t("未配置文件")}</span><br /><code>SHA-256 {setting.sourceSha256 || t("未加载")}</code>{setting.error && <p className="audit-error">{setting.error}</p>}</td>
-            <td><div className="audit-shadow-actions"><Button type="button" variant="secondary" size="sm" disabled={saving} onClick={() => { setDraft(shadowSettingRequest(setting)); setMessage(""); }}>{t("编辑")}</Button>
-              <Button type="button" variant="secondary" size="sm" disabled={saving || loading} onClick={() => void save({ ...shadowSettingRequest(setting), enabled: !setting.enabled })}>{setting.enabled ? t("停用") : t("启用")}</Button></div></td>
+            <td className="audit-shadow-source"><code>{setting.tokenizerPath || t("未配置文件")}</code><br /><code>SHA-256 {setting.sourceSha256 || t("未加载")}</code>{setting.error && <p className="audit-error">{setting.error}</p>}</td>
+            <td><div className="audit-shadow-actions"><Button type="button" variant="secondary" size="sm" disabled={blocked} onClick={() => edit(shadowSettingRequest(setting))}>{t("编辑")}</Button>
+              <Button type="button" variant="secondary" size="sm" disabled={blocked} onClick={() => void save({ ...shadowSettingRequest(setting), enabled: !setting.enabled })}>{setting.enabled ? t("停用") : t("启用")}</Button></div></td>
           </tr>)}
         </tbody></table></div>}
-        <form onSubmit={(event) => { event.preventDefault(); void save(draft); }}>
-          <fieldset className="audit-shadow-fields" disabled={saving || loading}>
+        </section>
+        <form className="audit-shadow-editor" onSubmit={(event) => { event.preventDefault(); if (!nextDraft) void save(draft, true); }}>
+          <fieldset className="audit-shadow-fields" disabled={blocked}>
             <legend>{t("新增或编辑渠道配置")}</legend>
+            {dirty && <p className="audit-draft-status" role="status">{t("配置草稿尚未保存")}</p>}
             <div className="audit-shadow-grid">
-              <Field label={t("渠道 ID（精确匹配）")}><Input required list={providerListId} value={draft.providerId} onChange={(event) => setDraft({ ...draft, providerId: event.target.value })} placeholder={t("请求日志中的供应商 ID")} spellCheck={false} /></Field>
+              <Field label={t("渠道 ID（精确匹配）")}><Input ref={editorRef} required list={providerListId} value={draft.providerId} onChange={(event) => setDraft({ ...draft, providerId: event.target.value })} placeholder={t("请求日志中的供应商 ID")} spellCheck={false} /></Field>
               <Field label={t("实际转发模型（精确匹配）")}><Input required list={modelListId} value={draft.model} onChange={(event) => setDraft({ ...draft, model: event.target.value })} placeholder={t("有路由改写时填写路由后模型")} spellCheck={false} /></Field>
             </div>
             <datalist id={providerListId}>{providers.map((provider) => <option key={provider} value={provider} />)}</datalist>
@@ -94,17 +134,18 @@ export function ShadowAuditPanel({ filter, logs }: { filter: UsageFilter; logs: 
               <Field label={t("预分词规则")}><Select value={draft.pretokenizer ?? ""} onChange={(event) => setDraft({ ...draft, pretokenizer: (event.target.value || null) as Pretokenizer | null })}><option value="">{t("自动识别文件规则")}</option><option value="cl100k">cl100k</option><option value="o200k">o200k</option><option value="gpt2">GPT-2</option></Select></Field>
               <div className="form-switch"><span>{t("保存后启用此渠道与模型的影子采样")}</span><Toggle aria-label={t("启用影子采样")} checked={draft.enabled} onCheckedChange={enabled => setDraft({ ...draft, enabled })} /></div>
             </div>
-            <div className="audit-shadow-actions"><Button type="submit" variant="primary" disabled={!draft.providerId.trim() || !draft.model.trim() || (draft.enabled && !draft.tokenizerPath.trim())}>{saving ? t("保存中…") : t("保存配置")}</Button><Button type="button" variant="secondary" size="sm" onClick={() => setDraft({ ...EMPTY_SETTING })}>{t("新建配置")}</Button></div>
+            <div className="audit-shadow-actions"><Button type="submit" variant="primary" disabled={!draft.providerId.trim() || !draft.model.trim() || (draft.enabled && !draft.tokenizerPath.trim())}>{saving ? t("保存中…") : t("保存配置")}</Button><Button type="button" variant="secondary" size="sm" onClick={() => edit({ ...EMPTY_SETTING })}>{t("新建配置")}</Button></div>
           </fieldset>
         </form>
+        </div>
         {message && <p role="status">{message}</p>}
         {error && <p className="audit-error" role="alert">{translateMessage(error)}</p>}
         <div className="audit-shadow-analyze"><p>{t("分析沿用上方筛选条件，只读取已经采集的结构化配对。3 组只是回归计算下限；可靠判读还需 5 个不同的预期增量值和 32 token 的跨度，并结合残差、斜率区间与时间稳定性。噪声较大或区间不明确时继续采样。")}</p>
-          <Button type="button" variant="primary" disabled={analyzing || saving} onClick={() => void analyze()}>{analyzing ? t("分析中…") : t("分析已采集差分")}</Button>
+          <Button type="button" variant="primary" disabled={blocked} onClick={() => void analyze()}>{analyzing ? t("分析中…") : t("分析已采集差分")}</Button>
         </div>
         {report && <ShadowAuditResults report={report} />}
       </div>
-    </details>
+    </section>
   );
 }
 
@@ -119,7 +160,7 @@ export function ShadowAuditResults({ report }: { report: ShadowAuditReport }) {
       {report.truncated && <p className="audit-untested">{t("达到")} {report.sampleLimit} {t("条分析上限，仅覆盖最近记录。")}</p>}
       {groups.length === 0 && <p className="audit-untested">{t("未测到：没有可分析的配对分组。这不等于没问题；启用后还需产生符合条件的新对话轮次。")}</p>}
       <div className="audit-shadow-groups">{groups.map((group) => <article className="audit-shadow-group" key={JSON.stringify([group.providerId, group.model, group.tokenizerSha256, group.partitionId])}>
-        <h4>{group.providerId} · {group.model}</h4>
+        <h4><code>{group.providerId}</code> · <code>{group.model}</code></h4>
         <p className="audit-note audit-shadow-source">{t("词表 SHA-256")} <code>{group.tokenizerSha256}</code><br />{t("运行内配对分区")} <code>{group.partitionId}</code>{t("（不包含对话正文）")}</p>
         <ShadowRegressionDetails regression={group.regression} />
       </article>)}</div>

@@ -1,0 +1,14 @@
+{
+  "切换工作区": "Switch workspace",
+  "工作区": "Workspace",
+  "配置工作区": "Configuration workspace",
+  "客户端、模型与工具": "Clients, models and tools",
+  "Agent 编队": "Agent teams",
+  "协作拓扑、任务与用量": "Agent topology, tasks and usage",
+  "返回配置工作区": "Back to configuration",
+  "独立工作区": "Dedicated workspace",
+  "编队功能尚未开放。未来的成员、任务与执行记录会在这里集中管理。": "Agent teams are not available yet. Members, tasks and execution history will have their own space here.",
+  "全部功能": "All features",
+  "用量": "Usage",
+  "返回总览": "Back to overview"
+}

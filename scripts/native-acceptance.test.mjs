@@ -18,7 +18,7 @@ test('packaged CDP allows only native renderer and IPC origins and refuses ordin
 
 test('native language selection uses GUI transitions and verifies persisted state', async () => {
   for (const initial of ['en', 'zh-CN']) {
-    let screen = 'providers', persisted = 'en', pending, changes = 0;
+    let screen = 'overview', persisted = 'en', pending, changes = 0;
     const control = { value: initial, disabled: false };
     const document = {
       documentElement: { lang: initial },
@@ -284,7 +284,7 @@ test('native import renews review and confirmation only after every explicit cho
   const reset = flow.indexOf("'Changing import choices must clear review'");
   const confirmationReset = flow.indexOf("'Changing import choices must clear confirmation'");
   const renewedConfirmation = flow.lastIndexOf("await confirm('IMPORT')");
-  const renewedReview = flow.lastIndexOf("await c.click('.encrypted-sync-settings .gov-check input')");
+  const renewedReview = flow.lastIndexOf("await c.click('.encrypted-sync-settings [role=\"dialog\"] .gov-check input')");
   const enabled = flow.indexOf("await disabled('确认合并所选变更', false)");
   assert(choices > 0 && choices < reset && reset < confirmationReset);
   assert(confirmationReset < renewedConfirmation && renewedConfirmation < renewedReview && renewedReview < enabled);
