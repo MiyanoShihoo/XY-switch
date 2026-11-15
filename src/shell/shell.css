@@ -32,12 +32,12 @@
 .xy-shell-nav { display: grid; gap: 22px; min-width: 0; }
 .xy-shell-nav-group { display: grid; gap: 3px; }
 .xy-shell-nav-heading { padding: 0 10px 5px; color: var(--xy-ds-text-faint); font-size: 12px; line-height: 18px; }
-.xy-shell-nav .xy-shell-nav-item { min-height: 38px; padding: 8px 10px; font-size: 13px; line-height: 1.4; border-radius: var(--xy-ds-radius-md); }
+.xy-shell-nav .xy-shell-nav-item { min-height: 38px; padding: 8px 10px; font-size: 13px; line-height: 1.4; border-radius: var(--xy-ds-radius-md); scroll-margin-block: 8px; }
 .xy-shell-nav .xy-shell-nav-item > span:not(.xy-shell-nav-count) { min-width: 0; }
 .xy-shell-nav .xy-shell-nav-item[data-active="true"] { color: var(--xy-ds-accent); background: var(--xy-ds-accent-soft); font-weight: 600; }
 .xy-shell-nav-count { margin-left: auto; font-size: 12px; font-variant-numeric: tabular-nums; font-weight: 400; }
 .xy-shell-root > .xy-ui-drawer-shell .xy-ui-drawer { width: min(360px, calc(100vw - 24px)); }
-.xy-shell-root > .xy-ui-drawer-shell .xy-ui-drawer__body { padding: 16px 14px 24px; }
+.xy-shell-root > .xy-ui-drawer-shell .xy-ui-drawer__body { padding: 16px 14px 24px; scroll-padding-block: 8px; }
 .xy-shell-navigation-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--xy-ds-text-muted); font-size: 12px; }
 .xy-shell-runtime { position: relative; min-width: 0; font-size: 12px; }
 .xy-shell-runtime > summary { display: flex; align-items: center; gap: 7px; min-height: 34px; padding: 5px 10px; border-radius: var(--xy-ds-radius-md); color: var(--xy-ds-text-muted); cursor: pointer; white-space: nowrap; list-style: none; }

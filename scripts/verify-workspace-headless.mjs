@@ -10,8 +10,11 @@ import { waitForDevTools } from './workspace-qa/devtools-readiness.mjs';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const artifacts = resolve(root, 'artifacts');
 const output = resolve(process.env.QA_OUTPUT ?? join(artifacts, 'workspace-headless-qa'));
-const outputRelative = relative(artifacts, output);
-assert(outputRelative && outputRelative !== '..' && !outputRelative.startsWith('..' + sep) && !isAbsolute(outputRelative), 'QA output must stay inside this repository artifacts directory');
+const outputRoots = [artifacts, resolve(root, 'out')];
+assert(outputRoots.some(directory => {
+  const candidate = relative(directory, output);
+  return candidate && candidate !== '..' && !candidate.startsWith('..' + sep) && !isAbsolute(candidate);
+}), 'QA output must stay inside this repository artifacts or out directory');
 const suites = new Map([
   ['navigation', 'verify-workspace-navigation-ui.mjs'],
   ['workspace', 'verify-workspace-ui.mjs'],
@@ -106,7 +109,7 @@ async function runSuite(name, endpoint) {
 }
 try {
   report.stage = 'renderer-server';
-  server = await createServer({ root, clearScreen: false, optimizeDeps: { entries: ['index.html'] }, server: { host: '127.0.0.1', port: 0, strictPort: true, open: false } });
+  server = await createServer({ root, clearScreen: false, optimizeDeps: { entries: ['index.html'] }, server: { host: '127.0.0.1', port: 0, strictPort: true, open: false, watch: { ignored: ['**/out/**'] } } });
   await server.listen();
   const address = server.httpServer.address();
   assert.equal(address.address, '127.0.0.1', 'Renderer must bind only the IPv4 loopback interface');

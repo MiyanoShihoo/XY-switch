@@ -10,7 +10,7 @@ A local AI configuration and protocol-routing workbench built with Tauri 2, Rust
 
 Clients use directory → dedicated detail; sessions use directory → preview → full reader; settings use a task directory → individual settings. A provider name opens its details, **Set as current** switches providers, and the model name opens a focused model editor. Account management shows saved policies, participation, and separate native references. The workspace menu switches between configuration and the read-only **Agent teams** workspace (`#agents`); see the [Agent teams guide](docs/agent-fleet-en.md). Configuration, runtime, and historical evidence remain distinct. See the [user guide](docs/user-guide-en.md) for the new paths.
 
-**1.3.0 preview:** Adds channel-group configuration and offline scheduling, the Agent workspace, usage/navigation improvements, and Windows startup fixes. Channel groups keep live dispatch disabled. See the [release notes](docs/release-notes-1.3.0.md) and [verified acceptance scope](docs/channel-groups-acceptance-1.3.0.md). This preview has separately built Windows packages; other-platform assets and installation checks depend on their corresponding release evidence.
+**1.3.1 preview:** Fixes compact-navigation focus, Windows test paths and macOS Universal companion packaging, and updates browser acceptance for the current workspace. Channel groups keep live dispatch disabled and the existing billing hold remains active. See the [release notes](docs/release-notes-1.3.1.md) and the exact-commit reports attached to the prerelease. The [1.3.0 acceptance report](docs/channel-groups-acceptance-1.3.0.md) retains its historical scope.
 
 ## Download and platform scope
 

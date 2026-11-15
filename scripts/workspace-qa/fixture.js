@@ -11,6 +11,17 @@
     calls: [], fail: {}, hold: [], pending: [], callbacks: {}, listeners: [], nextCallback: 1, nextListener: 1,
     providers: ['Orion', 'Relay', 'Claude Lab'].map((name,i) => ({ id: 'qa-p'+(i+1), name, appGroup: i === 2 ? 'Claude' : 'Codex', providerType: 'custom', endpoint: 'https://qa.invalid/v1', model: 'qa-alpha', enabled: true, sortOrder: i, advanced: advanced() })),
     current: 'qa-p1', keys: { 'qa-p1': true }, healthOverrides: {},
+    clientSettings: {opencodeConfig:null,opencodeSchema:null,claudeDesktopProfile:null,codexBinary:null,opencodeBinary:null},
+    clients: [
+      ['codex-desktop','Codex Desktop','codex','codex','codex','codex_device_code','responses_gateway'],
+      ['codex-cli','Codex CLI','codex','codex','codex','codex_device_code','responses_gateway'],
+      ['claude-desktop','Claude Desktop','claude-desktop',null,'claude-desktop','native_app','native_subscription'],
+      ['claude-desktop-3p','Claude Desktop 3P','claude-desktop-3p','claude-desktop-3p','claude-desktop','native_gateway_sso','messages_gateway'],
+      ['claude-code','Claude Code','claude','claude','claude','native_terminal','messages_gateway'],
+      ['opencode-desktop','OpenCode Desktop','opencode','opencode','opencode','opencode_oauth','chat_gateway'],
+      ['opencode-cli','OpenCode CLI','opencode','opencode','opencode','opencode_oauth','chat_gateway'],
+      ['gemini-cli','Gemini CLI','gemini','gemini','gemini','native_terminal','gemini_gateway'],
+    ].map(([id,label,configOwner,takeoverTarget,mcpTarget,loginMethod,inferenceMode]) => ({id,label,configOwner,takeoverTarget,mcpTarget,loginMethod,inferenceMode,configPaths:['QA:/'+configOwner+'/config'],configDetected:true,loginInstructions:'QA native login',nativeVerification:'not_checked',setupError:null,configurationPending:false,loginStatus:null,account:null})),
     proxy: { settings: { enabled: false, showInHome: true, host: '127.0.0.1', port: 15721, routeTargets: ['claude','codex','gemini'] }, running: false, address: 'http://127.0.0.1:15721', lastError: null },
     preferences: { minimizeToTray: true, requestTimeoutSecs: 180, logLevel: 'info' }, autostart: false, autostartMismatch: false,
     prompts: [{ id: 'qa-prompt', name: '代码审查', description: '验收提示词', content: '# Review\n\n检查边界与错误。', enabled: true }],
@@ -18,7 +29,7 @@
     skillImportSettings: {codex:false, deepseekHarness:false, claude:false, gemini:false, agents:false},
     skills: [{ source: 'manual', readOnly: false, contentHash: 'qa-content-hash', id: 'qa-skill', name: 'Review Skill', description: '合成技能，本地验收', directory: 'QA:/skills/review', apps, installedAt: 1792195200000, updatedAt: 1792195200000 }],
     sessions: [{ providerId: 'codex', sessionId: 'qa-session', title: '工作台界面验收', projectDir: 'QA:/workspace', createdAt: 1792195200, lastActiveAt: 1792195260, sourcePath: 'QA:/sessions/test.jsonl', resumeCommand: 'codex resume qa-session' }],
-    sessionWarnings: [], sessionMessageWarnings: [],
+    sessionWarnings: [], sessionMessageWarnings: [], sessionFavorites: [],
     sessionMessages: [{role:"user",content:"请检查界面边界。",ts:1792195200},{role:"assistant",content:"已保留全部审计证据。\nconst result = true;",ts:1792195260}],
     deleteCount: 1, usageCount: 45, importedRefreshFailure: false,
     release(command) { const entries = this.pending.filter(item => !command || item.command === command); this.pending = this.pending.filter(item => !entries.includes(item)); this.hold = this.hold.filter(item => item !== command); for (const item of entries) item.resolve(); },
@@ -36,6 +47,9 @@
       case 'get_interface_language': return qa.language;
       case 'set_interface_language': qa.language = args.preference; qa.resolvedLanguage = args.resolvedLanguage; localStorage.setItem('xy-qa:native-language', qa.language); return null;
       case 'list_providers': return clone(qa.providers);
+      case 'list_client_connections': return clone(qa.clients);
+      case 'get_client_settings': return clone(qa.clientSettings);
+      case 'list_accounts': return [];
       case 'get_current_provider': return clone(qa.providers.find(p => p.id === qa.current) ?? null);
       case 'list_provider_health': return qa.providers.map(p => health(p.id));
       case 'request_summary': return { totalRequests: 45, successfulRequests: 44, averageLatencyMs: 42 };
@@ -91,6 +105,13 @@
       case 'pick_and_import_skill_folder': return null;
       case 'get_session_catalog': return {sessions:clone(qa.sessions),warnings:clone(qa.sessionWarnings)};
       case 'get_session_detail': return {messages:clone(qa.sessionMessages),warnings:clone(qa.sessionMessageWarnings)};
+      case 'load_session_favorites': return clone(qa.sessionFavorites);
+      case 'set_session_favorite': {
+        const matches = favorite => favorite.providerId === args.favorite.providerId && favorite.sessionId === args.favorite.sessionId;
+        if (args.enabled && !qa.sessionFavorites.some(matches)) qa.sessionFavorites.push(clone(args.favorite));
+        if (!args.enabled) qa.sessionFavorites = qa.sessionFavorites.filter(favorite => !matches(favorite));
+        return null;
+      }
       case 'list_sessions': return clone(qa.sessions);
       case 'get_session_messages': return clone(qa.sessionMessages);
       case 'delete_sessions': if (qa.deleteCount > 0) qa.sessions = qa.sessions.filter(s=>!args.ids.some(id=>id.sessionId === s.sessionId && id.providerId === s.providerId)); return qa.deleteCount;

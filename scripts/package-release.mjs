@@ -59,7 +59,8 @@ export function planBuild(options, context) {
     outDir: path.resolve(projectRoot, options.outDir || `release/${version}/${options.platform}-${outputArch}`),
     bundleDir: options.universal ? path.join(targetDir, "universal-apple-darwin", "release", "bundle") : path.join(targetDir, "release", "bundle"),
     command: process.execPath,
-    args: [path.join(projectRoot, "node_modules", "@tauri-apps", "cli", "tauri.js"), "build", "--ci", "--bundles", bundles.join(","), ...targetArgs, "--", "--locked"],
+    args: [path.join(projectRoot, "node_modules", "@tauri-apps", "cli", "tauri.js"), "build", "--ci", ...(options.universal ? ["--no-bundle"] : ["--bundles", bundles.join(",")]), ...targetArgs, "--", "--locked"],
+    ...(options.universal ? { bundleArgs: [path.join(projectRoot, "node_modules", "@tauri-apps", "cli", "tauri.js"), "bundle", "--ci", "--bundles", bundles.join(","), ...targetArgs] } : {}),
   };
 }
 
@@ -89,6 +90,27 @@ export async function archiveMacApplication(source, destination) {
   const result = spawnSync("ditto", ["-c", "-k", "--sequesterRsrc", "--keepParent", source, destination], { stdio: "inherit", shell: false });
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error("Failed to archive the macOS application bundle");
+}
+
+export async function mergeUniversalCompanions(plan, { run = spawnSync } = {}) {
+  if (plan.platform !== "macos" || !plan.universal) throw new Error("Companion merging requires a universal macOS build");
+  const directory = path.join(plan.targetDir, "universal-apple-darwin", "release");
+  await fs.mkdir(directory, { recursive: true });
+  for (const name of ["xy-marketplace"]) {
+    const slices = ["aarch64-apple-darwin", "x86_64-apple-darwin"].map(target => path.join(plan.targetDir, target, "release", name));
+    for (const slice of slices) {
+      const stat = await fs.stat(slice);
+      if (!stat.isFile() || stat.size === 0) throw new Error("Missing macOS companion slice: " + slice);
+    }
+    const destination = path.join(directory, name);
+    for (const args of [["-create", ...slices, "-output", destination], ["-verify_arch", "arm64", "x86_64", destination]]) {
+      const result = run("lipo", args, { stdio: "inherit", shell: false });
+      if (result.error) throw result.error;
+      if (result.status !== 0) throw new Error("Universal macOS companion merge/verification failed: " + name);
+    }
+    const stat = await fs.stat(destination);
+    if (!stat.isFile() || stat.size === 0) throw new Error("Missing universal macOS companion: " + destination);
+  }
 }
 
 export async function collectBundles(plan, startedAt, { archiveApp = archiveMacApplication } = {}) {
@@ -160,12 +182,19 @@ export async function main(args = process.argv.slice(2)) {
     if (targets.status !== 0) throw new Error("Failed to install universal macOS Rust targets");
   }
   const startedAt = Date.now();
-  const result = spawnSync(plan.command, plan.args, {
+  const execution = {
     cwd: root, stdio: "inherit", shell: false,
     env: { ...process.env, CARGO_TARGET_DIR: plan.targetDir, ...(plan.platform === "macos" ? { MACOSX_DEPLOYMENT_TARGET: "11.0", APPLE_SIGNING_IDENTITY: process.env.APPLE_SIGNING_IDENTITY || "-" } : {}) },
-  });
+  };
+  const result = spawnSync(plan.command, plan.args, execution);
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(`Tauri build failed (${result.signal || result.status}); no installer was published`);
+  if (plan.universal) {
+    await mergeUniversalCompanions(plan);
+    const bundled = spawnSync(plan.command, plan.bundleArgs, execution);
+    if (bundled.error) throw bundled.error;
+    if (bundled.status !== 0) throw new Error(`Tauri bundle failed (${bundled.signal || bundled.status}); no installer was published`);
+  }
   const manifest = await collectBundles(plan, startedAt);
   console.log(JSON.stringify({ output: plan.outDir, ...manifest }, null, 2));
 }

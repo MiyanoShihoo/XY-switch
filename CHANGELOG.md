@@ -1,5 +1,12 @@
 # Changelog / 更新日志
 
+## 1.3.1 Preview / 预发布 — 2026-11-15
+
+- Keep compact-navigation keyboard focus visible and update browser acceptance for the current provider, MCP, Skills and settings flows.
+- Fix Windows junction-test paths and merge/verify the macOS Universal companion before App/DMG bundling.
+- 将应用版本统一为 1.3.1；旧版标签与证据保持对应。渠道组仍为离线试点，HTTP 525 的实际用量与费用仍未知，收费验收继续暂停。
+- See [1.3.1 release notes](docs/release-notes-1.3.1.md) and the exact-commit reports attached to its prerelease.
+
 ## 1.3.0 Preview / 预发布 — 2026-11-15
 
 - Add persisted virtual channel groups, five offline scheduling strategies, shared quota pools, affinity, cooldowns, budget reservations and read-only history replay. Live virtual-model requests fail locally before credentials, billing or upstream dispatch.

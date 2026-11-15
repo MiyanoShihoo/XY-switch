@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import * as fs from "node:fs/promises";
+import { writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { collectBundles, ensureToolsCache, parseArgs, planBuild, sha256 } from "./package-release.mjs";
+import { collectBundles, ensureToolsCache, mergeUniversalCompanions, parseArgs, planBuild, sha256 } from "./package-release.mjs";
 
 const context = { projectRoot: path.resolve("fixture project"), host: "linux", arch: "x64", version: "1.0.0" };
 async function temporary(t) {
@@ -141,11 +142,62 @@ test("macOS packages a native app and DMG or an explicit universal binary", () =
   const plan = planBuild(parseArgs(["macos", "--universal"]), { ...context, host: "darwin", arch: "arm64" });
   assert.equal(plan.arch, "universal");
   assert.ok(plan.args.includes("universal-apple-darwin"));
+  assert.ok(plan.args.includes("--no-bundle"));
+  assert.ok(!plan.args.includes("--bundles"));
+  assert.deepEqual(plan.bundleArgs.slice(1), ["bundle", "--ci", "--bundles", "app,dmg", "--target", "universal-apple-darwin"]);
+  assert.equal(native.bundleArgs, undefined);
   assert.ok(plan.bundleDir.endsWith(path.join("universal-apple-darwin", "release", "bundle")));
   assert.throws(() => parseArgs(["windows", "--universal"]), /macOS/);
   assert.throws(() => parseArgs(["macos", "--universal", "--universal"]), /once/);
   assert.throws(() => planBuild(parseArgs(["macos"]), context), /native/);
   assert.throws(() => planBuild(parseArgs(["macos", "--bundles", "deb"]), { ...context, host: "darwin" }), /bundle/);
+});
+
+async function companionFixture(t) {
+  const directory = await temporary(t);
+  const plan = planBuild({ platform: "macos", universal: true }, { ...context, projectRoot: directory, host: "darwin" });
+  for (const target of ["aarch64-apple-darwin", "x86_64-apple-darwin"]) {
+    const slice = path.join(plan.targetDir, target, "release", "xy-marketplace");
+    await fs.mkdir(path.dirname(slice), { recursive: true });
+    await fs.writeFile(slice, target);
+  }
+  return plan;
+}
+
+test("universal packaging merges both companion slices and verifies both architectures", async t => {
+  const plan = await companionFixture(t), calls = [];
+  await mergeUniversalCompanions(plan, { run(command, args, options) {
+    calls.push({ command, args, options });
+    if (args[0] === "-create") writeFileSync(args.at(-1), "universal companion");
+    return { status: 0 };
+  } });
+  const destination = path.join(plan.targetDir, "universal-apple-darwin", "release", "xy-marketplace");
+  assert.equal(calls.length, 2);
+  assert.ok(calls.every(call => call.command === "lipo" && call.options.shell === false));
+  assert.deepEqual(calls[0].args, ["-create", ...["aarch64-apple-darwin", "x86_64-apple-darwin"].map(target => path.join(plan.targetDir, target, "release", "xy-marketplace")), "-output", destination]);
+  assert.deepEqual(calls[1].args, ["-verify_arch", "arm64", "x86_64", destination]);
+  assert.equal(await fs.readFile(destination, "utf8"), "universal companion");
+});
+
+test("a missing companion slice prevents merging", async t => {
+  const plan = await companionFixture(t);
+  await fs.unlink(path.join(plan.targetDir, "x86_64-apple-darwin", "release", "xy-marketplace"));
+  await assert.rejects(mergeUniversalCompanions(plan, { run() { assert.fail("lipo must not run without both slices"); } }), /ENOENT/);
+});
+
+for (const phase of ["-create", "-verify_arch"]) {
+  test("universal packaging fails when lipo " + phase + " fails", async t => {
+    const plan = await companionFixture(t);
+    await assert.rejects(mergeUniversalCompanions(plan, { run(command, args) {
+      if (args[0] === "-create" && phase !== "-create") writeFileSync(args.at(-1), "companion");
+      return { status: args[0] === phase ? 1 : 0 };
+    } }), /merge\/verification failed/);
+  });
+}
+
+test("a successful lipo exit without an output cannot pass packaging", async t => {
+  const plan = await companionFixture(t);
+  await assert.rejects(mergeUniversalCompanions(plan, { run: () => ({ status: 0 }) }), /ENOENT/);
 });
 
 test("macOS app freshness uses the generated plist and hashes the actual archive", async t => {

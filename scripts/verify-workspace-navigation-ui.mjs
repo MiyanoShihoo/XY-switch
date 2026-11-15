@@ -112,23 +112,24 @@ try {
   ({ identifier: fixtureId } = await c.call('Page.addScriptToEvaluateOnNewDocument', { source }));
   await c.navigate(base + '/');
   await run('home-information-architecture', async () => {
-    await reset({ hash: '' }); await c.waitFor('Boolean(document.querySelector(".overview-page"))');
+    await reset({ hash: '' }); await c.waitFor('document.querySelectorAll(".client-list-row").length===8');
+    assert.equal(await c.evaluate('document.querySelector(".xy-shell-root").dataset.workspaceView'), 'clients');
+    assert.equal(await c.evaluate('document.querySelectorAll(".client-directory-group[data-shared=true]").length'), 2);
     assert.equal(await c.evaluate('document.querySelectorAll(".xy-shell-activity").length'), 0);
     assert.equal(await c.evaluate('document.querySelectorAll(".xy-shell-section-nav .xy-shell-nav-item").length'), 0);
-    assert.equal(await c.evaluate('document.querySelectorAll(".xy-shell-sidebar .xy-shell-nav-item").length'), 14);
-    assert.equal(await c.evaluate('document.querySelector(".xy-shell-sidebar [aria-current=page]")?.dataset.view'), "overview");
+    assert.deepEqual(await c.evaluate('[...document.querySelectorAll(".xy-shell-primary-nav > button[data-view]")].map(button=>button.dataset.view)'), ['clients','providers','sessions','usage']);
+    assert.equal(await c.evaluate('document.querySelector(".xy-shell-primary-nav [aria-current=page]")?.dataset.view'), 'clients');
     assert.equal(await c.evaluate('Boolean(document.querySelector(".xy-shell-subnav"))'), false);
     assert.equal(await c.evaluate('document.querySelector(".xy-shell-runtime").open'), false);
-    await noAutomaticRequests(); await noOverflow(); await screenshot('overview-1440-zh-CN-light');
+    await noAutomaticRequests(); await noOverflow(); await screenshot('clients-1440-zh-CN-light');
     await c.click('.xy-shell-runtime > summary');
     assert.equal(await c.evaluate('document.querySelector(".xy-shell-runtime").open'), true);
     await c.key('Escape');
     assert.equal(await c.evaluate('document.querySelector(".xy-shell-runtime").open'), false);
     assert.equal(await c.evaluate('document.activeElement.matches(".xy-shell-runtime > summary")'), true);
     await c.workspace('providers'); await c.waitFor('document.querySelectorAll(".provider-row").length===3');
-    assert.equal(await c.evaluate('document.querySelector(".xy-shell-sidebar [aria-current=page]")?.dataset.view'), 'providers');
-    assert.equal(await c.evaluate('document.querySelector(".xy-shell-sidebar [aria-current=page]")?.dataset.view'), 'providers');
-    assert.equal(await c.evaluate('document.querySelectorAll(".xy-shell-sidebar .xy-shell-nav-item").length'), 14);
+    assert.equal(await c.evaluate('document.querySelector(".xy-shell-primary-nav [aria-current=page]")?.dataset.view'), 'providers');
+    assert.equal(await c.evaluate('document.querySelectorAll(".xy-shell-primary-nav > button[data-view]").length'), 4);
     assert.equal(await c.evaluate('Boolean(document.querySelector(".provider-inspector,[role=separator],[role=dialog]"))'), false);
     await fullWidthProviders();
     await noAutomaticRequests(); await noOverflow(); await screenshot('providers-1440-zh-CN-light');
@@ -136,13 +137,13 @@ try {
   await run('history-and-focus', async () => {
     await reset({ hash: '' }); const current = await c.evaluate('window.__XY_QA__.current');
     assert.equal(await c.evaluate('location.hash'), '');
-    await c.button('管理供应商'); await c.waitFor('Boolean(document.querySelector(".providers-page"))');
+    await c.click('.xy-shell-primary-nav > [data-view="providers"]'); await c.waitFor('Boolean(document.querySelector(".providers-page"))');
     await c.button('查看 Relay 详情'); await c.waitFor('Boolean(document.querySelector(".provider-configuration-page"))');
     assert.equal(await c.evaluate('location.hash'), '#providers/qa-p2/configuration');
     assert.equal(await c.evaluate('document.activeElement.id'), 'workspace-content');
     assert.equal(await c.evaluate('window.__XY_QA__.current'), current); await noAutomaticRequests();
     await c.evaluate('history.back()'); await c.waitFor('location.hash==="#providers" && Boolean(document.querySelector(".providers-page"))');
-    await c.evaluate('history.back()'); await c.waitFor('location.hash==="" && Boolean(document.querySelector(".overview-page"))');
+    await c.evaluate('history.back()'); await c.waitFor('location.hash==="" && Boolean(document.querySelector(".clients-page"))');
     await c.evaluate('history.forward()'); await c.waitFor('Boolean(document.querySelector(".providers-page"))');
     await c.evaluate('history.forward()'); await c.waitFor('Boolean(document.querySelector(".provider-configuration-page"))');
     await c.evaluate('document.querySelector(".xy-shell-skip").focus()'); await c.key('Enter');
@@ -166,7 +167,9 @@ try {
     assert.equal(await c.evaluate('[...document.querySelectorAll("button")].find(e=>e.textContent.trim()==="设为当前").disabled'), true);
     await noAutomaticRequests();
     await c.button('返回供应商'); await c.button('查看 Relay 详情');
-    assert.equal(await c.evaluate('(()=>{const table=document.querySelector(".provider-model-document table");return Boolean(table?.getClientRects().length)&&!table.closest("details:not([open])");})()'), true);
+    assert.equal(await c.evaluate('document.querySelector("#provider-view-models").getAttribute("aria-expanded")'), 'false');
+    await c.click('#provider-view-models');
+    assert.equal(await c.evaluate('(()=>{const table=document.querySelector(".provider-model-table table");return Boolean(table?.getClientRects().length)&&!table.closest("[hidden]");})()'), true);
     assert((await c.evaluate('document.body.innerText')).includes('qa-alpha')); assert((await c.evaluate('document.body.innerText')).includes('128000'));
     assert(!(await c.evaluate('document.body.innerText')).includes('QA_SECRET_SENTINEL'));
     await c.clickExpression('[...document.querySelectorAll("summary")].find(e=>e.textContent.trim()==="配置管理")');
@@ -182,7 +185,16 @@ try {
     await c.clickExpression('[...document.querySelectorAll("summary")].find(e=>e.textContent.trim()==="配置管理")');
     await c.button('删除供应商'); assert.equal(await c.evaluate('document.activeElement.textContent.trim()'), '取消');
     await c.key('Escape'); assert.equal(await countCalls('delete_provider'), 0);
-    await c.button('返回供应商'); await c.button('切换到 Relay'); await c.waitFor('window.__XY_QA__.current==="qa-p2"');
+    await c.button('返回供应商'); await c.button('切换到 Relay');
+    await c.waitFor('Boolean(document.querySelector("[role=dialog]"))');
+    assert.equal(await c.evaluate('document.activeElement.textContent.trim()'), '取消');
+    assert.equal(await countCalls('set_current_provider'), 0, 'opening the confirmation must not activate the provider');
+    await c.button('取消', 'document.querySelector("[role=dialog]")');
+    assert.equal(await c.evaluate('window.__XY_QA__.current'), 'qa-p1');
+    await c.button('切换到 Relay');
+    await c.waitFor('[...document.querySelectorAll("[role=dialog] button")].some(button=>button.textContent.trim()==="确认切换"&&!button.disabled)');
+    await c.button('确认切换', 'document.querySelector("[role=dialog]")');
+    await c.waitFor('window.__XY_QA__.current==="qa-p2"');
     assert.equal(await countCalls('set_current_provider'), 1, 'only an explicit switch activates the provider');
   });
   await run('provider-switch-runtime-read-recovery', async () => {
@@ -193,7 +205,7 @@ try {
       await c.button('Set current configuration: Relay');
       await c.waitFor('document.querySelector(".workspace-runtime-error")?.innerText.includes("QA routing status read failed")');
       assert.equal(await c.evaluate('document.querySelector(".overview-current-title h2").textContent'), 'Relay');
-      assert.equal(await c.evaluate('document.querySelector(".xy-shell-status-connection strong").textContent'), 'Relay');
+      assert.equal(await c.evaluate('document.querySelector(".xy-shell-runtime-panel dl > div:first-child dd").textContent'), 'Relay');
       assert((await c.evaluate('document.querySelector(".xy-shell-runtime summary").textContent')).includes('Status needs refresh'));
       assert.equal(await countCalls('set_current_provider'), 1);
       await c.click('.xy-shell-runtime > summary');
@@ -203,7 +215,7 @@ try {
       await fixture('delete q.fail.get_proxy_status;');
       await c.button('Retry', 'document.querySelector(".workspace-runtime-error")');
       await c.waitFor('!document.querySelector(".workspace-runtime-error") && document.querySelector(".xy-shell-runtime summary").textContent.includes("Stopped")');
-      assert.equal(await c.evaluate('document.querySelector(".xy-shell-status-connection strong").textContent'), 'Relay');
+      assert.equal(await c.evaluate('document.querySelector(".xy-shell-runtime-panel dl > div:first-child dd").textContent'), 'Relay');
       assert.equal(await c.evaluate('document.querySelector(".overview-current-title h2").textContent'), 'Relay');
       assert.equal(await countCalls('set_current_provider'), 1, 'runtime retry must not repeat the successful configuration write');
       assert.equal(await countCalls('set_proxy_enabled'), 0);
@@ -216,7 +228,7 @@ try {
       await reset({ language: 'en', theme: 'dark', width, height: 800 });
       await fixture('q.fail.get_current_provider="QA current configuration read failed";');
       await c.button('Refresh', 'document.querySelector(".providers-page")');
-      await c.waitFor('document.querySelector(".xy-shell-status-connection strong")?.textContent==="Status unknown"');
+      await c.waitFor('document.querySelector(".xy-shell-runtime-panel dl > div:first-child dd")?.textContent==="Status unknown"');
       await c.workspace('overview');
       await c.waitFor('document.querySelector(".overview-page")?.innerText.includes("Current configuration is unknown")');
       assert.equal(await c.evaluate('document.querySelectorAll(".overview-candidate button[aria-label]").length'), 3);
@@ -225,7 +237,7 @@ try {
       await fixture('delete q.fail.get_current_provider;');
       await c.button('Retry', 'document.querySelector(".overview-page")');
       await c.waitFor('document.querySelector(".overview-current-title h2")?.textContent==="Orion" && document.querySelectorAll(".overview-candidate button[aria-label]:not(:disabled)").length===2');
-      assert.equal(await c.evaluate('document.querySelector(".xy-shell-status-connection strong").textContent'), 'Orion');
+      assert.equal(await c.evaluate('document.querySelector(".xy-shell-runtime-panel dl > div:first-child dd").textContent'), 'Orion');
       await noAutomaticRequests(); await noOverflow();
       providerRecovery.push({ scenario: 'current-read', width, current: 'Orion', configurationWrites: 0, recovered: true });
     }
@@ -235,10 +247,10 @@ try {
       await reset({ language: 'en', theme: 'dark', width, height: 800 });
       await fixture('q.fail.get_current_provider="QA current configuration read failed";');
       await c.button('Refresh', 'document.querySelector(".providers-page")');
-      await c.waitFor('document.querySelector(".xy-shell-status-connection strong")?.textContent==="Status unknown"');
+      await c.waitFor('document.querySelector(".xy-shell-runtime-panel dl > div:first-child dd")?.textContent==="Status unknown"');
       assert.equal(await c.evaluate('document.querySelectorAll(".provider-row [data-row-action=activate]").length'), 3);
       assert.equal(await c.evaluate('[...document.querySelectorAll(".provider-row [data-row-action=activate]")].every(button=>button.disabled)'), true);
-      assert.equal(await c.evaluate('[...document.querySelectorAll(".provider-row [data-row-action=inspect]")].every(button=>!button.disabled)'), true);
+      assert.equal(await c.evaluate('document.querySelectorAll(".provider-row .provider-row__identity:not(:disabled)").length'), 3);
       await c.evaluate('document.querySelectorAll(".provider-row [data-row-action=activate]").forEach(button=>button.click())');
       await noAutomaticRequests(); await noOverflow(); await screenshot('provider-directory-read-failure-' + width + '-en-dark');
       await c.click('.provider-row[data-provider-id="qa-p2"] .provider-row__identity');
@@ -258,10 +270,13 @@ try {
       await c.waitFor('document.querySelector(".overview-current-title h2")?.textContent==="Orion"');
       await c.workspace('providers');
       assert.equal(await c.evaluate('document.querySelectorAll(".provider-row [data-row-action=activate]:not(:disabled)").length'), 2);
-      assert.equal(await c.evaluate('document.querySelector(".xy-shell-status-connection strong").textContent'), 'Orion');
+      assert.equal(await c.evaluate('document.querySelector(".xy-shell-runtime-panel dl > div:first-child dd").textContent'), 'Orion');
       await noAutomaticRequests();
       await c.button('Switch to Relay');
-      await c.waitFor('window.__XY_QA__.current==="qa-p2" && document.querySelector(".xy-shell-status-connection strong")?.textContent==="Relay"');
+      await c.waitFor('[...document.querySelectorAll("[role=dialog] button")].some(button=>button.textContent.trim()==="Confirm switch"&&!button.disabled)');
+      assert.equal(await countCalls('set_current_provider'), 0, 'opening the confirmation must not activate the provider');
+      await c.button('Confirm switch', 'document.querySelector("[role=dialog]")');
+      await c.waitFor('window.__XY_QA__.current==="qa-p2" && document.querySelector(".xy-shell-runtime-panel dl > div:first-child dd")?.textContent==="Relay"');
       assert.equal(await countCalls('set_current_provider'), 1, 'only an explicit switch after successful refresh may change the configuration');
       assert.equal(await countCalls('save_provider'), 0);
       await noOverflow(); await screenshot('provider-directory-read-recovered-' + width + '-en-dark');
@@ -343,7 +358,7 @@ try {
   await run('responsive-languages-themes-and-tokens', async () => {
     for (const [width, height] of [[1440, 900], [820, 700], [390, 720]]) {
       for (const language of ['zh-CN', 'en']) for (const theme of ['light', 'dark']) {
-        for (const [page, hash] of [['overview', ''], ['providers', '#providers'], ['configuration', '#providers/qa-p2/configuration'], ['diagnostics', '#diagnostics/qa-p2']]) {
+        for (const [page, hash] of [['clients', ''], ['overview', '#overview'], ['providers', '#providers'], ['configuration', '#providers/qa-p2/configuration'], ['diagnostics', '#diagnostics/qa-p2']]) {
           await reset({ width, height, language, theme, hash }); await noOverflow(); await noAutomaticRequests(); await visibleNavigation();
           if (page === 'providers') await fullWidthProviders();
           assert.equal(await c.evaluate('Boolean(document.querySelector(".provider-inspector,[role=separator],[role=dialog]"))'), false);
@@ -384,6 +399,7 @@ try {
       assert.equal(await c.evaluate('document.activeElement.matches(".xy-shell-menu")'), true);
       await c.viewport(820, 700); await visibleNavigation();
       await c.viewport(740, 700); await c.click('.xy-shell-menu'); await c.viewport(1440, 900);
+      await visibleNavigation(); await c.key('Escape');
       await c.waitFor('!document.querySelector("[role=dialog]")'); await visibleNavigation();
       await c.viewport(320, 720); await visibleNavigation();
       await c.workspace('settings');
@@ -402,7 +418,7 @@ try {
       const originalHash = await c.evaluate('location.hash');
       const overflow = await c.evaluate('document.body.style.overflow');
       if (width === 320) await c.click('.xy-shell-menu');
-      const target = (width === 320 ? '.xy-ui-drawer' : '.xy-shell-sidebar') + ' [data-view="' + destination + '"]';
+      const target = width === 320 ? '.xy-ui-drawer [data-view="' + destination + '"]' : destination === 'overview' ? '.xy-shell-brand' : '.xy-shell-primary-nav > [data-view="' + destination + '"]';
       await c.click(target); await c.waitFor('Boolean(document.querySelector(".task-leave-dialog"))');
       assert.equal(await c.evaluate('location.hash'), originalHash);
       const dialog = await c.evaluate('(()=>{const modal=document.querySelector(".task-leave-dialog"),drawer=document.querySelector(".xy-ui-drawer-shell"),button=modal.querySelector(".xy-ui-modal__footer button:last-child"),rect=button.getBoundingClientRect();return {focused:modal.contains(document.activeElement),hit:button.contains(document.elementFromPoint(rect.x+rect.width/2,rect.y+rect.height/2)),aboveDrawer:!drawer||Number(getComputedStyle(modal.parentElement).zIndex)>Number(getComputedStyle(drawer).zIndex)};})()');
@@ -455,7 +471,7 @@ try {
     await fixture('q.hold.push("save_provider");');
     await c.click('.provider-editor-page button[type=submit]');
     await c.waitFor('window.__XY_QA__.pending.some(item=>item.command==="save_provider")');
-    await c.click('.xy-shell-sidebar [data-view="overview"]');
+    await c.click('.xy-shell-brand');
     await c.waitFor('Boolean(document.querySelector(".task-navigation-wait"))');
     assert.equal(await c.evaluate('location.hash'), '#providers/qa-p2/configuration');
     await c.evaluate('history.back()'); await pause(120);
@@ -527,6 +543,12 @@ try {
     contrasts, layouts, navigationVisibility, providerRecovery, providerNavigation, networkOrigins: [...new Set(c.networkRequests.map(value => new URL(value).origin))], exceptionCount: c.exceptions.length,
     packagedApplicationExecuted: false, realProviderRequests: false }, null, 2));
   console.log(JSON.stringify({ passed: reports.length, output }));
+} catch (error) {
+  if (!reports.some(report => !report.passed)) {
+    await screenshot('setup-failure');
+    await writeFile(join(output, 'setup-failure.json'), JSON.stringify({ error: String(error), snapshot: await c.snapshot(), exceptions: c.exceptions }, null, 2));
+  }
+  throw error;
 } finally {
   if (fixtureId) await c.call('Page.removeScriptToEvaluateOnNewDocument', { identifier: fixtureId }).catch(() => {});
   await c.close();

@@ -1615,11 +1615,16 @@ fn refuses_linked_roots_and_nested_reparse_directories() {
     {
         let result = std::process::Command::new("cmd.exe")
             .args(["/d", "/c", "mklink", "/J"])
-            .arg(&link)
-            .arg(&target)
+            .arg(link.components().collect::<PathBuf>())
+            .arg(target.components().collect::<PathBuf>())
             .output()
             .unwrap();
-        assert!(result.status.success(), "fixture junction creation failed");
+        assert!(
+            result.status.success(),
+            "fixture junction creation failed: {} {}",
+            String::from_utf8_lossy(&result.stdout),
+            String::from_utf8_lossy(&result.stderr)
+        );
     }
     assert!(is_link(&fs::symlink_metadata(&link).unwrap()));
     let store = fixture.store();

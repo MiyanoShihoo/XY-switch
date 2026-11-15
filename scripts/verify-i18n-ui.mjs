@@ -28,7 +28,7 @@ async function nav(source) {
     if (await c.evaluate('document.querySelector(".xy-shell-menu").getAttribute("aria-expanded")!=="true"')) await c.click('.xy-shell-menu');
     await c.click('.xy-shell-root > .xy-ui-drawer-shell .xy-shell-nav-item[data-view=' + JSON.stringify(views[source]) + ']');
   } else if (views[source] === 'overview') {
-    await c.click('.xy-shell-activity[data-default-view=overview]');
+    await c.click('.xy-shell-brand');
   } else await c.workspace(views[source]);
   await c.waitFor('document.querySelector(".xy-shell-root")?.dataset.workspaceView===' + JSON.stringify(views[source]));
   await c.waitFor('!document.querySelector(".xy-shell-root > .xy-ui-drawer-shell")');
@@ -40,6 +40,11 @@ async function field(source) {
   const id = await c.evaluate(`[...document.querySelectorAll('label')].find(e=>e.textContent.replace(/[*]/g,'').trim()===${JSON.stringify(label)})?.htmlFor`);
   assert(id, 'Missing field ' + label);
   return '[id=' + JSON.stringify(id) + ']';
+}
+async function discardPrompt() {
+  await c.button(await tr('取消'));await c.waitFor('Boolean(document.querySelector("[role=alertdialog]"))');
+  await c.button(await tr('放弃修改'),'document.querySelector("[role=alertdialog]")');
+  await c.waitFor('!document.querySelector(".prompt-editor")');
 }
 async function noOverflow() {
   const metrics = await c.evaluate('({width:innerWidth,root:document.documentElement.scrollWidth,body:document.body.scrollWidth})');
@@ -78,12 +83,12 @@ async function run(name, work) {
 }
 try {
   ({identifier:fixtureId} = await c.call('Page.addScriptToEvaluateOnNewDocument', {source:'localStorage.setItem("xy-qa:native-language","zh-CN");localStorage.setItem("xy-switch:language","zh-CN");\n'+fixtureSource}));
-  await c.viewport(1180,760);await c.navigate(base+'/');await c.waitFor('document.body.innerText.includes("Orion")');
+  await c.viewport(1180,760);await c.navigate(base+'/');await c.waitFor('Boolean(document.querySelector(".clients-page"))');
   await c.call('Page.removeScriptToEvaluateOnNewDocument',{identifier:fixtureId});
   ({identifier:fixtureId} = await c.call('Page.addScriptToEvaluateOnNewDocument',{source:fixtureSource}));
 
   await run('native-language-control-and-persistence', async()=>{
-    await nav('设置');await c.fill(await field('请求超时（秒）'),'120');
+    await nav('设置');await c.click('#settings-task-general');await c.fill(await field('请求超时（秒）'),'120');
     await c.fill('select[aria-label="界面语言"]','en');await c.waitFor('document.documentElement.lang==="en"');
     assert.equal(await c.evaluate('document.querySelector('+JSON.stringify(await field('请求超时（秒）'))+').value'),'120','language must not remount settings draft');
     await c.evaluate('window.__XY_QA__.fail.set_interface_language="QA save failed: opaque 中文 JSON"');
@@ -95,6 +100,8 @@ try {
     await c.evaluate('delete window.__XY_QA__.fail.set_interface_language');
     await c.fill('select[aria-label="Interface language"]','zh-CN');await c.waitFor('document.documentElement.lang==="zh-CN"');
     await c.fill('select[aria-label="界面语言"]','en');await c.waitFor('window.__XY_QA__.language==="en"');
+    await c.button(await tr('撤销修改'));
+    assert.equal(await c.evaluate('document.querySelector('+JSON.stringify(await field('请求超时（秒）'))+').value'),String(await c.evaluate('window.__XY_QA__.preferences.requestTimeoutSecs')));
     await c.navigate(base+'/');await c.waitFor('document.documentElement.lang==="en"');
     assert.equal(await c.evaluate('window.__XY_QA__.resolvedLanguage'),'en');
   });
@@ -110,7 +117,7 @@ try {
     await switchTo('zh-CN');assert.equal(await c.evaluate('document.querySelector(".prompt-editor textarea")===window.__i18nQaDraft'),true);
     assert.equal(await c.evaluate('window.__i18nQaDraft.value'),'未保存正文\nconst model = "我的模型";');
     await switchTo('en');assert.equal(await c.evaluate('window.__i18nQaDraft.value'),'未保存正文\nconst model = "我的模型";');
-    await noOverflow();await c.screenshot(join(output,'unsaved-prompt-en.png'));await c.button(await tr('取消'));
+    await noOverflow();await c.screenshot(join(output,'unsaved-prompt-en.png'));await discardPrompt();
     assert.equal(await c.evaluate('window.__XY_QA__.calls.filter(c=>c.command==="save_prompt").length'),0);
   });
   await run('system-primary-language-and-opaque-diagnostics',async()=>{
@@ -131,7 +138,7 @@ try {
     await c.evaluate('window.__XY_QA__.fail.save_prompt='+JSON.stringify('网络请求失败：'+diagnostic));await c.button(await tr('保存提示词'));
     await c.waitFor('document.querySelector(".prompt-editor .xy-ui-inline-error")?.innerText.includes("HTTP 502")');await switchTo('en');
     const saveError=await c.evaluate('document.querySelector(".prompt-editor .xy-ui-inline-error").innerText');assert(saveError.includes('Network request failed: '));assert(saveError.includes(diagnostic));
-    await c.evaluate('delete window.__XY_QA__.fail.save_prompt');await c.button(await tr('取消'));
+    await c.evaluate('delete window.__XY_QA__.fail.save_prompt');await discardPrompt();
   });
   const pages=['总览','供应商','MCP 服务器','提示词','Skills','会话','用量与审计','设置'];
   for(const language of ['zh-CN','en']) for(const [width,height] of [[1180,760],[820,600],[390,844]]) for(const theme of ['light','dark']) {
@@ -146,12 +153,13 @@ try {
         if(page==='提示词')assert(snapshot.text.includes('代码审查'),'user prompt names remain Chinese');
         if(page==='MCP 服务器') {
           await c.button(await tr('连接详情') + ' · Memory QA');
-          await c.waitFor('document.querySelector(".mcp-targets")?.innerText.includes("合成 MCP 服务")');
-          assert.equal(await c.evaluate('document.querySelector(".mcp-record[data-selected=true] .mcp-service-select")?.getAttribute("aria-pressed")'),'true');
-          await c.evaluate('document.querySelector(".mcp-targets").scrollIntoView({block:"start"})');
+          await c.waitFor('document.querySelector(".mcp-dialog[role=dialog]")?.innerText.includes("合成 MCP 服务")');
+          assert.equal(await c.evaluate('document.querySelector(".mcp-dialog[role=dialog]")?.contains(document.activeElement)'),true,'connection details receive keyboard focus');
           await noOverflow();
           if(language==='en')await noLeaks();
           await c.screenshot(join(output,`${language}-${width}-${theme}-mcp-details.png`));
+          await c.key('Escape');await c.waitFor('!document.querySelector(".mcp-dialog[role=dialog]")');
+          assert.equal(await c.evaluate('document.activeElement.getAttribute("aria-label")'),await tr('连接详情') + ' · Memory QA','closing connection details restores the originating button');
         }
       }
     });
@@ -159,7 +167,7 @@ try {
   await run('mobile-capability-boundaries',async()=>{
     await c.call('Page.removeScriptToEvaluateOnNewDocument',{identifier:fixtureId});
     ({identifier:fixtureId}=await c.call('Page.addScriptToEvaluateOnNewDocument',{source:fixtureSource+'\nwindow.__XY_QA__.platform={os:"android",mobile:true,systemTray:false,autostart:false,clientTakeover:false,credentialStore:"Android Keystore"};'}));
-    await c.navigate(base+'/');await c.waitFor('document.body.innerText.includes("Orion")');await switchTo('en');await nav('设置');
+    await c.navigate(base+'/');await c.waitFor('document.querySelector(".workspace-route-notice")?.innerText.includes("Android")');await switchTo('en');await nav('设置');await c.click('#settings-task-general');
     assert.equal(await c.evaluate('Boolean(document.querySelector("button[aria-label=\\"Start at login\\"]"))'),false);
     assert.equal(await c.evaluate('document.querySelector("button[aria-label=\\"Minimize to tray on close\\"]").disabled'),true);
     await c.screenshot(join(output,'mobile-settings-en.png'));

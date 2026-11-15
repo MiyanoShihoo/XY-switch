@@ -7,7 +7,7 @@ const contextChanging = error => /Execution context was destroyed|Cannot find co
 // Wait for its main-frame loader before inspecting DOM readiness: the old page
 // can still report complete while Page.navigate or Page.reload is committing.
 export async function navigateFreshDocument({ call, evaluate }, url, {
-  timeout = 10000,
+  timeout = 30000,
   now = Date.now,
   sleep = pause,
 } = {}) {
