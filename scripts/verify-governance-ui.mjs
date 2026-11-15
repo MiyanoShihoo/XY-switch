@@ -292,7 +292,7 @@ try{
     await confirm('ALLOW PAID CHECKS');await disabled('执行一次收费验收',false);await c.fill(await field('验收模式'),'tools');await disabled('执行一次收费验收');
     await confirm('ALLOW PAID CHECKS');await c.evaluate("window.__XY_QA__.hold.push('run_synthetic_check')");await click('执行一次收费验收');await disabled('执行一次收费验收');
     await navigationBusy();assert.equal(await c.evaluate('document.querySelectorAll(".gov-panel [role=tab]:disabled").length'),2);const runningTask=await taskState();
-    await c.clickExpression('[...document.querySelectorAll(".xy-shell-nav-item[data-view=overview]")].find(item=>item.getClientRects().length)');await c.waitFor('Boolean(document.querySelector(".task-navigation-wait[role=status]")?.getClientRects().length)');
+    await c.click('.xy-shell-brand');await c.waitFor('Boolean(document.querySelector(".task-navigation-wait[role=status]")?.getClientRects().length)');
     assert.deepEqual(await taskState(),runningTask,'Busy work must block global navigation');assert.equal(await c.evaluate(`Boolean(document.querySelector('${leaveDialog}'))`),false,'Busy work cannot be discarded');
     assert.equal((await calls('run_synthetic_check')).length,1);await c.evaluate("window.__XY_QA__.release('run_synthetic_check')");await c.waitFor('window.__XY_QA__.governance.runs.length===1');
     await c.waitFor('document.querySelector("#monitor-panel-configuration fieldset")?.disabled===false');await navigationBusy(false);await disabled('执行一次收费验收');
