@@ -103,7 +103,7 @@ export async function mergeUniversalCompanions(plan, { run = spawnSync } = {}) {
       if (!stat.isFile() || stat.size === 0) throw new Error("Missing macOS companion slice: " + slice);
     }
     const destination = path.join(directory, name);
-    for (const args of [["-create", ...slices, "-output", destination], ["-verify_arch", "arm64", "x86_64", destination]]) {
+    for (const args of [["-create", ...slices, "-output", destination], [destination, "-verify_arch", "arm64", "x86_64"]]) {
       const result = run("lipo", args, { stdio: "inherit", shell: false });
       if (result.error) throw result.error;
       if (result.status !== 0) throw new Error("Universal macOS companion merge/verification failed: " + name);

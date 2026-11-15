@@ -167,7 +167,7 @@ try {
   await run('mobile-capability-boundaries',async()=>{
     await c.call('Page.removeScriptToEvaluateOnNewDocument',{identifier:fixtureId});
     ({identifier:fixtureId}=await c.call('Page.addScriptToEvaluateOnNewDocument',{source:fixtureSource+'\nwindow.__XY_QA__.platform={os:"android",mobile:true,systemTray:false,autostart:false,clientTakeover:false,credentialStore:"Android Keystore"};'}));
-    await c.navigate(base+'/');await c.waitFor('document.querySelector(".workspace-route-notice")?.innerText.includes("Android")');await switchTo('en');await nav('设置');await c.click('#settings-task-general');
+    await c.navigate(base+'/',{readySelector:'.workspace-route-notice'});await c.waitFor('document.querySelector(".workspace-route-notice")?.innerText.includes("Android")');await switchTo('en');await nav('设置');await c.click('#settings-task-general');
     assert.equal(await c.evaluate('Boolean(document.querySelector("button[aria-label=\\"Start at login\\"]"))'),false);
     assert.equal(await c.evaluate('document.querySelector("button[aria-label=\\"Minimize to tray on close\\"]").disabled'),true);
     await c.screenshot(join(output,'mobile-settings-en.png'));

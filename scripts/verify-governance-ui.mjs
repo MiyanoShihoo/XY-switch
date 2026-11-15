@@ -173,7 +173,7 @@ async function reset({width=1280,language='zh-CN',mobile=false,running=false,bud
     await navigationBusy(false);await returnHome({discard});
   }
   await c.evaluate(`localStorage.setItem('xy-governance-qa:language',${JSON.stringify(language)});localStorage.setItem('xy-switch:language',${JSON.stringify(language)});localStorage.setItem('xy-governance-qa:mobile','${mobile}');localStorage.setItem('xy-governance-qa:running','${running}');localStorage.setItem('xy-governance-qa:budget','${budget}');localStorage.setItem('xy-switch:theme','${theme}');`);
-  await c.viewport(width,width<500?844:960);await c.navigate(base+'/');
+  await c.viewport(width,width<500?844:960);await c.navigate(base+'/',{readySelector:mobile?'.workspace-route-notice':'h1'});
   if(setup)await c.evaluate(setup);
   await c.workspace('governance');
   await c.waitFor(`document.querySelectorAll('.gov-task-index nav > button').length===${mobile?2:taskNames.length}`);

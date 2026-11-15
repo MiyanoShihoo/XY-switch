@@ -106,7 +106,7 @@ async function noSecrets() {
 }
 async function reset({ os = 'windows', running = false, language = 'zh-CN', width = 1280, theme = 'light' } = {}) {
   await c.evaluate('localStorage.setItem("xy-sync-qa:os",' + JSON.stringify(os) + ');localStorage.setItem("xy-sync-qa:running",' + JSON.stringify(String(running)) + ');localStorage.setItem("xy-sync-qa:language",' + JSON.stringify(language) + ');localStorage.setItem("xy-switch:language",' + JSON.stringify(language) + ');localStorage.setItem("xy-switch:theme",' + JSON.stringify(theme) + ');localStorage.setItem(' + JSON.stringify(storageKey) + ',' + JSON.stringify(legacy) + ');');
-  await c.viewport(width, width < 500 ? 844 : 960); await c.navigate(base + '/');
+  await c.viewport(width, width < 500 ? 844 : 960); await c.navigate(base + '/', { readySelector: ['android', 'ios'].includes(os) ? '.workspace-route-notice' : 'h1' });
   await c.workspace('settings');
   await category('sync'); await c.waitFor('Boolean(' + page + ')');
 }
@@ -328,6 +328,8 @@ try {
   await run('english-and-mobile-browser-read-only', async () => {
     await reset({ language: 'en' }); assert.match(await text(), /Manual encrypted file exchange/);
     await click('Preview encrypted export'); await c.waitFor('Boolean(document.querySelector(".gov-diff"))'); await expandDiff(); await noOverflow(); await saveScreenshot('sync-english');
+    await click('Cancel and clear preview');
+    await c.waitFor('!document.querySelector(".sync-review-modal") && Object.keys(window.__XY_QA__.sync.tickets).length === 0');
     for (const os of ['android', 'ios', 'browser']) {
       await reset({ os, width: 390 }); assert.match(await text(), /仅限桌面应用/);
       assert.equal(await c.evaluate(page + '.querySelectorAll("input,button").length'), 0);

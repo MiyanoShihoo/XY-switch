@@ -8,6 +8,7 @@ const contextChanging = error => /Execution context was destroyed|Cannot find co
 // can still report complete while Page.navigate or Page.reload is committing.
 export async function navigateFreshDocument({ call, evaluate }, url, {
   timeout = 30000,
+  readySelector = 'h1',
   now = Date.now,
   sleep = pause,
 } = {}) {
@@ -35,7 +36,7 @@ export async function navigateFreshDocument({ call, evaluate }, url, {
     await call('Page.reload');
   }
 
-  const ready = 'document.readyState === "complete" && Boolean(document.querySelector("h1")) && location.href === ' + JSON.stringify(expectedUrl);
+  const ready = 'document.readyState === "complete" && Boolean(document.querySelector(' + JSON.stringify(readySelector) + ')) && location.href === ' + JSON.stringify(expectedUrl);
   while (now() < deadline) {
     const frame = (await call('Page.getFrameTree')).frameTree?.frame;
     if (frame?.loaderId && (frame.id !== before.id || frame.loaderId !== before.loaderId)) {

@@ -175,7 +175,7 @@ test("universal packaging merges both companion slices and verifies both archite
   assert.equal(calls.length, 2);
   assert.ok(calls.every(call => call.command === "lipo" && call.options.shell === false));
   assert.deepEqual(calls[0].args, ["-create", ...["aarch64-apple-darwin", "x86_64-apple-darwin"].map(target => path.join(plan.targetDir, target, "release", "xy-marketplace")), "-output", destination]);
-  assert.deepEqual(calls[1].args, ["-verify_arch", "arm64", "x86_64", destination]);
+  assert.deepEqual(calls[1].args, [destination, "-verify_arch", "arm64", "x86_64"]);
   assert.equal(await fs.readFile(destination, "utf8"), "universal companion");
 });
 
@@ -190,7 +190,7 @@ for (const phase of ["-create", "-verify_arch"]) {
     const plan = await companionFixture(t);
     await assert.rejects(mergeUniversalCompanions(plan, { run(command, args) {
       if (args[0] === "-create" && phase !== "-create") writeFileSync(args.at(-1), "companion");
-      return { status: args[0] === phase ? 1 : 0 };
+      return { status: args.includes(phase) ? 1 : 0 };
     } }), /merge\/verification failed/);
   });
 }

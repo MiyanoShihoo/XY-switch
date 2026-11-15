@@ -69,6 +69,23 @@ test('new-loader readiness is polled until the renderer is complete', async () =
   assert.equal(h.evaluations.length, 3);
   assert.equal(reloads(h).length, 0);
 });
+test('default readiness still waits for a rendered page heading', async () => {
+  const render = selectors => expression => new Script(expression).runInNewContext({
+    document: { readyState: 'complete', querySelector: selector => selectors.includes(selector) ? {} : null }, location: { href: target },
+  });
+  const h = harness({ readiness: [render(['.workspace-route-notice']), render(['h1'])] });
+  await navigate(h);
+  assert.equal(h.evaluations.length, 2);
+});
+test('capability-only routes can require their own mounted readiness marker', async () => {
+  const render = selectors => expression => new Script(expression).runInNewContext({
+    document: { readyState: 'complete', querySelector: selector => selectors.includes(selector) ? {} : null }, location: { href: target },
+  });
+  const h = harness({ readiness: [render(['h1']), render(['.workspace-route-notice'])] });
+  const result = await navigateFreshDocument(h.transport, target, { ...h.options, readySelector: '.workspace-route-notice' });
+  assert.equal(result.loaderId, 'new-document');
+  assert.equal(h.evaluations.length, 2);
+});
 test('DOM readiness must match the exact target URL including its route', async () => {
   const completeAt = href => expression => new Script(expression).runInNewContext({
     document: { readyState: 'complete', querySelector: () => ({}) }, location: { href },
