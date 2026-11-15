@@ -596,7 +596,7 @@ try {
       assert.equal(desktop.sourceExpanded, false);
       assert(desktop.firstMessage.y <= 250 && desktop.firstBody.y <= 250, 'the first body starts by y=250: ' + JSON.stringify(desktop));
       assert.equal(desktop.fontSize, '15px');
-      assert(desktop.messages.width <= 900 && desktop.messages.width >= 600);
+      assert(desktop.firstMessage.width <= 900 && desktop.firstMessage.width >= 600, 'the actual message column stays within its reading width');
       assert.equal(desktop.side.width, 272);
       assert.equal(desktop.gap, '28px');
       assert.equal(desktop.discussionToggle, false);
@@ -607,19 +607,21 @@ try {
       await c.screenshot(join(output, 'experience-reader-1440.png'));
       await c.viewport(1024, 768);
       await c.evaluate('document.querySelector(".xy-shell-main").scrollTop = 0');
-      const compact = await experienceGeometry('experience-reader-1024');
-      assert(compact.reader.width < 940 && compact.discussionToggle, '1024 uses the top discussion control');
-      assert.equal(compact.messages.width, compact.reader.width, 'the compact reader uses its whole available width');
+      const medium = await experienceGeometry('experience-reader-1024');
+      assert.equal(medium.discussionToggle, medium.reader.width < 940, 'discussion controls follow the available reader width');
       await noOverflow();
       await c.screenshot(join(output, 'experience-reader-1024.png'));
+      const compactViewport = Math.round(1024 + 939 - medium.reader.width);
       for (const width of [939, 940]) {
-        await c.viewport(Math.round(1024 + width - compact.reader.width), 768);
+        await c.viewport(Math.round(1024 + width - medium.reader.width), 768);
         await c.waitFor('Math.abs(document.querySelector(".session-reading-pane .session-reader").getBoundingClientRect().width - ' + width + ') < 0.1');
         const boundary = await experienceGeometry('experience-reader-net-' + width);
         assert.equal(boundary.discussionToggle, width < 940);
+        if (width === 939) assert.equal(boundary.messages.width, boundary.reader.width, 'the compact reader uses its whole available width');
         if (width === 940) { assert.equal(boundary.side.width, 272); assert.equal(boundary.gap, '28px'); }
       }
-      await c.viewport(1024, 768);
+      await c.viewport(compactViewport, 768);
+      await c.waitFor('Math.abs(document.querySelector(".session-reading-pane .session-reader").getBoundingClientRect().width - 939) < 0.1');
       await readerPanel('discussion', '.session-reading-pane');
       await c.waitFor('document.querySelector(".session-reading-pane .session-reader__workspace").dataset.panel === "discussion"');
       assert.equal(await c.evaluate('document.querySelectorAll(".session-reading-pane .session-discussion__items li").length'), 4, 'only loaded user messages form the discussion');

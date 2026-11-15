@@ -88,7 +88,7 @@
 .session-reader__heading { display: flex; align-items: center; gap: 14px; min-width: 0; }
 .session-reader__identity { flex: 1; min-width: 0; }
 .session-reader__identity h2 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; margin: 0 0 5px; font-size: 21px; line-height: 1.4; font-weight: 600; overflow-wrap: anywhere; }
-.session-reader__identity > span { font-size: 12px; color: var(--xy-ds-text-muted); overflow-wrap: anywhere; }
+.session-reader__identity > span { display: block; font-size: 12px; line-height: 1.5; color: var(--xy-ds-text-muted); overflow-wrap: anywhere; }
 .session-reader__heading > .xy-ui-button { flex-shrink: 0; }
 .session-reader__unsaved { margin: 0; font-size: 12px; color: var(--xy-ds-text-muted); }
 .session-reader__toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; padding-bottom: 12px; border-bottom: 1px solid var(--xy-ds-border); }
@@ -120,7 +120,7 @@
 .session-message:first-child { padding-top: 8px; }
 .session-message:last-child { border-bottom: 0; }
 .session-message[data-role="user"] { padding-inline-start: 16px; border-inline-start: 2px solid var(--xy-ds-border-strong); }
-.session-message__meta { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; margin-bottom: 9px; font-size: 12px; color: var(--xy-ds-text-muted); }
+.session-message__meta { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; margin-bottom: 9px; font-size: 12px; line-height: 1.5; color: var(--xy-ds-text-muted); }
 .session-message__meta strong { color: var(--xy-ds-text); font-weight: 600; }
 .session-message__meta time { font-variant-numeric: tabular-nums; }
 .session-message pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: 15px; line-height: 1.85; margin: 0; }
