@@ -263,14 +263,17 @@ try {
   await run('native-favorites-use-identifiers-and-retain-legacy', async () => {
     await reset(); await c.workspace('sessions'); await c.waitFor('document.querySelectorAll(".session-index__row").length === 1');
     await c.click('.session-index__item'); await c.waitFor('document.querySelector(".session-favorite")?.getAttribute("aria-pressed")==="true"');
+    assert.equal(await c.evaluate('document.querySelector(".sessions-page").dataset.reading'), 'false');
+    assert.equal(await c.evaluate('Boolean(document.querySelector(".session-reading-pane"))'), false);
     await c.click('.session-favorite'); await c.waitFor('window.__XY_QA__.calls.some(c=>c.command==="set_session_favorite")');
     const call = (await calls('set_session_favorite'))[0];
     assert.deepEqual(call.args, { favorite: { providerId: 'codex', sessionId: 'qa-session' }, enabled: false });
     assert.equal(await c.evaluate('localStorage.getItem(' + JSON.stringify(storageKey) + ')'), legacy);
     await c.waitFor('document.querySelector(".session-favorite")?.getAttribute("aria-pressed")==="false"');
-    assert.equal(await c.evaluate('document.querySelector(".sessions-workspace").dataset.reading'), 'true');
-    await c.click('.session-reader__back'); await c.waitFor('document.querySelector(".sessions-workspace")?.dataset.reading==="false"');
-    await c.waitFor('document.activeElement?.matches(".session-index__item[aria-current=true]")');
+    await c.click('.session-preview__read-actions button:last-child');
+    await c.waitFor('document.querySelector(".sessions-page")?.dataset.reading==="true" && Boolean(document.querySelector(".session-reading-pane .session-reader"))');
+    await c.click('.session-reading-pane .session-reader__back'); await c.waitFor('document.querySelector(".sessions-page")?.dataset.reading==="false"');
+    await c.waitFor('document.activeElement?.matches(".session-preview__read-actions button:last-child")');
     await c.workspace('settings'); await category('sync');
     await click('预览加密导出'); await c.waitFor('Boolean(document.querySelector(".gov-diff"))'); await expandDiff();
     assert.equal(await c.evaluate('window.__XY_QA__.sync.favorites.length'), 0);
@@ -279,12 +282,15 @@ try {
   });
   await run('pending-and-expired-preview-tickets-are-cleared', async () => {
     await reset(); await c.evaluate('window.__XY_QA__.hold.push("preview_sync_import")');
-    await fill('加密口令', password); await click('选择加密文件并预览');
-    assert(await c.evaluate('document.querySelector(".settings-page > .page-heading button").disabled'));
-    await c.click('.xy-shell-nav-item[data-view="governance"]');
-    await c.waitFor('Boolean(document.querySelector(".task-navigation-wait"))');
-    assert.equal(await c.evaluate('document.querySelector(".xy-shell-root").dataset.workspaceView'), 'settings');
-    await c.evaluate('window.__XY_QA__.release("preview_sync_import")');
+    try {
+      await fill('加密口令', password); await click('选择加密文件并预览');
+      assert(await c.evaluate('document.querySelector(".settings-page > .page-heading button").disabled'));
+      await c.click('.xy-shell-brand');
+      await c.waitFor('Boolean(document.querySelector(".task-navigation-wait"))');
+      assert.equal(await c.evaluate('document.querySelector(".xy-shell-root").dataset.workspaceView'), 'settings');
+    } finally {
+      await c.evaluate('window.__XY_QA__.release("preview_sync_import")');
+    }
     await c.waitFor('Boolean(document.querySelector(".sync-review-modal--import"))');
     await click('取消并清除预览');
     await c.waitFor('window.__XY_QA__.calls.some(c=>c.command==="cancel_sync_preview")');
